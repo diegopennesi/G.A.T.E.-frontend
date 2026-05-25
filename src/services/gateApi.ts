@@ -110,8 +110,12 @@ export async function getCampaign(campaignId: string): Promise<CampaignResponse>
   return apiRequest<CampaignResponse>(`/campaigns/${campaignId}`)
 }
 
-export async function discoverCampaigns(openOnly = true): Promise<CampaignDiscoverResponse[]> {
+export async function discoverCampaigns(openOnly = false): Promise<CampaignDiscoverResponse[]> {
   return apiRequest<CampaignDiscoverResponse[]>(`/campaigns/discover?openOnly=${openOnly ? 'true' : 'false'}`)
+}
+
+export async function listCampaignModules(): Promise<string[]> {
+  return apiRequest<string[]>('/campaigns/modules')
 }
 
 export async function applyToCampaign(
@@ -150,6 +154,87 @@ export async function listPendingApplications(campaignId: string): Promise<Campa
 
 export async function getCampaignMembers(campaignId: string): Promise<CampaignMembershipResponse[]> {
   return apiRequest<CampaignMembershipResponse[]>(`/campaigns/${campaignId}/members`)
+}
+
+export async function listCampaignMembersForManagement(campaignId: string): Promise<CampaignMembershipResponse[]> {
+  return apiRequest<CampaignMembershipResponse[]>(`/campaigns/${campaignId}/members/all`)
+}
+
+export async function getCampaignMember(campaignId: string, memberUserId: string): Promise<CampaignMembershipResponse> {
+  return apiRequest<CampaignMembershipResponse>(`/campaigns/${campaignId}/members/${memberUserId}`)
+}
+
+export async function updateCampaignMemberRole(
+  campaignId: string,
+  memberUserId: string,
+  role: string,
+): Promise<CampaignMembershipResponse> {
+  return apiRequest<CampaignMembershipResponse>(`/campaigns/${campaignId}/members/${memberUserId}/role`, {
+    method: 'PATCH',
+    body: { role },
+  })
+}
+
+export async function banCampaignMember(
+  campaignId: string,
+  memberUserId: string,
+  reason: string,
+): Promise<CampaignMembershipResponse> {
+  return apiRequest<CampaignMembershipResponse>(`/campaigns/${campaignId}/members/${memberUserId}/ban`, {
+    method: 'POST',
+    body: { reason },
+  })
+}
+
+export async function suspendCampaignMember(
+  campaignId: string,
+  memberUserId: string,
+  reason: string,
+): Promise<CampaignMembershipResponse> {
+  return apiRequest<CampaignMembershipResponse>(`/campaigns/${campaignId}/members/${memberUserId}/suspend`, {
+    method: 'POST',
+    body: { reason },
+  })
+}
+
+export async function unsuspendCampaignMember(
+  campaignId: string,
+  memberUserId: string,
+): Promise<CampaignMembershipResponse> {
+  return apiRequest<CampaignMembershipResponse>(`/campaigns/${campaignId}/members/${memberUserId}/unsuspend`, {
+    method: 'POST',
+    body: {},
+  })
+}
+
+export async function unbanCampaignMember(
+  campaignId: string,
+  memberUserId: string,
+): Promise<CampaignMembershipResponse> {
+  return apiRequest<CampaignMembershipResponse>(`/campaigns/${campaignId}/members/${memberUserId}/unban`, {
+    method: 'POST',
+    body: {},
+  })
+}
+
+export async function approveCampaignMember(
+  campaignId: string,
+  memberUserId: string,
+): Promise<CampaignMembershipResponse> {
+  return apiRequest<CampaignMembershipResponse>(`/campaigns/${campaignId}/members/${memberUserId}/approve`, {
+    method: 'POST',
+    body: {},
+  })
+}
+
+export async function rejectCampaignMember(
+  campaignId: string,
+  memberUserId: string,
+): Promise<CampaignMembershipResponse> {
+  return apiRequest<CampaignMembershipResponse>(`/campaigns/${campaignId}/members/${memberUserId}/reject`, {
+    method: 'POST',
+    body: {},
+  })
 }
 
 export async function listMyCampaignMemberships(): Promise<MyCampaignMembershipResponse[]> {

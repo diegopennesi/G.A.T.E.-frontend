@@ -437,6 +437,134 @@ textarea {
   padding: 8px 10px;
 }
 
+.campaign-item {
+  padding: 12px;
+  border-color: #3a3652;
+  background: linear-gradient(165deg, #141121 0%, #1b1830 100%);
+  position: relative;
+  overflow: visible;
+}
+
+.campaign-item-main {
+  display: grid;
+  gap: 6px;
+}
+
+.campaign-item-main .character-name {
+  margin: 0;
+}
+
+.campaign-item-main .muted {
+  margin: 0;
+}
+
+.campaign-creator {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #7fc8ff;
+}
+
+.campaign-item-actions {
+  min-width: 210px;
+  justify-content: flex-end;
+}
+
+.campaign-enter-btn {
+  border-color: rgba(127, 200, 255, 0.5);
+  color: #9cd9ff;
+}
+
+.campaign-item-tooltip {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: calc(100% + 8px);
+  border: 1px solid #2e2a45;
+  border-radius: 8px;
+  background: #12101b;
+  color: #d8d5e6;
+  padding: 8px 10px;
+  font-size: 0.78rem;
+  line-height: 1.25;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
+  transition: opacity 120ms ease, transform 120ms ease;
+  z-index: 20;
+}
+
+.campaign-item:hover .campaign-item-tooltip {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.member-link-btn {
+  border: 0;
+  background: transparent;
+  color: #9cd9ff;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.member-link-btn:hover {
+  color: #b7e5ff;
+  text-decoration: underline;
+}
+
+.line-item.line-item-clickable {
+  padding: 0;
+}
+
+.member-card-btn {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.member-card-btn:hover {
+  background: rgba(76, 69, 99, 0.22);
+}
+
+.member-card-btn .character-name {
+  margin: 0;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 6, 14, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+
+.modal-panel {
+  width: min(520px, 100%);
+  border: 1px solid #2e2a45;
+  border-radius: 8px;
+  background: #12101b;
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.modal-panel h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
 .character-item {
   width: 100%;
   text-align: left;
@@ -537,6 +665,34 @@ textarea {
 .checkbox-row input {
   width: 16px;
   height: 16px;
+}
+
+.multicheck-field {
+  margin-bottom: 12px;
+}
+
+.multicheck-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.multicheck-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multicheck-menu {
+  margin-top: 8px;
+  border: 1px solid #2e2a45;
+  border-radius: 8px;
+  background: #12101b;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
 }
 
 .character-item strong {

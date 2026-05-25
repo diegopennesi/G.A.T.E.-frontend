@@ -1,6 +1,6 @@
 export type CharacterStatus = 'ACTIVE' | 'RETIRED' | 'DEAD'
 export type CampaignRole = 'GIOCATORE' | 'CO_MASTER' | 'MASTER' | 'SUPER_MASTER'
-export type CampaignMemberStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'BANNED'
+export type CampaignMemberStatus = 'PENDING' | 'APPROVED' | 'BLOCKED' | 'REJECTED' | 'BANNED'
 export type CampaignCharacterStatus = 'ACTIVE' | 'RETIRED' | 'DEAD'
 export type MissionStatus = 'OPEN' | 'CLOSED' | 'CONFIRMED' | 'REOPENED'
 export type MissionParticipationType = 'TITOLARE' | 'NON_TITOLARE'
@@ -61,6 +61,9 @@ export interface CampaignMembershipResponse {
   role: CampaignRole
   memberStatus: CampaignMemberStatus
   characterStatus: CampaignCharacterStatus | null
+  moderationReason: string | null
+  moderationByUserId: string | null
+  moderationAt: string | null
 }
 
 export interface MyCampaignMembershipResponse {
@@ -69,6 +72,7 @@ export interface MyCampaignMembershipResponse {
   role: CampaignRole
   memberStatus: CampaignMemberStatus
   characterStatus: CampaignCharacterStatus | null
+  moderationReason: string | null
   isFounder: boolean
 }
 
@@ -82,6 +86,7 @@ export interface CampaignDiscoverResponse {
   createdAt: string
   membershipStatus: CampaignMemberStatus | null
   membershipRole: CampaignRole | null
+  moderationReason: string | null
 }
 
 export interface CampaignApplicationResponse {
