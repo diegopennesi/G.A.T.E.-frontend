@@ -1,0 +1,293 @@
+import { ApiError, apiRequest, clearTokens, setTokens } from './apiClient'
+import type {
+  CampaignApplicationResponse,
+  CampaignDiscoverResponse,
+  AuthSession,
+  CampaignMembershipResponse,
+  CampaignPermissionResponse,
+  CampaignResponse,
+  Character,
+  CharacterStatus,
+  MyCampaignMembershipResponse,
+  MissionParticipantResponse,
+  MissionParticipationType,
+  MissionResponse,
+  RoomResponse,
+  UserProfile,
+} from '../types/domain'
+
+type AuthResponse = {
+  accessToken: string
+  refreshToken: string
+  user: UserProfile
+}
+
+export async function login(username: string, password: string): Promise<AuthSession> {
+  const data = await apiRequest<AuthResponse>('/auth/login', {
+    method: 'POST',
+    auth: false,
+    body: { username, password },
+  })
+  setTokens(data.accessToken, data.refreshToken)
+  return data
+}
+
+export async function register(params: {
+  username: string
+  password: string
+  profileName?: string
+  bio?: string
+}): Promise<AuthSession> {
+  const data = await apiRequest<AuthResponse>('/auth/register', {
+    method: 'POST',
+    auth: false,
+    body: {
+      username: params.username,
+      password: params.password,
+      profileName: params.profileName || undefined,
+      bio: params.bio || undefined,
+      socialLinks: {},
+    },
+  })
+  setTokens(data.accessToken, data.refreshToken)
+  return data
+}
+
+export function logout() {
+  clearTokens()
+}
+
+export async function getMe(): Promise<UserProfile> {
+  return apiRequest<UserProfile>('/users/me')
+}
+
+export async function updateMe(payload: {
+  profileName: string
+  bio: string
+  whatsapp: string
+  instagram: string
+  otherSocial: string
+}): Promise<UserProfile> {
+  const socialLinks: Record<string, string> = {}
+  if (payload.instagram.trim()) socialLinks.instagram = payload.instagram.trim()
+  if (payload.otherSocial.trim()) socialLinks.other = payload.otherSocial.trim()
+
+  return apiRequest<UserProfile>('/users/me', {
+    method: 'PATCH',
+    body: {
+      profileName: payload.profileName.trim(),
+      bio: payload.bio.trim() || null,
+      whatsapp: payload.whatsapp.trim() || null,
+      socialLinks,
+    },
+  })
+}
+
+export async function getPublicProfile(userId: string): Promise<UserProfile> {
+  return apiRequest<UserProfile>(`/users/${userId}`)
+}
+
+export async function createCampaign(payload: {
+  name: string
+  description?: string
+  isOpen?: boolean
+  isSearchable?: boolean
+  allowedModules?: string[]
+}): Promise<CampaignResponse> {
+  return apiRequest<CampaignResponse>('/campaigns', {
+    method: 'POST',
+    body: {
+      name: payload.name.trim(),
+      description: payload.description || null,
+      isOpen: payload.isOpen ?? true,
+      isSearchable: payload.isSearchable ?? true,
+      allowedModules: payload.allowedModules ?? [],
+    },
+  })
+}
+
+export async function getCampaign(campaignId: string): Promise<CampaignResponse> {
+  return apiRequest<CampaignResponse>(`/campaigns/${campaignId}`)
+}
+
+export async function discoverCampaigns(openOnly = true): Promise<CampaignDiscoverResponse[]> {
+  return apiRequest<CampaignDiscoverResponse[]>(`/campaigns/discover?openOnly=${openOnly ? 'true' : 'false'}`)
+}
+
+export async function applyToCampaign(
+  campaignId: string,
+  characterId?: string,
+): Promise<CampaignMembershipResponse> {
+  return apiRequest<CampaignMembershipResponse>(`/campaigns/${campaignId}/apply`, {
+    method: 'POST',
+    body: { characterId: characterId || null },
+  })
+}
+
+export async function approveApplication(
+  campaignId: string,
+  applicantUserId: string,
+): Promise<CampaignMembershipResponse> {
+  return apiRequest<CampaignMembershipResponse>(
+    `/campaigns/${campaignId}/applications/${applicantUserId}/approve`,
+    { method: 'POST', body: {} },
+  )
+}
+
+export async function rejectApplication(
+  campaignId: string,
+  applicantUserId: string,
+): Promise<CampaignMembershipResponse> {
+  return apiRequest<CampaignMembershipResponse>(
+    `/campaigns/${campaignId}/applications/${applicantUserId}/reject`,
+    { method: 'POST', body: {} },
+  )
+}
+
+export async function listPendingApplications(campaignId: string): Promise<CampaignApplicationResponse[]> {
+  return apiRequest<CampaignApplicationResponse[]>(`/campaigns/${campaignId}/applications/pending`)
+}
+
+export async function getCampaignMembers(campaignId: string): Promise<CampaignMembershipResponse[]> {
+  return apiRequest<CampaignMembershipResponse[]>(`/campaigns/${campaignId}/members`)
+}
+
+export async function listMyCampaignMemberships(): Promise<MyCampaignMembershipResponse[]> {
+  try {
+    return await apiRequest<MyCampaignMembershipResponse[]>('/campaigns/me/memberships')
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      return apiRequest<MyCampaignMembershipResponse[]>('/users/me/campaign-memberships')
+    }
+    throw error
+  }
+}
+
+export async function checkPermission(
+  campaignId: string,
+  action: string,
+): Promise<CampaignPermissionResponse> {
+  return apiRequest<CampaignPermissionResponse>(`/campaigns/${campaignId}/permissions/${action}`)
+}
+
+export async function transferOwnership(
+  campaignId: string,
+  newOwnerUserId: string,
+): Promise<CampaignResponse> {
+  return apiRequest<CampaignResponse>(`/campaigns/${campaignId}/ownership/transfer`, {
+    method: 'POST',
+    body: { newOwnerUserId },
+  })
+}
+
+export async function leaveCampaign(campaignId: string): Promise<CampaignMembershipResponse> {
+  return apiRequest<CampaignMembershipResponse>(`/campaigns/${campaignId}/members/me/leave`, {
+    method: 'POST',
+    body: {},
+  })
+}
+
+export async function listCharacters(campaignId: string): Promise<Character[]> {
+  return apiRequest<Character[]>(`/campaigns/${campaignId}/characters`)
+}
+
+export async function getCharacter(campaignId: string, characterId: string): Promise<Character> {
+  return apiRequest<Character>(`/campaigns/${campaignId}/characters/${characterId}`)
+}
+
+export async function createCharacter(
+  campaignId: string,
+  payload: { name: string; nickname?: string; portraitUrl?: string; isNpc?: boolean },
+): Promise<Character> {
+  return apiRequest<Character>(`/campaigns/${campaignId}/characters`, {
+    method: 'POST',
+    body: {
+      name: payload.name.trim(),
+      nickname: payload.nickname?.trim() || null,
+      portraitUrl: payload.portraitUrl?.trim() || null,
+      isNpc: payload.isNpc || false,
+    },
+  })
+}
+
+export async function updateCharacterStatus(
+  campaignId: string,
+  characterId: string,
+  status: CharacterStatus,
+): Promise<Character> {
+  return apiRequest<Character>(`/campaigns/${campaignId}/characters/${characterId}/status`, {
+    method: 'PATCH',
+    body: { status },
+  })
+}
+
+export async function listMissions(campaignId: string): Promise<MissionResponse[]> {
+  return apiRequest<MissionResponse[]>(`/campaigns/${campaignId}/missions`)
+}
+
+export async function createMission(
+  campaignId: string,
+  payload: {
+    title: string
+    description?: string
+    isMultiSession?: boolean
+    sessionAt?: string
+    closesAt?: string
+  },
+): Promise<MissionResponse> {
+  return apiRequest<MissionResponse>(`/campaigns/${campaignId}/missions`, {
+    method: 'POST',
+    body: {
+      title: payload.title.trim(),
+      description: payload.description || null,
+      isMultiSession: payload.isMultiSession ?? false,
+      sessionAt: payload.sessionAt || null,
+      closesAt: payload.closesAt || null,
+    },
+  })
+}
+
+export async function reopenMission(campaignId: string, missionId: string): Promise<MissionResponse> {
+  return apiRequest<MissionResponse>(`/campaigns/${campaignId}/missions/${missionId}/reopen`, {
+    method: 'POST',
+    body: {},
+  })
+}
+
+export async function joinMission(
+  campaignId: string,
+  missionId: string,
+  payload: { characterId: string; participationType: MissionParticipationType },
+): Promise<MissionParticipantResponse> {
+  return apiRequest<MissionParticipantResponse>(
+    `/campaigns/${campaignId}/missions/${missionId}/participants/me/join`,
+    {
+      method: 'POST',
+      body: payload,
+    },
+  )
+}
+
+export async function leaveMission(campaignId: string, missionId: string): Promise<MissionParticipantResponse> {
+  return apiRequest<MissionParticipantResponse>(
+    `/campaigns/${campaignId}/missions/${missionId}/participants/me/leave`,
+    {
+      method: 'POST',
+      body: {},
+    },
+  )
+}
+
+export async function listRooms(campaignId: string): Promise<RoomResponse[]> {
+  return apiRequest<RoomResponse[]>(`/campaigns/${campaignId}/rooms`)
+}
+
+export async function createRoom(
+  campaignId: string,
+  payload: { name: string; type: 'ROLEPLAY' | 'SPAM'; ttlHours: number; slowmodeSeconds: number },
+): Promise<RoomResponse> {
+  return apiRequest<RoomResponse>(`/campaigns/${campaignId}/rooms`, {
+    method: 'POST',
+    body: payload,
+  })
+}
