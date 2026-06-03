@@ -411,7 +411,8 @@ textarea {
 }
 
 .primary-btn,
-.secondary-btn {
+.secondary-btn,
+.danger-btn {
   border-radius: 8px;
   padding: 9px 12px;
   font-size: 0.9rem;
@@ -437,6 +438,17 @@ textarea {
 }
 
 .secondary-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.danger-btn {
+  border: 1px solid var(--danger);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.danger-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -804,6 +816,233 @@ textarea {
 
 .subpanel p + p {
   margin-top: 4px;
+}
+
+.mission-shell {
+  display: grid;
+  gap: 14px;
+}
+
+.mission-page-header {
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.mission-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.mission-block {
+  min-height: 100%;
+}
+
+.mission-list-block,
+.mission-detail-block {
+  display: grid;
+  gap: 12px;
+}
+
+.mission-form-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.mission-form-card {
+  display: grid;
+  gap: 12px;
+}
+
+.card-section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.mission-list {
+  display: grid;
+  gap: 10px;
+}
+
+.mission-item {
+  align-items: flex-start;
+}
+
+.mission-item-main {
+  width: 100%;
+  display: grid;
+  gap: 10px;
+}
+
+.mission-item-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.mission-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mission-meta-pill,
+.mission-role-chip,
+.mission-count {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 6px;
+  border: 1px solid #2e2a45;
+  background: #12101b;
+  color: #b3afc8;
+  border-radius: 999px;
+  padding: 5px 9px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.mission-meta-pill > span {
+  display: grid;
+  gap: 1px;
+  line-height: 1.15;
+}
+
+.mission-meta-pill strong {
+  color: var(--text);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.mission-role-chip {
+  color: #9cd9ff;
+  border-color: rgba(156, 217, 255, 0.3);
+}
+
+.mission-count {
+  min-width: 34px;
+  justify-content: center;
+}
+
+.mission-mini-icon {
+  width: 1rem;
+  height: 1rem;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+}
+
+.mission-status,
+.mission-participation {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #2e2a45;
+  background: #12101b;
+  color: #e8e6f0;
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.mission-status-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid #2e2a45;
+  color: #b3afc8;
+  flex: none;
+}
+
+.mission-status-open .mission-status-icon,
+.mission-status-reopened .mission-status-icon {
+  color: #9cd9ff;
+}
+
+.mission-status-confirmed .mission-status-icon {
+  color: #27ae60;
+}
+
+.mission-status-closed .mission-status-icon {
+  color: #ef8f84;
+}
+
+.mission-status-cancelled .mission-status-icon {
+  color: #ef8f84;
+}
+
+.mission-participation.is-titolare .mission-status-icon {
+  color: #d9be73;
+}
+
+.mission-participation.is-backup .mission-status-icon {
+  color: #9cd9ff;
+}
+
+.mission-detail-head {
+  align-items: flex-start;
+}
+
+.mission-card-section {
+  display: grid;
+  gap: 4px;
+}
+
+.mission-card-label {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.mission-card-value {
+  margin: 0;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.mission-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.mission-actions {
+  flex-wrap: wrap;
+}
+
+.mission-checkbox {
+  grid-template-columns: none;
+}
+
+.mission-last-action {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 1200px) {
+  .mission-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mission-summary-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .checkbox-row {
@@ -1212,14 +1451,16 @@ body {
 .chip,
 .segmented-btn,
 .primary-btn,
-.secondary-btn {
+.secondary-btn,
+.danger-btn {
   transition: transform 140ms ease, border-color 140ms ease, background-color 140ms ease, color 140ms ease, opacity 140ms ease;
 }
 
 .chip:hover:not(:disabled),
 .segmented-btn:hover:not(:disabled),
 .primary-btn:hover:not(:disabled),
-.secondary-btn:hover:not(:disabled) {
+.secondary-btn:hover:not(:disabled),
+.danger-btn:hover:not(:disabled) {
   transform: translateY(-1px);
 }
 
@@ -1351,6 +1592,7 @@ html[data-theme='light'] .menu-item,
 html[data-theme='light'] .menu-group-toggle,
 html[data-theme='light'] .refresh-btn,
 html[data-theme='light'] .secondary-btn,
+html[data-theme='light'] .danger-btn,
 html[data-theme='light'] .logout-btn,
 html[data-theme='light'] .drawer-close-btn,
 html[data-theme='light'] .menu-trigger {
@@ -1365,6 +1607,8 @@ html[data-theme='light'] .refresh-btn:hover:not(:disabled),
 html[data-theme='light'] .refresh-btn:focus-visible,
 html[data-theme='light'] .secondary-btn:hover:not(:disabled),
 html[data-theme='light'] .secondary-btn:focus-visible,
+html[data-theme='light'] .danger-btn:hover:not(:disabled),
+html[data-theme='light'] .danger-btn:focus-visible,
 html[data-theme='light'] .logout-btn:hover,
 html[data-theme='light'] .logout-btn:focus-visible,
 html[data-theme='light'] .drawer-close-btn:hover,
@@ -1435,6 +1679,12 @@ html[data-theme='light'] .primary-btn {
 html[data-theme='light'] .secondary-btn {
   background: #f7f9fc;
   color: var(--text);
+}
+
+html[data-theme='light'] .danger-btn {
+  background: rgba(180, 35, 24, 0.08);
+  color: var(--danger);
+  border-color: rgba(180, 35, 24, 0.34);
 }
 
 html[data-theme='light'] .refresh-btn.theme-toggle-btn {
@@ -1518,4 +1768,46 @@ html[data-theme='light'] .campaign-access-badge,
 html[data-theme='light'] .campaign-access-icon,
 html[data-theme='light'] .campaign-access-label {
   color: var(--text);
+}
+
+html[data-theme='light'] .mission-meta-pill,
+html[data-theme='light'] .mission-role-chip,
+html[data-theme='light'] .mission-count,
+html[data-theme='light'] .mission-status,
+html[data-theme='light'] .mission-participation,
+html[data-theme='light'] .mission-status-icon {
+  background: var(--surface-strong);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+html[data-theme='light'] .mission-role-chip {
+  color: var(--accent);
+  border-color: rgba(140, 107, 31, 0.28);
+  background: var(--accent-soft);
+}
+
+html[data-theme='light'] .mission-status-open .mission-status-icon,
+html[data-theme='light'] .mission-status-reopened .mission-status-icon {
+  color: #2347ab;
+}
+
+html[data-theme='light'] .mission-status-confirmed .mission-status-icon {
+  color: #0f7a4c;
+}
+
+html[data-theme='light'] .mission-status-closed .mission-status-icon {
+  color: #b42318;
+}
+
+html[data-theme='light'] .mission-status-cancelled .mission-status-icon {
+  color: #b42318;
+}
+
+html[data-theme='light'] .mission-participation.is-titolare .mission-status-icon {
+  color: var(--accent);
+}
+
+html[data-theme='light'] .mission-participation.is-backup .mission-status-icon {
+  color: #2347ab;
 }

@@ -352,8 +352,9 @@ export async function updateCharacterStatus(
   })
 }
 
-export async function listMissions(campaignId: string): Promise<MissionResponse[]> {
-  return apiRequest<MissionResponse[]>(`/campaigns/${campaignId}/missions`)
+export async function listMissions(campaignId: string, since?: string): Promise<MissionResponse[]> {
+  const query = since ? `?since=${encodeURIComponent(since)}` : ''
+  return apiRequest<MissionResponse[]>(`/campaigns/${campaignId}/missions${query}`)
 }
 
 export async function createMission(
@@ -364,6 +365,9 @@ export async function createMission(
     isMultiSession?: boolean
     sessionAt?: string
     closesAt?: string
+    quorum?: number | null
+    maxParticipants?: number | null
+    autoReopenOnDrop?: boolean
   },
 ): Promise<MissionResponse> {
   return apiRequest<MissionResponse>(`/campaigns/${campaignId}/missions`, {
@@ -374,12 +378,58 @@ export async function createMission(
       isMultiSession: payload.isMultiSession ?? false,
       sessionAt: payload.sessionAt || null,
       closesAt: payload.closesAt || null,
+      quorum: payload.quorum ?? null,
+      maxParticipants: payload.maxParticipants ?? null,
+      autoReopenOnDrop: payload.autoReopenOnDrop ?? true,
     },
   })
 }
 
 export async function reopenMission(campaignId: string, missionId: string): Promise<MissionResponse> {
   return apiRequest<MissionResponse>(`/campaigns/${campaignId}/missions/${missionId}/reopen`, {
+    method: 'POST',
+    body: {},
+  })
+}
+
+export async function closeMission(campaignId: string, missionId: string): Promise<MissionResponse> {
+  return apiRequest<MissionResponse>(`/campaigns/${campaignId}/missions/${missionId}/close`, {
+    method: 'POST',
+    body: {},
+  })
+}
+
+export async function updateMission(
+  campaignId: string,
+  missionId: string,
+  payload: {
+    title: string
+    description?: string
+    isMultiSession?: boolean
+    sessionAt?: string
+    closesAt?: string
+    quorum?: number | null
+    maxParticipants?: number | null
+    autoReopenOnDrop?: boolean
+  },
+): Promise<MissionResponse> {
+  return apiRequest<MissionResponse>(`/campaigns/${campaignId}/missions/${missionId}`, {
+    method: 'PATCH',
+    body: {
+      title: payload.title.trim(),
+      description: payload.description || null,
+      isMultiSession: payload.isMultiSession ?? false,
+      sessionAt: payload.sessionAt || null,
+      closesAt: payload.closesAt || null,
+      quorum: payload.quorum ?? null,
+      maxParticipants: payload.maxParticipants ?? null,
+      autoReopenOnDrop: payload.autoReopenOnDrop ?? true,
+    },
+  })
+}
+
+export async function cancelMission(campaignId: string, missionId: string): Promise<MissionResponse> {
+  return apiRequest<MissionResponse>(`/campaigns/${campaignId}/missions/${missionId}/cancel`, {
     method: 'POST',
     body: {},
   })
@@ -405,6 +455,20 @@ export async function leaveMission(campaignId: string, missionId: string): Promi
     {
       method: 'POST',
       body: {},
+    },
+  )
+}
+
+export async function updateMissionParticipationType(
+  campaignId: string,
+  missionId: string,
+  payload: { participationType: MissionParticipationType },
+): Promise<MissionParticipantResponse> {
+  return apiRequest<MissionParticipantResponse>(
+    `/campaigns/${campaignId}/missions/${missionId}/participants/me/type`,
+    {
+      method: 'PATCH',
+      body: payload,
     },
   )
 }

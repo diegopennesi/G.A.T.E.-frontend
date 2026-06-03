@@ -2,7 +2,7 @@ export type CharacterStatus = 'ACTIVE' | 'RETIRED' | 'DEAD'
 export type CampaignRole = 'GIOCATORE' | 'CO_MASTER' | 'MASTER' | 'SUPER_MASTER'
 export type CampaignMemberStatus = 'PENDING' | 'APPROVED' | 'BLOCKED' | 'REJECTED' | 'BANNED'
 export type CampaignCharacterStatus = 'ACTIVE' | 'RETIRED' | 'DEAD'
-export type MissionStatus = 'OPEN' | 'CLOSED' | 'CONFIRMED' | 'REOPENED'
+export type MissionStatus = 'OPEN' | 'CLOSED' | 'CONFIRMED' | 'REOPENED' | 'CANCELLED'
 export type MissionParticipationType = 'TITOLARE' | 'NON_TITOLARE'
 export type RoomType = 'ROLEPLAY' | 'SPAM'
 
@@ -125,6 +125,9 @@ export interface MissionResponse {
   isMultiSession: boolean
   sessionAt: string | null
   closesAt: string | null
+  quorum: number | null
+  maxParticipants: number | null
+  autoReopenOnDrop: boolean
   createdAt: string
 }
 
@@ -133,6 +136,7 @@ export interface MissionParticipantResponse {
   userId: string
   characterId: string
   participationType: MissionParticipationType
+  priorityScore: number
   joinedAt: string
 }
 

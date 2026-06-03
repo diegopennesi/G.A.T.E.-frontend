@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { FormEvent } from 'react'
+import type { Dispatch, FormEvent, SetStateAction } from 'react'
 import './App.css'
 import { ApiError, getAccessToken, getApiBaseUrl } from './services/apiClient'
 import {
@@ -12,6 +12,8 @@ import {
   createCharacter,
   discoverCampaigns,
   createMission,
+  closeMission,
+  cancelMission,
   createRoom,
   getCampaign,
   getCampaignMember,
@@ -34,6 +36,8 @@ import {
   register,
   rejectApplication,
   reopenMission,
+  updateMission,
+  updateMissionParticipationType,
   suspendCampaignMember,
   transferOwnership,
   unbanCampaignMember,
@@ -56,7 +60,9 @@ import type {
   CharacterStatus,
   MyCampaignMembershipResponse,
   MissionParticipantResponse,
+  MissionParticipationType,
   MissionResponse,
+  MissionStatus,
   RoomResponse,
   UserProfile,
 } from './types/domain'
@@ -278,6 +284,187 @@ function CampaignAccessBadge({ item }: { item: CampaignDiscoverResponse }) {
   )
 }
 
+function MissionTinyIcon({ kind }: { kind: 'clock' | 'calendar' | 'group' | 'target' | 'repeat' | 'edit' | 'person' }) {
+  const props = {
+    width: 14,
+    height: 14,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.9,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    'aria-hidden': true,
+    focusable: false,
+  }
+
+  switch (kind) {
+    case 'calendar':
+      return (
+        <svg {...props}>
+          <rect x="4.5" y="6" width="15" height="13" rx="2" />
+          <path d="M8 3.5v4" />
+          <path d="M16 3.5v4" />
+          <path d="M4.5 9h15" />
+        </svg>
+      )
+    case 'group':
+      return (
+        <svg {...props}>
+          <circle cx="8" cy="9" r="2.2" />
+          <circle cx="16" cy="9" r="2.2" />
+          <path d="M4.8 18c.8-2.7 2.9-4.1 5.2-4.1" />
+          <path d="M19.2 18c-.8-2.7-2.9-4.1-5.2-4.1" />
+        </svg>
+      )
+    case 'target':
+      return (
+        <svg {...props}>
+          <circle cx="12" cy="12" r="7.5" />
+          <circle cx="12" cy="12" r="3" />
+        </svg>
+      )
+    case 'repeat':
+      return (
+        <svg {...props}>
+          <path d="M6.5 8.5A7 7 0 0 1 19 11" />
+          <path d="M18 6v5h-5" />
+          <path d="M17.5 15.5A7 7 0 0 1 5 13" />
+          <path d="M6 19v-5h5" />
+        </svg>
+      )
+    case 'edit':
+      return (
+        <svg {...props}>
+          <path d="M4.5 19.5h4l10-10a2.8 2.8 0 0 0-4-4l-10 10z" />
+          <path d="M13.5 7.5l3 3" />
+        </svg>
+      )
+    case 'person':
+      return (
+        <svg {...props}>
+          <circle cx="12" cy="8" r="3" />
+          <path d="M5.5 19c1.2-3.1 3.4-4.7 6.5-4.7s5.3 1.6 6.5 4.7" />
+        </svg>
+      )
+    case 'clock':
+    default:
+      return (
+        <svg {...props}>
+          <circle cx="12" cy="12" r="8" />
+          <path d="M12 8v4l3 2" />
+        </svg>
+      )
+  }
+}
+
+function MissionStatusIcon({ status }: { status: MissionStatus }) {
+  const commonProps = {
+    width: 16,
+    height: 16,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.9,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    'aria-hidden': true,
+    focusable: false,
+  }
+
+  switch (status) {
+    case 'OPEN':
+      return (
+        <svg {...commonProps}>
+          <path d="M7 12h10" />
+          <path d="M12 7l5 5-5 5" />
+          <path d="M5.5 19h13" />
+        </svg>
+      )
+    case 'REOPENED':
+      return (
+        <svg {...commonProps}>
+          <path d="M6.5 8.5A8 8 0 1 1 6 15" />
+          <path d="M6 4.5v4h4" />
+        </svg>
+      )
+    case 'CONFIRMED':
+      return (
+        <svg {...commonProps}>
+          <path d="M5.5 12.5 10 17l8.5-10" />
+          <path d="M4.5 6h15" />
+        </svg>
+      )
+    case 'CANCELLED':
+      return (
+        <svg {...commonProps}>
+          <circle cx="12" cy="12" r="8" />
+          <path d="m8.5 8.5 7 7" />
+        </svg>
+      )
+    case 'CLOSED':
+    default:
+      return (
+        <svg {...commonProps}>
+          <rect x="5" y="10" width="14" height="9" rx="2" />
+          <path d="M8.5 10V8a3.5 3.5 0 0 1 7 0v2" />
+        </svg>
+      )
+  }
+}
+
+function MissionStatusBadge({ status, sessionAt }: { status: MissionStatus; sessionAt?: string | null }) {
+  const label = (() => {
+    switch (status) {
+      case 'OPEN':
+        return 'ATTIVA'
+      case 'REOPENED':
+        return 'ATTIVA'
+      case 'CONFIRMED':
+        return sessionAt && new Date(sessionAt).getTime() <= Date.now() ? 'COMPLETATA' : 'CONFERMATA'
+      case 'CLOSED':
+        return 'CHIUSA'
+      case 'CANCELLED':
+        return 'ANNULLATA'
+      default:
+        return status
+    }
+  })()
+
+  return (
+    <span className={`mission-status mission-status-${status.toLowerCase()}`}>
+      <span className="mission-status-icon" aria-hidden="true">
+        <MissionStatusIcon status={status} />
+      </span>
+      <span>{label}</span>
+    </span>
+  )
+}
+
+function MissionParticipationBadge({ participationType }: { participationType: MissionParticipationType }) {
+  const isTitolare = participationType === 'TITOLARE'
+  return (
+    <span className={`mission-participation ${isTitolare ? 'is-titolare' : 'is-backup'}`}>
+      <span className="mission-status-icon" aria-hidden="true">
+        {isTitolare ? (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="8" r="3.2" />
+            <path d="M5.5 19c1.1-3.1 3.5-4.7 6.5-4.7s5.4 1.6 6.5 4.7" />
+          </svg>
+        ) : (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M8 7.5h8" />
+            <path d="M8 12h8" />
+            <path d="M8 16.5h8" />
+            <rect x="5" y="5" width="14" height="14" rx="3" />
+          </svg>
+        )}
+      </span>
+      <span>{isTitolare ? 'TITOLARE' : 'PANCHINA'}</span>
+    </span>
+  )
+}
+
 function App() {
   const [screen, setScreen] = useState<Screen>('Profilo')
   const [profile, setProfile] = useState<UserProfile | null>(null)
@@ -348,6 +535,10 @@ function App() {
     }
     return map
   }, [approvedCampaignMemberships])
+  const activeCampaignRole = campaignId ? approvedRoleByCampaignId[campaignId] || null : null
+  const canCreateMissions = activeCampaignRole === 'CO_MASTER' || activeCampaignRole === 'MASTER' || activeCampaignRole === 'SUPER_MASTER'
+  const canManageMissions = activeCampaignRole === 'MASTER' || activeCampaignRole === 'SUPER_MASTER'
+  const missionWindowSince = () => new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
   const campaignsForList = useMemo(() => {
     const byId = new Map<string, CampaignDiscoverResponse>()
     for (const item of discoverableCampaigns) {
@@ -486,7 +677,7 @@ function App() {
       getCampaign(targetCampaignId),
       getCampaignMembers(targetCampaignId),
       listCharacters(targetCampaignId),
-      listMissions(targetCampaignId),
+      listMissions(targetCampaignId, missionWindowSince()),
       listRooms(targetCampaignId),
       checkPermission(targetCampaignId, 'PROMOTE_CO_MASTER_OR_MASTER')
         .then((permission) => permission.allowed)
@@ -512,6 +703,14 @@ function App() {
     await run('Dati campagna caricati', async () => {
       await loadCampaignBlockFor(campaignId)
     })
+  }
+
+  const refreshMissions = async () => {
+    const activeCampaignId = campaignId.trim()
+    if (!activeCampaignId) return
+    const nextMissions = await listMissions(activeCampaignId, missionWindowSince())
+    setMissions(nextMissions)
+    setSelectedMissionId((prev) => (nextMissions.some((item) => item.id === prev) ? prev : nextMissions[0]?.id || ''))
   }
 
   const activateCampaign = async (item: MyCampaignMembershipResponse) => {
@@ -1376,30 +1575,61 @@ function App() {
             selectedMission={selectedMission}
             characters={characters}
             lastMissionAction={lastMissionAction}
+            canManageMissions={canManageMissions}
+            canCreateMissions={canCreateMissions}
+            currentUserId={profile?.id || ''}
+            activeCampaignRole={activeCampaignRole}
             onCreate={(payload) =>
               run('Missione creata', async () => {
                 const created = await createMission(campaignId, payload)
-                setMissions((prev) => [created, ...prev])
                 setSelectedMissionId(created.id)
+                await refreshMissions()
               })
             }
             onSelectMission={setSelectedMissionId}
             onReopen={(missionId) =>
               run('Missione riaperta', async () => {
-                const updated = await reopenMission(campaignId, missionId)
-                setMissions((prev) => prev.map((item) => (item.id === updated.id ? updated : item)))
+                await reopenMission(campaignId, missionId)
+                await refreshMissions()
+              })
+            }
+            onClose={(missionId) =>
+              run('Missione chiusa', async () => {
+                await closeMission(campaignId, missionId)
+                await refreshMissions()
+              })
+            }
+            onUpdate={(missionId, payload) =>
+              run('Missione aggiornata', async () => {
+                await updateMission(campaignId, missionId, payload)
+                await refreshMissions()
+              })
+            }
+            onCancel={(missionId) =>
+              run('Missione cancellata', async () => {
+                await cancelMission(campaignId, missionId)
+                await refreshMissions()
               })
             }
             onJoin={(missionId, characterId, participationType) =>
               run('Join missione completato', async () => {
                 const result = await joinMission(campaignId, missionId, { characterId, participationType })
                 setLastMissionAction(result)
+                await refreshMissions()
               })
             }
             onLeave={(missionId) =>
               run('Leave missione completato', async () => {
                 const result = await leaveMission(campaignId, missionId)
                 setLastMissionAction(result)
+                await refreshMissions()
+              })
+            }
+            onUpdateParticipationType={(missionId, participationType) =>
+              run('Ruolo missione aggiornato', async () => {
+                const result = await updateMissionParticipationType(campaignId, missionId, { participationType })
+                setLastMissionAction(result)
+                await refreshMissions()
               })
             }
           />
@@ -2338,148 +2568,594 @@ function MissionsPage({
   selectedMission,
   characters,
   lastMissionAction,
+  canManageMissions,
+  canCreateMissions,
+  currentUserId,
+  activeCampaignRole,
   onCreate,
   onSelectMission,
   onReopen,
+  onClose,
+  onUpdate,
+  onCancel,
   onJoin,
   onLeave,
+  onUpdateParticipationType,
 }: {
   missions: MissionResponse[]
   selectedMission: MissionResponse | null
   characters: Character[]
   lastMissionAction: MissionParticipantResponse | null
+  canManageMissions: boolean
+  canCreateMissions: boolean
+  currentUserId: string
+  activeCampaignRole: CampaignRole | null
   onCreate: (payload: {
     title: string
     description: string
     isMultiSession: boolean
     sessionAt: string
     closesAt: string
+    quorum: number | null
+    maxParticipants: number | null
+    autoReopenOnDrop: boolean
   }) => void
   onSelectMission: (id: string) => void
   onReopen: (missionId: string) => void
+  onClose: (missionId: string) => void
+  onUpdate: (
+    missionId: string,
+    payload: {
+      title: string
+      description: string
+      isMultiSession: boolean
+      sessionAt: string
+      closesAt: string
+      quorum: number | null
+      maxParticipants: number | null
+      autoReopenOnDrop: boolean
+    },
+  ) => void
+  onCancel: (missionId: string) => void
   onJoin: (missionId: string, characterId: string, participationType: 'TITOLARE' | 'NON_TITOLARE') => void
   onLeave: (missionId: string) => void
+  onUpdateParticipationType: (missionId: string, participationType: 'TITOLARE' | 'NON_TITOLARE') => void
 }) {
-  const [title, setTitle] = useState('Nuova Missione')
-  const [description, setDescription] = useState('')
-  const [multi, setMulti] = useState(false)
-  const [sessionAt, setSessionAt] = useState('')
-  const [closesAt, setClosesAt] = useState('')
+  type MissionDraft = {
+    title: string
+    description: string
+    isMultiSession: boolean
+    sessionAt: string
+    closesAt: string
+    quorum: string
+    maxParticipants: string
+    autoReopenOnDrop: boolean
+  }
+
+  const defaultDraft = (): MissionDraft => ({
+    title: 'Nuova sessione',
+    description: '',
+    isMultiSession: false,
+    sessionAt: '',
+    closesAt: '',
+    quorum: '3',
+    maxParticipants: '5',
+    autoReopenOnDrop: true,
+  })
+
+  const draftFromMission = (mission: MissionResponse): MissionDraft => ({
+    title: mission.title,
+    description: mission.description || '',
+    isMultiSession: mission.isMultiSession,
+    sessionAt: mission.sessionAt ? mission.sessionAt.slice(0, 16) : '',
+    closesAt: mission.closesAt ? mission.closesAt.slice(0, 16) : '',
+    quorum: mission.quorum?.toString() || '',
+    maxParticipants: mission.maxParticipants?.toString() || '',
+    autoReopenOnDrop: mission.autoReopenOnDrop,
+  })
+
+  const [mode, setMode] = useState<'browse' | 'create' | 'edit'>('browse')
+  const [now, setNow] = useState(() => Date.now())
+  const [createDraft, setCreateDraft] = useState<MissionDraft>(defaultDraft)
+  const [createError, setCreateError] = useState('')
+  const [editDraft, setEditDraft] = useState<MissionDraft>(defaultDraft)
+  const [editError, setEditError] = useState('')
   const [characterId, setCharacterId] = useState('')
   const [participationType, setParticipationType] = useState<'TITOLARE' | 'NON_TITOLARE'>('TITOLARE')
 
-  return (
-    <section className="panel">
-      <h2>Missioni</h2>
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
+    if (mode === 'edit' && selectedMission) {
+      setEditDraft(draftFromMission(selectedMission))
+      setEditError('')
+    }
+    if (mode === 'create') {
+      setCreateError('')
+    }
+  }, [mode, selectedMission])
+
+  useEffect(() => {
+    if (!selectedMission) return
+    if (mode !== 'browse' && selectedMission.status === 'CANCELLED') {
+      setMode('browse')
+    }
+  }, [mode, selectedMission])
+
+  const parseOptionalInt = (value: string): number | null => {
+    const trimmed = value.trim()
+    if (!trimmed) return null
+    const parsed = Number.parseInt(trimmed, 10)
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+  }
+
+  const toIsoTimestamp = (value: string): string | null => {
+    const trimmed = value.trim()
+    if (!trimmed) return null
+    const date = new Date(trimmed)
+    if (Number.isNaN(date.getTime())) return null
+    return date.toISOString()
+  }
+
+  const formatMissionDay = (value: string | null | undefined): string => {
+    if (!value) return 'Non impostato'
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return value
+    return new Intl.DateTimeFormat('it-IT', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }).format(date)
+  }
+
+  const formatMissionTime = (value: string | null | undefined): string => {
+    if (!value) return 'Ora non impostata'
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return value
+    return new Intl.DateTimeFormat('it-IT', { hour: '2-digit', minute: '2-digit' }).format(date)
+  }
+
+  const formatCountdown = (value: string | null | undefined): string => {
+    if (!value) return 'Chiusura manuale'
+    const target = new Date(value).getTime()
+    if (Number.isNaN(target)) return value
+    const diff = target - now
+    if (diff <= 0) return 'Tempo scaduto'
+    const totalMinutes = Math.floor(diff / 60000)
+    const days = Math.floor(totalMinutes / 1440)
+    const hours = Math.floor((totalMinutes % 1440) / 60)
+    const minutes = totalMinutes % 60
+    const parts = [
+      days > 0 ? `${days}g` : null,
+      hours > 0 || days > 0 ? `${hours}h` : null,
+      `${minutes}m`,
+    ].filter(Boolean)
+    return parts.join(' ')
+  }
+
+  const selectedMissionIsJoinable = selectedMission?.status === 'OPEN' || selectedMission?.status === 'REOPENED'
+  const selectedMissionCanBeClosed = selectedMission ? selectedMission.status !== 'CLOSED' && selectedMission.status !== 'CANCELLED' : false
+  const selectedMissionCanBeReopened = selectedMission
+    ? selectedMission.status === 'CLOSED' || selectedMission.status === 'CONFIRMED'
+    : false
+  const selectedMissionCanBeEdited =
+    !!selectedMission &&
+    selectedMission.status !== 'CANCELLED' &&
+    !!currentUserId &&
+    (selectedMission.createdBy === currentUserId
+      ? activeCampaignRole === 'CO_MASTER' || activeCampaignRole === 'MASTER' || activeCampaignRole === 'SUPER_MASTER'
+      : activeCampaignRole === 'SUPER_MASTER')
+  const selectedMissionCanBeCancelled = !!selectedMission && activeCampaignRole === 'SUPER_MASTER' && selectedMission.status !== 'CANCELLED'
+
+  const activeCharacters = characters.filter(
+    (character) => !character.isNpc && character.characterStatus === 'ACTIVE',
+  )
+
+  const submitCreate = () => {
+    const sessionIso = toIsoTimestamp(createDraft.sessionAt)
+    const closesIso = toIsoTimestamp(createDraft.closesAt)
+    if (sessionIso && closesIso && new Date(closesIso).getTime() >= new Date(sessionIso).getTime()) {
+      setCreateError('La chiusura iscrizioni deve precedere la data della sessione.')
+      return
+    }
+
+    setCreateError('')
+    onCreate({
+      title: createDraft.title,
+      description: createDraft.description,
+      isMultiSession: createDraft.isMultiSession,
+      sessionAt: sessionIso || '',
+      closesAt: closesIso || '',
+      quorum: parseOptionalInt(createDraft.quorum),
+      maxParticipants: parseOptionalInt(createDraft.maxParticipants),
+      autoReopenOnDrop: createDraft.autoReopenOnDrop,
+    })
+    setMode('browse')
+  }
+
+  const submitEdit = () => {
+    if (!selectedMission) return
+    const sessionIso = toIsoTimestamp(editDraft.sessionAt)
+    const closesIso = toIsoTimestamp(editDraft.closesAt)
+    if (sessionIso && closesIso && new Date(closesIso).getTime() >= new Date(sessionIso).getTime()) {
+      setEditError('La chiusura iscrizioni deve precedere la data della sessione.')
+      return
+    }
+
+    setEditError('')
+    onUpdate(selectedMission.id, {
+      title: editDraft.title,
+      description: editDraft.description,
+      isMultiSession: editDraft.isMultiSession,
+      sessionAt: sessionIso || '',
+      closesAt: closesIso || '',
+      quorum: parseOptionalInt(editDraft.quorum),
+      maxParticipants: parseOptionalInt(editDraft.maxParticipants),
+      autoReopenOnDrop: editDraft.autoReopenOnDrop,
+    })
+    setMode('browse')
+  }
+
+  const renderMissionForm = (
+    draft: MissionDraft,
+    setDraft: Dispatch<SetStateAction<MissionDraft>>,
+    error: string,
+    setError: (value: string) => void,
+    submitLabel: string,
+    onSubmit: () => void,
+  ) => (
+    <div className="mission-form-card">
+      <div className="card-section-header">
+        <div>
+          <h3 className="section-title">{submitLabel}</h3>
+          <p className="muted">Compila i parametri della sessione e conferma solo dopo aver controllato date e cap.</p>
+        </div>
+      </div>
       <div className="form-grid">
         <label>
-          Titolo
-          <input value={title} onChange={(event) => setTitle(event.target.value)} />
+          Titolo sessione
+          <input value={draft.title} onChange={(event) => setDraft((prev) => ({ ...prev, title: event.target.value }))} />
         </label>
         <label>
-          Session At (ISO)
-          <input value={sessionAt} onChange={(event) => setSessionAt(event.target.value)} />
+          Giorno della sessione
+          <input
+            type="datetime-local"
+            step={900}
+            value={draft.sessionAt}
+            onChange={(event) => setDraft((prev) => ({ ...prev, sessionAt: event.target.value }))}
+          />
         </label>
       </div>
       <label>
         Descrizione
-        <textarea rows={3} value={description} onChange={(event) => setDescription(event.target.value)} />
+        <textarea
+          rows={3}
+          value={draft.description}
+          onChange={(event) => setDraft((prev) => ({ ...prev, description: event.target.value }))}
+        />
       </label>
-      <label>
-        Closes At (ISO)
-        <input value={closesAt} onChange={(event) => setClosesAt(event.target.value)} />
+      <div className="form-grid">
+        <label>
+          Tempo prima della chiusura
+          <input
+            type="datetime-local"
+            step={900}
+            value={draft.closesAt}
+            onChange={(event) => setDraft((prev) => ({ ...prev, closesAt: event.target.value }))}
+          />
+        </label>
+        <label>
+          Quorum titolari
+          <input
+            value={draft.quorum}
+            inputMode="numeric"
+            onChange={(event) => setDraft((prev) => ({ ...prev, quorum: event.target.value }))}
+          />
+        </label>
+      </div>
+      <div className="form-grid">
+        <label>
+          Max partecipanti
+          <input
+            value={draft.maxParticipants}
+            inputMode="numeric"
+            onChange={(event) => setDraft((prev) => ({ ...prev, maxParticipants: event.target.value }))}
+          />
+        </label>
+        <label className="checkbox-row mission-checkbox">
+          <input
+            checked={draft.isMultiSession}
+            type="checkbox"
+            onChange={(event) => setDraft((prev) => ({ ...prev, isMultiSession: event.target.checked }))}
+          />
+          Sessione multipla
+        </label>
+      </div>
+      <label className="checkbox-row mission-checkbox">
+        <input
+          checked={draft.autoReopenOnDrop}
+          type="checkbox"
+          onChange={(event) => setDraft((prev) => ({ ...prev, autoReopenOnDrop: event.target.checked }))}
+        />
+        Riapri automaticamente se si scende sotto quorum
       </label>
-      <label className="checkbox-row">
-        <input checked={multi} type="checkbox" onChange={(event) => setMulti(event.target.checked)} />
-        Multi session
-      </label>
-      <button
-        type="button"
-        className="primary-btn"
-        onClick={() =>
-          onCreate({
-            title,
-            description,
-            isMultiSession: multi,
-            sessionAt,
-            closesAt,
-          })
-        }
-      >
-        Crea Missione
-      </button>
+      {error && <p className="form-error">{error}</p>}
+      <div className="inline-actions mission-actions">
+        <button type="button" className="primary-btn" onClick={onSubmit}>
+          {submitLabel}
+        </button>
+        <button
+          type="button"
+          className="secondary-btn"
+          onClick={() => {
+            setError('')
+            setMode('browse')
+          }}
+        >
+          Annulla
+        </button>
+      </div>
+    </div>
+  )
 
-      <div className="divider" />
-      <h3 className="section-title">Elenco Missioni</h3>
-      <ul className="list-reset">
-        {missions.map((mission) => (
-          <li key={mission.id}>
-            <button
-              type="button"
-              className={`character-item ${selectedMission?.id === mission.id ? 'is-selected' : ''}`}
-              onClick={() => onSelectMission(mission.id)}
-            >
-              <div>
-                <p className="character-name">{mission.title}</p>
-                <p className="muted">{mission.status}</p>
-              </div>
-              <span className={`status ${mission.status === 'OPEN' ? 'status-success' : 'status-warning'}`}>
-                {mission.status}
-              </span>
+  return (
+    <section className="panel mission-shell">
+      <div className="panel-header mission-page-header">
+        <div>
+          <h2>Sessioni</h2>
+          <p className="muted">Vedi le sessioni attuali, controlla la chiusura iscrizioni e modifica solo se hai il permesso.</p>
+        </div>
+        <div className="inline-actions">
+          {selectedMission && <MissionStatusBadge status={selectedMission.status} sessionAt={selectedMission.sessionAt} />}
+          {canCreateMissions && mode !== 'create' && (
+            <button type="button" className="secondary-btn" onClick={() => setMode('create')}>
+              Nuova sessione
             </button>
-          </li>
-        ))}
-      </ul>
-      {selectedMission && (
-        <div className="subpanel">
-          <p>
-            <strong>{selectedMission.title}</strong>
-          </p>
-          <div className="inline-actions">
-            <button type="button" className="secondary-btn" onClick={() => onReopen(selectedMission.id)}>
-              Reopen
-            </button>
-            <button type="button" className="secondary-btn" onClick={() => onLeave(selectedMission.id)}>
-              Leave mission
-            </button>
-          </div>
-          <div className="form-grid">
-            <label>
-              Character
-              <select value={characterId} onChange={(event) => setCharacterId(event.target.value)}>
-                <option value="">seleziona</option>
-                {characters.map((character) => (
-                  <option key={character.id} value={character.id}>
-                    {character.name} ({character.characterStatus || 'N/A'})
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Participation
-              <select
-                value={participationType}
-                onChange={(event) => setParticipationType(event.target.value as 'TITOLARE' | 'NON_TITOLARE')}
-              >
-                <option value="TITOLARE">TITOLARE</option>
-                <option value="NON_TITOLARE">NON_TITOLARE</option>
-              </select>
-            </label>
-          </div>
-          <button
-            type="button"
-            className="primary-btn"
-            onClick={() => characterId && onJoin(selectedMission.id, characterId, participationType)}
-          >
-            Join mission
-          </button>
-          {lastMissionAction && (
-            <p className="muted">
-              Ultima azione: {lastMissionAction.userId} {'->'} {lastMissionAction.participationType}
-            </p>
           )}
         </div>
+      </div>
+
+      {canCreateMissions && mode === 'create' && (
+        <div className="subpanel mission-form-panel">{renderMissionForm(createDraft, setCreateDraft, createError, setCreateError, 'Crea sessione', submitCreate)}</div>
       )}
+
+      <div className="mission-grid">
+        <div className="subpanel mission-block mission-list-block">
+          <div className="row-between">
+            <div>
+              <h3 className="section-title">Sessioni attuali</h3>
+              <p className="muted">Le sessioni in corso, chiuse e completate restano qui come storico operativo.</p>
+            </div>
+            <span className="mission-count">{missions.length}</span>
+          </div>
+          <ul className="list-reset mission-list">
+            {missions.length === 0 && <li className="muted">Nessuna sessione presente.</li>}
+            {missions.map((mission) => (
+              <li key={mission.id}>
+                <button
+                  type="button"
+                  className={`character-item mission-item ${selectedMission?.id === mission.id ? 'is-selected' : ''}`}
+                  onClick={() => {
+                    onSelectMission(mission.id)
+                    setMode('browse')
+                  }}
+                >
+                  <div className="mission-item-main">
+                    <div className="mission-item-title-row">
+                      <div>
+                        <p className="character-name">{mission.title}</p>
+                        <p className="muted">{mission.description || 'Nessuna descrizione'}</p>
+                      </div>
+                      <MissionStatusBadge status={mission.status} sessionAt={mission.sessionAt} />
+                    </div>
+
+                    <div className="mission-pill-row">
+                      <span className="mission-meta-pill">
+                        <span className="mission-mini-icon" aria-hidden="true">
+                          <MissionTinyIcon kind="clock" />
+                        </span>
+                        <span>
+                          <strong>Tempo prima della chiusura</strong>
+                          <span>{formatCountdown(mission.closesAt)}</span>
+                        </span>
+                      </span>
+                      <span className="mission-meta-pill">
+                        <span className="mission-mini-icon" aria-hidden="true">
+                          <MissionTinyIcon kind="calendar" />
+                        </span>
+                        <span>
+                          <strong>Giorno della sessione</strong>
+                          <span>{formatMissionDay(mission.sessionAt)}</span>
+                        </span>
+                      </span>
+                    </div>
+
+                    <div className="mission-pill-row">
+                      <span className="mission-meta-pill">
+                        <span className="mission-mini-icon" aria-hidden="true">
+                          <MissionTinyIcon kind="group" />
+                        </span>
+                        <span>
+                          <strong>Cap</strong>
+                          <span>{mission.maxParticipants ?? '∞'}</span>
+                        </span>
+                      </span>
+                      <span className="mission-meta-pill">
+                        <span className="mission-mini-icon" aria-hidden="true">
+                          <MissionTinyIcon kind="target" />
+                        </span>
+                        <span>
+                          <strong>Quorum</strong>
+                          <span>{mission.quorum ?? 'Manuale'}</span>
+                        </span>
+                      </span>
+                      <span className="mission-meta-pill">
+                        <span className="mission-mini-icon" aria-hidden="true">
+                          <MissionTinyIcon kind={mission.autoReopenOnDrop ? 'repeat' : 'clock'} />
+                        </span>
+                        <span>
+                          <strong>Riapertura</strong>
+                          <span>{mission.autoReopenOnDrop ? 'Automatica' : 'Bloccata'}</span>
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="subpanel mission-block mission-detail-block">
+          {selectedMission ? (
+            mode === 'edit' && selectedMissionCanBeEdited ? (
+              renderMissionForm(editDraft, setEditDraft, editError, setEditError, 'Modifica sessione', submitEdit)
+            ) : (
+              <>
+                <div className="row-between mission-detail-head">
+                  <div>
+                    <h3 className="section-title">{selectedMission.title}</h3>
+                    <p className="muted">{selectedMission.description || 'Nessuna descrizione'}</p>
+                  </div>
+                  <MissionStatusBadge status={selectedMission.status} sessionAt={selectedMission.sessionAt} />
+                </div>
+
+                <div className="mission-summary-grid">
+                  <div className="info-block">
+                    <p className="field-label">Stato sessione</p>
+                    <p>{selectedMission.status === 'CONFIRMED' && selectedMission.sessionAt && new Date(selectedMission.sessionAt).getTime() <= now ? 'COMPLETATA' : selectedMission.status === 'CLOSED' ? 'CHIUSA' : selectedMission.status === 'CANCELLED' ? 'ANNULLATA' : 'ATTIVA'}</p>
+                  </div>
+                  <div className="info-block">
+                    <p className="field-label">Tempo prima della chiusura</p>
+                    <p>{formatCountdown(selectedMission.closesAt)}</p>
+                  </div>
+                  <div className="info-block">
+                    <p className="field-label">Giorno della sessione</p>
+                    <p>{formatMissionDay(selectedMission.sessionAt)}</p>
+                    <p className="muted">{formatMissionTime(selectedMission.sessionAt)}</p>
+                  </div>
+                  <div className="info-block">
+                    <p className="field-label">Parametri</p>
+                    <p>
+                      Quorum {selectedMission.quorum ?? 'manuale'} · Cap {selectedMission.maxParticipants ?? '∞'} ·{' '}
+                      {selectedMission.autoReopenOnDrop ? 'Riapertura automatica' : 'Riapertura bloccata'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="card-section-header">
+                  <div>
+                    <h4 className="section-title">Gestione sessione</h4>
+                    <p className="muted">Qui trovi le azioni di gestione e le iscrizioni dei PG.</p>
+                  </div>
+                </div>
+
+                <div className="inline-actions mission-actions">
+                  {selectedMissionCanBeEdited && (
+                    <button
+                      type="button"
+                      className="secondary-btn"
+                      onClick={() => {
+                        setEditDraft(draftFromMission(selectedMission))
+                        setMode('edit')
+                      }}
+                    >
+                      Modifica sessione
+                    </button>
+                  )}
+                  {canManageMissions && selectedMissionCanBeClosed && (
+                    <button type="button" className="secondary-btn" onClick={() => onClose(selectedMission.id)}>
+                      Chiudi sessione
+                    </button>
+                  )}
+                  {canManageMissions && selectedMissionCanBeReopened && (
+                    <button type="button" className="secondary-btn" onClick={() => onReopen(selectedMission.id)}>
+                      Riapri sessione
+                    </button>
+                  )}
+                  {selectedMissionCanBeCancelled && (
+                    <button type="button" className="danger-btn" onClick={() => onCancel(selectedMission.id)}>
+                      CANCELLA SESSIONE
+                    </button>
+                  )}
+                  <button type="button" className="secondary-btn" onClick={() => onLeave(selectedMission.id)}>
+                    Esci dalla sessione
+                  </button>
+                </div>
+
+                <div className="card-section-header">
+                  <div>
+                    <h4 className="section-title">Iscrizione PG</h4>
+                    <p className="muted">Seleziona un personaggio attivo e poi scegli se segnarti titolare o panchina.</p>
+                  </div>
+                </div>
+
+                <div className="form-grid mission-join-grid">
+                  <label>
+                    Personaggio attivo
+                    <select value={characterId} onChange={(event) => setCharacterId(event.target.value)}>
+                      <option value="">seleziona</option>
+                      {activeCharacters.map((character) => (
+                        <option key={character.id} value={character.id}>
+                          {character.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Ruolo
+                    <select
+                      value={participationType}
+                      onChange={(event) => setParticipationType(event.target.value as 'TITOLARE' | 'NON_TITOLARE')}
+                    >
+                      <option value="TITOLARE">TITOLARE</option>
+                      <option value="NON_TITOLARE">PANCHINA</option>
+                    </select>
+                  </label>
+                </div>
+
+                <div className="inline-actions mission-actions">
+                  <button
+                    type="button"
+                    className="primary-btn"
+                    disabled={!characterId || !selectedMissionIsJoinable}
+                    onClick={() => characterId && onJoin(selectedMission.id, characterId, 'TITOLARE')}
+                  >
+                    Segnati titolare
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    disabled={!characterId || !selectedMissionIsJoinable}
+                    onClick={() => characterId && onJoin(selectedMission.id, characterId, 'NON_TITOLARE')}
+                  >
+                    Segnati panchina
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={() => onUpdateParticipationType(selectedMission.id, participationType)}
+                  >
+                    Aggiorna solo ruolo
+                  </button>
+                </div>
+
+                {lastMissionAction && (
+                  <p className="muted mission-last-action">
+                    Ultima azione: {lastMissionAction.characterId} ·{' '}
+                    <MissionParticipationBadge participationType={lastMissionAction.participationType} /> · score{' '}
+                    {lastMissionAction.priorityScore}
+                  </p>
+                )}
+              </>
+            )
+          ) : (
+            <>
+              <h3 className="section-title">Dettaglio sessione</h3>
+              <p className="muted">Seleziona una sessione dalla lista per vedere i dettagli, il countdown e le azioni disponibili.</p>
+            </>
+          )}
+        </div>
+      </div>
     </section>
   )
 }
