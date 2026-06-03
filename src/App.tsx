@@ -38,6 +38,7 @@ import {
   transferOwnership,
   unbanCampaignMember,
   unsuspendCampaignMember,
+  updateCampaign,
   updateCampaignMemberRole,
   updateCharacterStatus,
   updateMe,
@@ -99,7 +100,6 @@ const DEV_REMOVE_TAG = '@REMOVE_BEFORE_PROD:GATE_DEV_ONLY'
 type KnownCampaignMeta = { id: string; name: string }
 type SidebarGroup = 'Profilo' | 'Campagna'
 const CAMPAIGN_ACTIVE_REQUIRED_SCREENS: Screen[] = [
-  'Scheda Campagna',
   'Approvazione Accessi',
   'Gestione Personaggi',
   'Scheda PG',
@@ -108,6 +108,123 @@ const CAMPAIGN_ACTIVE_REQUIRED_SCREENS: Screen[] = [
   'Seleziona PG',
   'Crea Personaggio',
 ]
+const CAMPAIGN_TONE_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'EPIC_FANTASY', label: 'Fantasy Epico' },
+  { value: 'HEROIC', label: 'Eroico' },
+  { value: 'DARK', label: 'Dark' },
+  { value: 'MYSTERY', label: 'Mistero' },
+  { value: 'HORROR', label: 'Horror' },
+  { value: 'POLITICAL_INTRIGUE', label: 'Intrigo Politico' },
+  { value: 'ADVENTURE', label: 'Avventura' },
+  { value: 'LIGHTHEARTED', label: 'Leggero' },
+]
+
+const campaignToneLabel = (value: string | null | undefined): string | null => {
+  if (!value) return null
+  const match = CAMPAIGN_TONE_OPTIONS.find((toneOption) => toneOption.value === value)
+  return match?.label || value
+}
+
+type CampaignAccessBadgeKind = 'edit' | 'player' | 'outside' | 'pending' | 'blocked' | 'banned'
+
+function CampaignAccessIcon({ kind }: { kind: CampaignAccessBadgeKind }) {
+  const commonProps = {
+    width: 16,
+    height: 16,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.9,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    'aria-hidden': true,
+    focusable: false,
+  }
+
+  switch (kind) {
+    case 'edit':
+      return (
+        <svg {...commonProps}>
+          <path d="M12 3.5 19 6v5c0 4.5-2.6 7.9-7 10-4.4-2.1-7-5.5-7-10V6l7-2.5Z" />
+          <path d="m14.5 9.5 1 1" />
+          <path d="m10 15 4.2-4.2a1.2 1.2 0 0 1 1.7 0l1.3 1.3a1.2 1.2 0 0 1 0 1.7L13 18H10v-3Z" />
+        </svg>
+      )
+    case 'player':
+      return (
+        <svg {...commonProps}>
+          <circle cx="12" cy="8" r="3.25" />
+          <path d="M5.5 19c1.1-3.1 3.5-4.7 6.5-4.7s5.4 1.6 6.5 4.7" />
+        </svg>
+      )
+    case 'pending':
+      return (
+        <svg {...commonProps}>
+          <circle cx="12" cy="12" r="8" />
+          <path d="M12 7.8V12l2.7 1.8" />
+        </svg>
+      )
+    case 'blocked':
+      return (
+        <svg {...commonProps}>
+          <rect x="5" y="10" width="14" height="9" rx="2" />
+          <path d="M8.5 10V8.2a3.5 3.5 0 0 1 7 0V10" />
+        </svg>
+      )
+    case 'banned':
+      return (
+        <svg {...commonProps}>
+          <circle cx="12" cy="12" r="8" />
+          <path d="m8.5 8.5 7 7" />
+        </svg>
+      )
+    case 'outside':
+    default:
+      return (
+        <svg {...commonProps}>
+          <path d="M6 5h8v14H6z" />
+          <path d="M14 6.5 18.5 8.8v6.4L14 17.5" />
+          <path d="M10.5 12h4.5" />
+        </svg>
+      )
+  }
+}
+
+function CampaignAccessBadge({ item }: { item: CampaignDiscoverResponse }) {
+  const badge = (() => {
+    if (item.membershipStatus === 'APPROVED') {
+      if (item.membershipRole === 'MASTER') {
+        return { kind: 'edit' as const, label: 'MASTER', title: 'Ruolo campagna: MASTER' }
+      }
+      if (item.membershipRole === 'SUPER_MASTER') {
+        return { kind: 'edit' as const, label: 'SUPER MASTER', title: 'Ruolo campagna: SUPER MASTER' }
+      }
+      if (item.membershipRole === 'CO_MASTER') {
+        return { kind: 'edit' as const, label: 'CO-MASTER', title: 'Ruolo campagna: CO-MASTER' }
+      }
+      return { kind: 'player' as const, label: 'GIOCATORE', title: 'Ruolo campagna: GIOCATORE' }
+    }
+    if (item.membershipStatus === 'PENDING') {
+      return { kind: 'pending' as const, label: 'IN ATTESA', title: 'Richiesta di accesso in attesa' }
+    }
+    if (item.membershipStatus === 'BLOCKED') {
+      return { kind: 'blocked' as const, label: 'BLOCCATO', title: 'Membership sospesa' }
+    }
+    if (item.membershipStatus === 'BANNED') {
+      return { kind: 'banned' as const, label: 'BANNATO', title: 'Membership bannata' }
+    }
+    return { kind: 'outside' as const, label: 'FUORI', title: 'Non fai parte della campagna' }
+  })()
+
+  return (
+    <span className="campaign-access-badge" title={badge.title} aria-label={badge.title}>
+      <span className={`campaign-access-icon is-${badge.kind}`} aria-hidden="true">
+        <CampaignAccessIcon kind={badge.kind} />
+      </span>
+      <span className="campaign-access-label">{badge.label}</span>
+    </span>
+  )
+}
 
 function App() {
   const [screen, setScreen] = useState<Screen>('Profilo')
@@ -132,6 +249,7 @@ function App() {
   const [members, setMembers] = useState<CampaignMembershipResponse[]>([])
   const [memberNames, setMemberNames] = useState<Record<string, string>>({})
   const [campaignMembersForManagement, setCampaignMembersForManagement] = useState<CampaignMembershipResponse[]>([])
+  const [canManageCampaignMembers, setCanManageCampaignMembers] = useState(false)
   const [campaignFounderNames, setCampaignFounderNames] = useState<Record<string, string>>({})
   const [permissions, setPermissions] = useState<CampaignPermissionResponse[]>([])
   const [campaignModules, setCampaignModules] = useState<string[]>([])
@@ -148,6 +266,7 @@ function App() {
   const [selectedCampaignMember, setSelectedCampaignMember] = useState<CampaignMembershipResponse | null>(null)
   const [selectedCampaignMemberProfile, setSelectedCampaignMemberProfile] = useState<UserProfile | null>(null)
   const [expandedSidebarGroup, setExpandedSidebarGroup] = useState<SidebarGroup | null>('Profilo')
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
 
   const selectedCharacter = useMemo(
     () => characters.find((character) => character.id === selectedCharacterId) || null,
@@ -190,6 +309,8 @@ function App() {
           id: membership.campaignId,
           name: membership.campaignName,
           description: null,
+          summary: null,
+          coverImageUrl: null,
           founderId: '',
           isOpen: true,
           isSearchable: false,
@@ -279,6 +400,7 @@ function App() {
         setCampaign(null)
         setMembers([])
         setCampaignMembersForManagement([])
+        setCanManageCampaignMembers(false)
         setSelectedCampaignMember(null)
         setSelectedCampaignMemberProfile(null)
         setCharacters([])
@@ -289,6 +411,7 @@ function App() {
         setCampaign(null)
         setMembers([])
         setCampaignMembersForManagement([])
+        setCanManageCampaignMembers(false)
         setSelectedCampaignMember(null)
         setSelectedCampaignMemberProfile(null)
         setCharacters([])
@@ -299,35 +422,29 @@ function App() {
   }
 
   const loadCampaignBlockFor = async (targetCampaignId: string) => {
-    const [campaignValue, memberValue, memberManagementValue, characterValue, missionValue, roomValue] = await Promise.all([
+    const [campaignValue, memberValue, characterValue, missionValue, roomValue, canManageMembersPermission] = await Promise.all([
       getCampaign(targetCampaignId),
       getCampaignMembers(targetCampaignId),
-      listCampaignMembersForManagement(targetCampaignId).catch(() => []),
       listCharacters(targetCampaignId),
       listMissions(targetCampaignId),
       listRooms(targetCampaignId),
+      checkPermission(targetCampaignId, 'PROMOTE_CO_MASTER_OR_MASTER')
+        .then((permission) => permission.allowed)
+        .catch(() => false),
     ])
+    const memberManagementValue = canManageMembersPermission
+      ? await listCampaignMembersForManagement(targetCampaignId).catch(() => [])
+      : []
     setCampaign(campaignValue)
     rememberCampaignMeta(campaignValue.id, campaignValue.name)
     setMembers(memberValue)
     setCampaignMembersForManagement(memberManagementValue)
+    setCanManageCampaignMembers(canManageMembersPermission)
     setCharacters(characterValue)
     setMissions(missionValue)
     setRooms(roomValue)
     setSelectedCharacterId((prev) => prev || characterValue[0]?.id || '')
     setSelectedMissionId((prev) => prev || missionValue[0]?.id || '')
-  }
-
-  const loadCampaignSummaryFor = async (targetCampaignId: string) => {
-    const [campaignValue, memberValue, memberManagementValue] = await Promise.all([
-      getCampaign(targetCampaignId),
-      getCampaignMembers(targetCampaignId),
-      listCampaignMembersForManagement(targetCampaignId).catch(() => []),
-    ])
-    setCampaign(campaignValue)
-    rememberCampaignMeta(campaignValue.id, campaignValue.name)
-    setMembers(memberValue)
-    setCampaignMembersForManagement(memberManagementValue)
   }
 
   const refreshCampaignBlock = async () => {
@@ -354,29 +471,18 @@ function App() {
   }
 
   const loadCharactersForManagement = async () => {
-    const approvedIds = approvedCampaignMemberships.map((item) => item.campaignId)
-    if (approvedIds.length === 0) {
+    const activeCampaignId = campaignId.trim()
+    const canManageActiveCampaign = approvedCampaignMemberships.some((item) => item.campaignId === activeCampaignId)
+    if (!activeCampaignId || !canManageActiveCampaign) {
       setCharacters([])
       setSelectedCharacterId('')
       setCharacterDetail(null)
       return
     }
-    const settled = await Promise.allSettled(approvedIds.map((id) => listCharacters(id)))
-    const nextCharacters: Character[] = []
-    let firstError: unknown = null
-    for (const result of settled) {
-      if (result.status === 'fulfilled') {
-        nextCharacters.push(...result.value)
-      } else if (!firstError) {
-        firstError = result.reason
-      }
-    }
+    const nextCharacters = await listCharacters(activeCampaignId)
     nextCharacters.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
     setCharacters(nextCharacters)
     setSelectedCharacterId((prev) => (nextCharacters.some((item) => item.id === prev) ? prev : nextCharacters[0]?.id || ''))
-    if (firstError && nextCharacters.length === 0) {
-      throw firstError
-    }
   }
 
   const approvePendingForActiveCampaign = async (userId: string) => {
@@ -635,10 +741,7 @@ function App() {
   const profileScreens: Screen[] = ['Profilo', 'Modifica Profilo']
   const campaignScreens: Screen[] = [
     'Lista Campagne',
-    'Crea Campagna',
-    'Gestione Personaggi',
     'Profilo Membro Campagna',
-    'Crea Personaggio',
   ]
   const menuGroups: { key: SidebarGroup; screens: Screen[] }[] = [
     { key: 'Profilo', screens: profileScreens },
@@ -669,19 +772,16 @@ function App() {
       }
     })()
   const activeCampaignName = campaign?.name || activeCampaignMembership?.campaignName || 'non impostata'
-  const campaignNameById = useMemo(() => {
-    const map: Record<string, string> = {}
-    for (const item of knownCampaignMeta) {
-      map[item.id] = item.name
-    }
-    for (const item of myCampaigns) {
-      map[item.campaignId] = item.campaignName
-    }
-    if (campaign?.id && campaign?.name) {
-      map[campaign.id] = campaign.name
-    }
-    return map
-  }, [knownCampaignMeta, myCampaigns, campaign?.id, campaign?.name])
+  const campaignNameById: Record<string, string> = {}
+  for (const item of knownCampaignMeta) {
+    campaignNameById[item.id] = item.name
+  }
+  for (const item of myCampaigns) {
+    campaignNameById[item.campaignId] = item.campaignName
+  }
+  if (campaign?.id && campaign?.name) {
+    campaignNameById[campaign.id] = campaign.name
+  }
   const campaignNameForCharacter = (character: Character) => {
     if (!character.campaignId) return 'Campagna non assegnata'
     return campaignNameById[character.campaignId] || character.campaignId
@@ -714,16 +814,32 @@ function App() {
     (activeCampaignMembership?.role === 'CO_MASTER' ||
       activeCampaignMembership?.role === 'MASTER' ||
       activeCampaignMembership?.role === 'SUPER_MASTER')
+  const goToScreen = (value: Screen) => {
+    setScreen(value)
+    setIsSidebarOpen(false)
+  }
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
+      {isSidebarOpen && (
+        <button
+          type="button"
+          className="sidebar-backdrop"
+          aria-label="Chiudi menu"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
+      <aside className={`sidebar-drawer ${isSidebarOpen ? 'is-open' : ''}`} aria-hidden={!isSidebarOpen}>
         <div className="brand">
           <div className="brand-mark">T</div>
           <div>
             <p className="brand-title">Taverna del Codice</p>
             <p className="brand-subtitle">MVP no-chat</p>
           </div>
+          <button type="button" className="drawer-close-btn" onClick={() => setIsSidebarOpen(false)}>
+            Chiudi
+          </button>
         </div>
 
         <div className="api-box">
@@ -751,7 +867,7 @@ function App() {
                         key={item}
                         type="button"
                         className={`menu-item ${screen === item ? 'is-active' : ''} ${isMenuScreenEnabled(item) ? '' : 'is-disabled'}`}
-                        onClick={() => isMenuScreenEnabled(item) && setScreen(item)}
+                        onClick={() => isMenuScreenEnabled(item) && goToScreen(item)}
                         disabled={!isMenuScreenEnabled(item)}
                       >
                         {item}
@@ -776,14 +892,21 @@ function App() {
 
       <main className="main">
         <header className="topbar">
-          <div>
-            <h1>{screen}</h1>
-            {!campaignArea && <p>Utente: {profile.username || profile.profileName}</p>}
-            {campaignArea && (
-              <p>
-                Utente: {profile.username || profile.profileName} | Campagna attiva: {activeCampaignName}
-              </p>
-            )}
+          <div className="topbar-title-row">
+            <button type="button" className="menu-trigger" aria-label="Apri menu" onClick={() => setIsSidebarOpen(true)}>
+              <span aria-hidden="true" />
+              <span aria-hidden="true" />
+              <span aria-hidden="true" />
+            </button>
+            <div>
+              <h1>{screen}</h1>
+              {!campaignArea && <p>Utente: {profile.username || profile.profileName}</p>}
+              {campaignArea && (
+                <p>
+                  Utente: {profile.username || profile.profileName} | Campagna attiva: {activeCampaignName}
+                </p>
+              )}
+            </div>
           </div>
           <div className="inline-actions">
             <button type="button" className="refresh-btn" disabled={busy} onClick={() => void refreshProfile()}>
@@ -838,22 +961,21 @@ function App() {
                 setDiscoverableCampaigns(list)
               })
             }
-            onActivate={(targetCampaignId) =>
-              run('Campagna attivata', async () => {
-                rememberCampaignId(targetCampaignId)
-                const [mine] = await Promise.all([listMyCampaignMemberships(), loadCampaignSummaryFor(targetCampaignId)])
-                setMyCampaigns(mine)
+            onOpenCampaign={(targetCampaignId) =>
+              run('Scheda campagna caricata', async () => {
+                const [campaignValue, memberValue, memberManagementValue] = await Promise.all([
+                  getCampaign(targetCampaignId),
+                  getCampaignMembers(targetCampaignId).catch(() => []),
+                  listCampaignMembersForManagement(targetCampaignId).catch(() => []),
+                ])
+                setCampaign(campaignValue)
+                rememberCampaignMeta(campaignValue.id, campaignValue.name)
+                setMembers(memberValue)
+                setCampaignMembersForManagement(memberManagementValue)
                 setScreen('Scheda Campagna')
               })
             }
-            onApplyToCampaign={(targetCampaignId) => {
-              void run('Apply campagna inviato', async () => {
-                await applyToCampaign(targetCampaignId)
-                const [discover, mine] = await Promise.all([discoverCampaigns(false), listMyCampaignMemberships()])
-                setDiscoverableCampaigns(discover)
-                setMyCampaigns(mine)
-              })
-            }}
+            onCreateCampaign={() => setScreen('Crea Campagna')}
             activeCampaignName={campaign?.name || activeCampaignMembership?.campaignName || campaignId || ''}
           />
         )}
@@ -879,6 +1001,7 @@ function App() {
                   ...prev.filter((item) => item.campaignId !== created.id),
                 ])
                 setCampaign(created)
+                setCanManageCampaignMembers(true)
                 setScreen('Scheda Campagna')
               })
             }
@@ -919,8 +1042,50 @@ function App() {
                 setScreen('Profilo Membro Campagna')
               })
             }
-            onOpenManagement={() => setScreen('Gestione Campagna')}
-            onOpenSelectPg={() => setScreen('Seleziona PG')}
+            onOpenManagement={() =>
+              run('Campagna attivata', async () => {
+                if (!campaign?.id) return
+                rememberCampaignId(campaign.id)
+                await loadCampaignBlockFor(campaign.id)
+                setScreen('Gestione Campagna')
+              })
+            }
+            onOpenSelectPg={() =>
+              run('Campagna attivata', async () => {
+                if (!campaign?.id) return
+                rememberCampaignId(campaign.id)
+                await loadCampaignBlockFor(campaign.id)
+                setScreen('Seleziona PG')
+              })
+            }
+            onOpenCharacters={() =>
+              run('Campagna attivata', async () => {
+                if (!campaign?.id) return
+                rememberCampaignId(campaign.id)
+                await loadCampaignBlockFor(campaign.id)
+                setScreen('Gestione Personaggi')
+              })
+            }
+            canManageMembers={canManageCampaignMembers}
+            onApply={() =>
+              campaign?.id &&
+              run('Apply campagna inviato', async () => {
+                await applyToCampaign(campaign.id)
+                const [discover, mine] = await Promise.all([discoverCampaigns(false), listMyCampaignMemberships()])
+                setDiscoverableCampaigns(discover)
+                setMyCampaigns(mine)
+              })
+            }
+            onActivate={() =>
+              campaign?.id &&
+              run('Campagna attivata', async () => {
+                rememberCampaignId(campaign.id)
+                const [mine] = await Promise.all([listMyCampaignMemberships(), loadCampaignBlockFor(campaign.id)])
+                setMyCampaigns(mine)
+              })
+            }
+            membershipStatus={campaign?.id ? campaignsForList.find((item) => item.id === campaign.id)?.membershipStatus || null : null}
+            membershipRole={campaign?.id ? campaignsForList.find((item) => item.id === campaign.id)?.membershipRole || null : null}
           />
         )}
 
@@ -1076,7 +1241,38 @@ function App() {
 
         {screen === 'Gestione Campagna' && (
           <CampaignManagementPage
+            campaign={campaign}
+            availableModules={campaignModules}
             permissions={permissions}
+            onLoadModules={() =>
+              run('Moduli campagna caricati', async () => {
+                const modules = await listCampaignModules()
+                setCampaignModules(modules)
+              })
+            }
+            onSave={(payload) =>
+              campaign?.id &&
+              run('Campagna aggiornata', async () => {
+                const updated = await updateCampaign(campaign.id, payload)
+                setCampaign(updated)
+                rememberCampaignMeta(updated.id, updated.name)
+                setMyCampaigns((prev) =>
+                  prev.map((item) =>
+                    item.campaignId === updated.id
+                      ? { ...item, campaignName: updated.name }
+                      : item,
+                  ),
+                )
+                setDiscoverableCampaigns((prev) =>
+                  prev.map((item) =>
+                    item.id === updated.id
+                      ? { ...item, name: updated.name, summary: updated.summary, description: updated.description }
+                      : item,
+                  ),
+                )
+                setScreen('Lista Campagne')
+              })
+            }
             onCheckPermission={(action) =>
               run(`Permission check ${action}`, async () => {
                 const checked = await checkPermission(campaignId, action)
@@ -1310,89 +1506,67 @@ function CampaignListPage({
   campaigns,
   founderNames,
   onDiscover,
-  onActivate,
-  onApplyToCampaign,
+  onOpenCampaign,
+  onCreateCampaign,
   activeCampaignName,
 }: {
   campaigns: CampaignDiscoverResponse[]
   founderNames: Record<string, string>
   onDiscover: () => void
-  onActivate: (campaignId: string) => void
-  onApplyToCampaign: (campaignId: string) => void
+  onOpenCampaign: (campaignId: string) => void
+  onCreateCampaign: () => void
   activeCampaignName: string
 }) {
-  const membershipLabel = (status: CampaignMemberStatus | null) => {
-    if (status === 'BLOCKED') return 'BLOCKED'
-    if (status === 'BANNED') return 'BANNED'
-    return status || 'NO_MEMBERSHIP'
-  }
-
-  const membershipClass = (status: CampaignMemberStatus | null) => {
-    if (status === 'APPROVED') return 'status-success'
-    if (status === 'PENDING') return 'status-warning'
-    if (status === 'BLOCKED') return 'status-danger'
-    if (status === 'BANNED') return 'status-danger'
-    return 'status-neutral'
-  }
-
   return (
     <section className="panel">
       <div className="row-between">
         <h2>Lista Campagne</h2>
-        <button type="button" className="secondary-btn" onClick={onDiscover}>
-          Cerca campagne
-        </button>
+        <div className="inline-actions">
+          <button type="button" className="secondary-btn" onClick={onDiscover}>
+            Cerca campagne
+          </button>
+          <button type="button" className="primary-btn" onClick={onCreateCampaign}>
+            Crea campagna
+          </button>
+        </div>
       </div>
       {activeCampaignName && <p className="muted">Campagna attiva: <strong>{activeCampaignName}</strong></p>}
       {campaigns.length === 0 && <p className="muted">Nessuna campagna visibile. Premi "Cerca campagne".</p>}
       {campaigns.length > 0 && (
-          <ul className="list-reset">
+        <ul className="list-reset">
           {campaigns.map((item) => {
             const moderationTooltip =
               (item.membershipStatus === 'BLOCKED' || item.membershipStatus === 'BANNED') && item.moderationReason
                 ? item.moderationReason
                 : null
             return (
-            <li key={item.id} className="line-item campaign-item">
-              <div className="campaign-item-main">
-                <p className="character-name">{item.name}</p>
-                <p className="muted">{item.description || 'Nessuna descrizione'}</p>
-                {item.founderId && (
-                  <p className="campaign-creator">
-                    Creatore: {founderNames[item.founderId] || item.founderId}
-                  </p>
-                )}
-              </div>
-              <div className="inline-actions campaign-item-actions">
-                <span
-                  className={`status ${membershipClass(item.membershipStatus)}`}
-                  title={
-                    (item.membershipStatus === 'BLOCKED' || item.membershipStatus === 'BANNED') && item.moderationReason
-                      ? item.moderationReason
-                      : undefined
-                  }
-                >
-                  {membershipLabel(item.membershipStatus)}
-                </span>
-                {item.membershipStatus === 'APPROVED' && (
-                  <button type="button" className="secondary-btn campaign-enter-btn" onClick={() => onActivate(item.id)}>
-                    Entra
+              <li key={item.id} className="line-item campaign-item">
+                <div className="campaign-item-main">
+                  <div className="campaign-item-header">
+                    <p className="character-name">{item.name}</p>
+                    <CampaignAccessBadge item={item} />
+                  </div>
+                  <p className="muted">{item.summary || item.description || 'Nessuna descrizione'}</p>
+                  {item.founderId && (
+                    <p className="campaign-creator">
+                      Creatore: {founderNames[item.founderId] || item.founderId}
+                    </p>
+                  )}
+                </div>
+                <div className="inline-actions campaign-item-actions">
+                  <button type="button" className="secondary-btn" onClick={() => onOpenCampaign(item.id)}>
+                    Apri scheda
                   </button>
-                )}
-                {(item.membershipStatus === null || item.membershipStatus === 'REJECTED') && (
-                  <button type="button" className="primary-btn" onClick={() => onApplyToCampaign(item.id)}>
-                    Richiedi accesso
-                  </button>
-                )}
-                {item.membershipStatus === 'PENDING' && (
-                  <button type="button" className="secondary-btn" disabled>
-                    Richiesta inviata
-                  </button>
-                )}
-              </div>
-              {moderationTooltip && <div className="campaign-item-tooltip">{moderationTooltip}</div>}
-            </li>
-          )})}
+                  {item.membershipStatus === 'PENDING' && (
+                    <button type="button" className="secondary-btn" disabled>
+                      Richiesta inviata
+                    </button>
+                  )}
+                </div>
+                {moderationTooltip && <div className="campaign-item-tooltip">{moderationTooltip}</div>}
+              </li>
+            )
+          })}
         </ul>
       )}
     </section>
@@ -1407,6 +1581,12 @@ function CreateCampaignPage({
   onCreate: (payload: {
     name: string
     description: string
+    summary: string
+    setting: string
+    tone: string
+    rules: string
+    requirements: string
+    coverImageUrl: string
     isOpen: boolean
     isSearchable: boolean
     allowedModules: string[]
@@ -1414,6 +1594,12 @@ function CreateCampaignPage({
 }) {
   const [name, setName] = useState('Nuova Campagna')
   const [description, setDescription] = useState('')
+  const [summary, setSummary] = useState('')
+  const [setting, setSetting] = useState('')
+  const [tone, setTone] = useState('')
+  const [rules, setRules] = useState('')
+  const [requirements, setRequirements] = useState('')
+  const [coverImageUrl, setCoverImageUrl] = useState('')
   const [isOpen, setIsOpen] = useState(true)
   const [isSearchable, setIsSearchable] = useState(true)
   const [selectedModules, setSelectedModules] = useState<string[]>([])
@@ -1448,6 +1634,39 @@ function CreateCampaignPage({
       <label>
         Descrizione
         <textarea rows={3} value={description} onChange={(event) => setDescription(event.target.value)} />
+      </label>
+      <label>
+        Riassunto breve
+        <textarea rows={2} value={summary} onChange={(event) => setSummary(event.target.value)} maxLength={280} />
+      </label>
+      <div className="form-grid">
+        <label>
+          Ambientazione
+          <textarea rows={3} value={setting} onChange={(event) => setSetting(event.target.value)} />
+        </label>
+        <label>
+          Tono
+          <select value={tone} onChange={(event) => setTone(event.target.value)}>
+            <option value="">Seleziona tono</option>
+            {CAMPAIGN_TONE_OPTIONS.map((toneOption) => (
+              <option key={toneOption.value} value={toneOption.value}>
+                {toneOption.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <label>
+        Regole
+        <textarea rows={3} value={rules} onChange={(event) => setRules(event.target.value)} />
+      </label>
+      <label>
+        Requisiti d'ingresso
+        <textarea rows={3} value={requirements} onChange={(event) => setRequirements(event.target.value)} />
+      </label>
+      <label>
+        URL immagine copertina
+        <input value={coverImageUrl} onChange={(event) => setCoverImageUrl(event.target.value)} />
       </label>
       <div className="multicheck-field">
         <p className="muted">Visibilità e accesso</p>
@@ -1510,6 +1729,12 @@ function CreateCampaignPage({
           onCreate({
             name,
             description,
+            summary,
+            setting,
+            tone,
+            rules,
+            requirements,
+            coverImageUrl,
             isOpen,
             isSearchable,
             allowedModules: selectedModules,
@@ -1519,6 +1744,16 @@ function CreateCampaignPage({
         Crea
       </button>
     </section>
+  )
+}
+
+function InfoBlock({ title, value }: { title: string; value: string | null }) {
+  if (!value) return null
+  return (
+    <div className="info-block">
+      <p className="field-label">{title}</p>
+      <p>{value}</p>
+    </div>
   )
 }
 
@@ -1534,6 +1769,12 @@ function CampaignDetailPage({
   onOpenMember,
   onOpenManagement,
   onOpenSelectPg,
+  onOpenCharacters,
+  canManageMembers,
+  onApply,
+  onActivate,
+  membershipStatus,
+  membershipRole,
 }: {
   campaign: CampaignResponse | null
   members: CampaignMembershipResponse[]
@@ -1546,6 +1787,12 @@ function CampaignDetailPage({
   onOpenMember: (userId: string) => void
   onOpenManagement: () => void
   onOpenSelectPg: () => void
+  onOpenCharacters: () => void
+  canManageMembers: boolean
+  onApply: () => void
+  onActivate: () => void
+  membershipStatus: CampaignMemberStatus | null
+  membershipRole: CampaignRole | null
 }) {
   const [memberQuery, setMemberQuery] = useState('')
   const [statusFilters, setStatusFilters] = useState<CampaignMemberStatus[]>([
@@ -1607,126 +1854,173 @@ function CampaignDetailPage({
       {!campaign && <p className="muted">Carica prima una campagna.</p>}
       {campaign && (
         <>
+          {campaign.coverImageUrl && (
+            <img className="campaign-cover" src={campaign.coverImageUrl} alt="" />
+          )}
           <p>
             <strong>{campaign.name}</strong>
           </p>
+          {campaign.summary && <p className="campaign-summary">{campaign.summary}</p>}
           <p className="muted">{campaign.description || 'Nessuna descrizione'}</p>
+          <div className="campaign-profile-grid">
+            <InfoBlock title="Ambientazione" value={campaign.setting} />
+            <InfoBlock title="Tono" value={campaignToneLabel(campaign.tone)} />
+            <InfoBlock title="Regole" value={campaign.rules} />
+            <InfoBlock title="Requisiti d'ingresso" value={campaign.requirements} />
+          </div>
           <p className="muted">
             open: {String(campaign.isOpen)} | searchable: {String(campaign.isSearchable)}
           </p>
-          <div className="inline-actions">
-            <button type="button" className="secondary-btn" onClick={onOpenManagement}>
-              Gestione Campagna
-            </button>
-            <button type="button" className="secondary-btn" onClick={onOpenSelectPg}>
-              Seleziona PG
-            </button>
-          </div>
-          <div className="divider" />
-          <h3 className="section-title">Membri Campagna</h3>
-          <label>
-            Cerca membro per nome
-            <input
-              value={memberQuery}
-              onChange={(event) => setMemberQuery(event.target.value)}
-              placeholder="es. Sandro"
-            />
-          </label>
-          <div className="multicheck-field">
-            <p className="muted">Filtro stato membro</p>
-            <button
-              type="button"
-              className="secondary-btn multicheck-trigger"
-              onClick={() => setStatusMenuOpen((prev) => !prev)}
-            >
-              <span className="multicheck-value">{statusFilterLabel}</span>
-              <span aria-hidden="true">{statusMenuOpen ? '▴' : '▾'}</span>
-            </button>
-            {statusMenuOpen && (
-              <div className="multicheck-menu">
-                {(['APPROVED', 'PENDING', 'BLOCKED', 'BANNED', 'REJECTED'] as CampaignMemberStatus[]).map((status) => (
-                  <label key={status} className="checkbox-row">
-                    <input
-                      type="checkbox"
-                      checked={statusFilters.includes(status)}
-                      onChange={() => toggleStatusFilter(status)}
-                    />
-                    {status}
-                  </label>
-                ))}
-              </div>
-            )}
-          </div>
-          <div className="multicheck-field">
-            <p className="muted">Filtro grado</p>
-            <button
-              type="button"
-              className="secondary-btn multicheck-trigger"
-              onClick={() => setRoleMenuOpen((prev) => !prev)}
-            >
-              <span className="multicheck-value">{roleFilterLabel}</span>
-              <span aria-hidden="true">{roleMenuOpen ? '▴' : '▾'}</span>
-            </button>
-            {roleMenuOpen && (
-              <div className="multicheck-menu">
-                {(['GIOCATORE', 'CO_MASTER', 'MASTER', 'SUPER_MASTER'] as CampaignRole[]).map((role) => (
-                  <label key={role} className="checkbox-row">
-                    <input type="checkbox" checked={roleFilters.includes(role)} onChange={() => toggleRoleFilter(role)} />
-                    {role}
-                  </label>
-                ))}
-              </div>
-            )}
-          </div>
-          {members.length === 0 && <p className="muted">Nessun membro</p>}
-          <ul className="list-reset">
-            {filteredMembers.map((member) => {
-              const activity = memberActivityBadge(member)
-              return (
-                <li key={`${member.userId}-${member.role}-${member.memberStatus}`} className="line-item line-item-clickable">
-                  <button type="button" className="member-card-btn" onClick={() => onOpenMember(member.userId)}>
-                    <div>
-                      <p className="character-name">{memberNames[member.userId] || member.userId}</p>
-                    </div>
-                    <div className="inline-actions">
-                      <span className="status status-info">{member.role}</span>
-                      <span className={`status ${activity.className}`}>{activity.label}</span>
-                    </div>
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-          {members.length > 0 && filteredMembers.length === 0 && (
-            <p className="muted">Nessun membro trovato con questo filtro.</p>
-          )}
-          <div className="divider" />
-          <div className="row-between">
-            <h3 className="section-title">Richieste Pending</h3>
-            <button type="button" className="secondary-btn" onClick={onLoadPending}>
-              Carica richieste pending
-            </button>
-          </div>
-          {pendingApplications.length === 0 && <p className="muted">Nessuna richiesta pending.</p>}
-          {pendingApplications.length > 0 && (
-            <ul className="list-reset">
-              {pendingApplications.map((item) => (
-                <li key={item.userId} className="line-item">
-                  <div>
-                    <p className="character-name">{item.profileName}</p>
-                    <p className="muted">@{item.username}</p>
-                  </div>
-                  <div className="inline-actions">
-                    <button type="button" className="primary-btn" onClick={() => onApprove(item.userId)}>
-                      Approva
-                    </button>
-                    <button type="button" className="secondary-btn" onClick={() => onReject(item.userId)}>
-                      Rifiuta
-                    </button>
-                  </div>
-                </li>
+          {campaign.allowedModules.length > 0 && (
+            <div className="chips">
+              {campaign.allowedModules.map((moduleCode) => (
+                <span key={moduleCode} className="chip readonly-chip">
+                  {moduleCode}
+                </span>
               ))}
-            </ul>
+            </div>
+          )}
+          <div className="inline-actions">
+            {membershipStatus === 'APPROVED' && (
+              <button type="button" className="primary-btn" onClick={onActivate}>
+                Entra
+              </button>
+            )}
+            {(membershipStatus === null || membershipStatus === 'REJECTED') && campaign.isOpen && (
+              <button type="button" className="primary-btn" onClick={onApply}>
+                Richiedi accesso
+              </button>
+            )}
+            {membershipStatus === 'PENDING' && (
+              <button type="button" className="secondary-btn" disabled>
+                Richiesta inviata
+              </button>
+            )}
+            {(membershipRole === 'MASTER' || membershipRole === 'SUPER_MASTER') && (
+              <button type="button" className="secondary-btn" onClick={onOpenManagement}>
+                Gestione Campagna
+              </button>
+            )}
+            {membershipStatus === 'APPROVED' && (
+              <button type="button" className="secondary-btn" onClick={onOpenSelectPg}>
+                Seleziona PG
+              </button>
+            )}
+            {membershipStatus === 'APPROVED' && (
+              <button type="button" className="secondary-btn" onClick={onOpenCharacters}>
+                Gestione Personaggi
+              </button>
+            )}
+          </div>
+          {canManageMembers && (
+            <>
+              <div className="divider" />
+              <h3 className="section-title">Membri Campagna</h3>
+              <label>
+                Cerca membro per nome
+                <input
+                  value={memberQuery}
+                  onChange={(event) => setMemberQuery(event.target.value)}
+                  placeholder="es. Sandro"
+                />
+              </label>
+              <div className="multicheck-field">
+                <p className="muted">Filtro stato membro</p>
+                <button
+                  type="button"
+                  className="secondary-btn multicheck-trigger"
+                  onClick={() => setStatusMenuOpen((prev) => !prev)}
+                >
+                  <span className="multicheck-value">{statusFilterLabel}</span>
+                  <span aria-hidden="true">{statusMenuOpen ? '▴' : '▾'}</span>
+                </button>
+                {statusMenuOpen && (
+                  <div className="multicheck-menu">
+                    {(['APPROVED', 'PENDING', 'BLOCKED', 'BANNED', 'REJECTED'] as CampaignMemberStatus[]).map((status) => (
+                      <label key={status} className="checkbox-row">
+                        <input
+                          type="checkbox"
+                          checked={statusFilters.includes(status)}
+                          onChange={() => toggleStatusFilter(status)}
+                        />
+                        {status}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="multicheck-field">
+                <p className="muted">Filtro grado</p>
+                <button
+                  type="button"
+                  className="secondary-btn multicheck-trigger"
+                  onClick={() => setRoleMenuOpen((prev) => !prev)}
+                >
+                  <span className="multicheck-value">{roleFilterLabel}</span>
+                  <span aria-hidden="true">{roleMenuOpen ? '▴' : '▾'}</span>
+                </button>
+                {roleMenuOpen && (
+                  <div className="multicheck-menu">
+                    {(['GIOCATORE', 'CO_MASTER', 'MASTER', 'SUPER_MASTER'] as CampaignRole[]).map((role) => (
+                      <label key={role} className="checkbox-row">
+                        <input type="checkbox" checked={roleFilters.includes(role)} onChange={() => toggleRoleFilter(role)} />
+                        {role}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {members.length === 0 && <p className="muted">Nessun membro</p>}
+              <ul className="list-reset">
+                {filteredMembers.map((member) => {
+                  const activity = memberActivityBadge(member)
+                  return (
+                    <li key={`${member.userId}-${member.role}-${member.memberStatus}`} className="line-item line-item-clickable">
+                      <button type="button" className="member-card-btn" onClick={() => onOpenMember(member.userId)}>
+                        <div>
+                          <p className="character-name">{memberNames[member.userId] || member.userId}</p>
+                        </div>
+                        <div className="inline-actions">
+                          <span className="status status-info">{member.role}</span>
+                          <span className={`status ${activity.className}`}>{activity.label}</span>
+                        </div>
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+              {members.length > 0 && filteredMembers.length === 0 && (
+                <p className="muted">Nessun membro trovato con questo filtro.</p>
+              )}
+              <div className="divider" />
+              <div className="row-between">
+                <h3 className="section-title">Richieste Pending</h3>
+                <button type="button" className="secondary-btn" onClick={onLoadPending}>
+                  Carica richieste pending
+                </button>
+              </div>
+              {pendingApplications.length === 0 && <p className="muted">Nessuna richiesta pending.</p>}
+              {pendingApplications.length > 0 && (
+                <ul className="list-reset">
+                  {pendingApplications.map((item) => (
+                    <li key={item.userId} className="line-item">
+                      <div>
+                        <p className="character-name">{item.profileName}</p>
+                        <p className="muted">@{item.username}</p>
+                      </div>
+                      <div className="inline-actions">
+                        <button type="button" className="primary-btn" onClick={() => onApprove(item.userId)}>
+                          Approva
+                        </button>
+                        <button type="button" className="secondary-btn" onClick={() => onReject(item.userId)}>
+                          Rifiuta
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
           )}
         </>
       )}
@@ -2183,7 +2477,13 @@ function CharacterListPage({
   )
 
   useEffect(() => {
-    setCampaignFilters((prev) => prev.filter((campaignValue) => campaignOptions.some((option) => option.id === campaignValue)))
+    setCampaignFilters((prev) => {
+      const next = prev.filter((campaignValue) => campaignOptions.some((option) => option.id === campaignValue))
+      if (next.length === prev.length && next.every((value, index) => value === prev[index])) {
+        return prev
+      }
+      return next
+    })
   }, [campaignOptions])
 
   const toggleCampaignFilter = (campaignValue: string) => {
@@ -2553,22 +2853,173 @@ function CampaignMemberProfilePage({
 }
 
 function CampaignManagementPage({
+  campaign,
+  availableModules,
   permissions,
+  onLoadModules,
+  onSave,
   onCheckPermission,
   onTransfer,
   onLeave,
 }: {
+  campaign: CampaignResponse | null
+  availableModules: string[]
   permissions: CampaignPermissionResponse[]
+  onLoadModules: () => void
+  onSave: (payload: {
+    name: string
+    description: string
+    summary: string
+    setting: string
+    tone: string
+    rules: string
+    requirements: string
+    coverImageUrl: string
+    isOpen: boolean
+    isSearchable: boolean
+    allowedModules: string[]
+  }) => void
   onCheckPermission: (action: string) => void
   onTransfer: (newOwnerUserId: string) => void
   onLeave: () => void
 }) {
   const [action, setAction] = useState('CREATE_ROOM')
   const [newOwnerUserId, setNewOwnerUserId] = useState('')
+  const [name, setName] = useState(campaign?.name || '')
+  const [description, setDescription] = useState(campaign?.description || '')
+  const [summary, setSummary] = useState(campaign?.summary || '')
+  const [setting, setSetting] = useState(campaign?.setting || '')
+  const [tone, setTone] = useState(campaign?.tone || '')
+  const [rules, setRules] = useState(campaign?.rules || '')
+  const [requirements, setRequirements] = useState(campaign?.requirements || '')
+  const [coverImageUrl, setCoverImageUrl] = useState(campaign?.coverImageUrl || '')
+  const [isOpen, setIsOpen] = useState(campaign?.isOpen ?? true)
+  const [isSearchable, setIsSearchable] = useState(campaign?.isSearchable ?? true)
+  const [selectedModules, setSelectedModules] = useState<string[]>(campaign?.allowedModules || [])
+
+  useEffect(() => {
+    if (!campaign) return
+    setName(campaign.name)
+    setDescription(campaign.description || '')
+    setSummary(campaign.summary || '')
+    setSetting(campaign.setting || '')
+    setTone(campaign.tone || '')
+    setRules(campaign.rules || '')
+    setRequirements(campaign.requirements || '')
+    setCoverImageUrl(campaign.coverImageUrl || '')
+    setIsOpen(campaign.isOpen)
+    setIsSearchable(campaign.isSearchable)
+    setSelectedModules(campaign.allowedModules)
+  }, [campaign])
+
+  const toggleModule = (moduleCode: string) => {
+    setSelectedModules((prev) =>
+      prev.includes(moduleCode) ? prev.filter((item) => item !== moduleCode) : [...prev, moduleCode],
+    )
+  }
 
   return (
     <section className="panel">
       <h2>Gestione Campagna</h2>
+      {!campaign && <p className="muted">Apri prima una scheda campagna.</p>}
+      {campaign && (
+        <>
+          <div className="form-grid">
+            <label>
+              Nome
+              <input value={name} onChange={(event) => setName(event.target.value)} />
+            </label>
+            <label>
+              Tono
+              <select value={tone} onChange={(event) => setTone(event.target.value)}>
+                <option value="">Seleziona tono</option>
+                {CAMPAIGN_TONE_OPTIONS.map((toneOption) => (
+                  <option key={toneOption.value} value={toneOption.value}>
+                    {toneOption.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <label>
+            Descrizione
+            <textarea rows={3} value={description} onChange={(event) => setDescription(event.target.value)} />
+          </label>
+          <label>
+            Riassunto breve
+            <textarea rows={2} value={summary} onChange={(event) => setSummary(event.target.value)} maxLength={280} />
+          </label>
+          <label>
+            Ambientazione
+            <textarea rows={3} value={setting} onChange={(event) => setSetting(event.target.value)} />
+          </label>
+          <label>
+            Regole
+            <textarea rows={3} value={rules} onChange={(event) => setRules(event.target.value)} />
+          </label>
+          <label>
+            Requisiti d'ingresso
+            <textarea rows={3} value={requirements} onChange={(event) => setRequirements(event.target.value)} />
+          </label>
+          <label>
+            URL immagine copertina
+            <input value={coverImageUrl} onChange={(event) => setCoverImageUrl(event.target.value)} />
+          </label>
+          <div className="inline-actions">
+            <label className="checkbox-row">
+              <input checked={isOpen} onChange={(event) => setIsOpen(event.target.checked)} type="checkbox" />
+              Aperta
+            </label>
+            <label className="checkbox-row">
+              <input checked={isSearchable} onChange={(event) => setIsSearchable(event.target.checked)} type="checkbox" />
+              Ricercabile
+            </label>
+          </div>
+          <div className="multicheck-field">
+            <div className="row-between">
+              <p className="muted">Moduli</p>
+              <button type="button" className="secondary-btn" onClick={onLoadModules}>
+                Carica moduli
+              </button>
+            </div>
+            <div className="chips">
+              {availableModules.map((moduleCode) => (
+                <button
+                  key={moduleCode}
+                  type="button"
+                  className={`chip ${selectedModules.includes(moduleCode) ? 'is-active' : ''}`}
+                  onClick={() => toggleModule(moduleCode)}
+                >
+                  {moduleCode}
+                </button>
+              ))}
+              {availableModules.length === 0 && <p className="muted">Premi "Carica moduli" per modificare i moduli.</p>}
+            </div>
+          </div>
+          <button
+            type="button"
+            className="primary-btn"
+            onClick={() =>
+              onSave({
+                name,
+                description,
+                summary,
+                setting,
+                tone,
+                rules,
+                requirements,
+                coverImageUrl,
+                isOpen,
+                isSearchable,
+                allowedModules: selectedModules,
+              })
+            }
+          >
+            Salva anagrafica
+          </button>
+          <div className="divider" />
+        </>
+      )}
       <div className="form-grid">
         <label>
           Permission action

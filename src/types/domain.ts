@@ -47,6 +47,12 @@ export interface CampaignResponse {
   id: string
   name: string
   description: string | null
+  summary: string | null
+  setting: string | null
+  tone: string | null
+  rules: string | null
+  requirements: string | null
+  coverImageUrl: string | null
   founderId: string
   isOpen: boolean
   isSearchable: boolean
@@ -80,6 +86,8 @@ export interface CampaignDiscoverResponse {
   id: string
   name: string
   description: string | null
+  summary: string | null
+  coverImageUrl: string | null
   founderId: string
   isOpen: boolean
   isSearchable: boolean

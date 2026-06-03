@@ -90,6 +90,12 @@ export async function getPublicProfile(userId: string): Promise<UserProfile> {
 export async function createCampaign(payload: {
   name: string
   description?: string
+  summary?: string
+  setting?: string
+  tone?: string
+  rules?: string
+  requirements?: string
+  coverImageUrl?: string
   isOpen?: boolean
   isSearchable?: boolean
   allowedModules?: string[]
@@ -99,6 +105,12 @@ export async function createCampaign(payload: {
     body: {
       name: payload.name.trim(),
       description: payload.description || null,
+      summary: payload.summary || null,
+      setting: payload.setting || null,
+      tone: payload.tone || null,
+      rules: payload.rules || null,
+      requirements: payload.requirements || null,
+      coverImageUrl: payload.coverImageUrl || null,
       isOpen: payload.isOpen ?? true,
       isSearchable: payload.isSearchable ?? true,
       allowedModules: payload.allowedModules ?? [],
@@ -108,6 +120,40 @@ export async function createCampaign(payload: {
 
 export async function getCampaign(campaignId: string): Promise<CampaignResponse> {
   return apiRequest<CampaignResponse>(`/campaigns/${campaignId}`)
+}
+
+export async function updateCampaign(
+  campaignId: string,
+  payload: {
+    name: string
+    description?: string
+    summary?: string
+    setting?: string
+    tone?: string
+    rules?: string
+    requirements?: string
+    coverImageUrl?: string
+    isOpen: boolean
+    isSearchable: boolean
+    allowedModules?: string[]
+  },
+): Promise<CampaignResponse> {
+  return apiRequest<CampaignResponse>(`/campaigns/${campaignId}`, {
+    method: 'PATCH',
+    body: {
+      name: payload.name.trim(),
+      description: payload.description || null,
+      summary: payload.summary || null,
+      setting: payload.setting || null,
+      tone: payload.tone || null,
+      rules: payload.rules || null,
+      requirements: payload.requirements || null,
+      coverImageUrl: payload.coverImageUrl || null,
+      isOpen: payload.isOpen,
+      isSearchable: payload.isSearchable,
+      allowedModules: payload.allowedModules ?? [],
+    },
+  })
 }
 
 export async function discoverCampaigns(openOnly = false): Promise<CampaignDiscoverResponse[]> {
