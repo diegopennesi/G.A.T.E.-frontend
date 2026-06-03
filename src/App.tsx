@@ -96,9 +96,9 @@ type ProfileDraft = {
 const CAMPAIGN_ID_KEY = 'gate_campaign_id'
 const KNOWN_CAMPAIGNS_KEY = 'gate_known_campaign_ids'
 const KNOWN_CAMPAIGN_META_KEY = 'gate_known_campaign_meta'
+const THEME_KEY = 'gate_theme'
 const DEV_REMOVE_TAG = '@REMOVE_BEFORE_PROD:GATE_DEV_ONLY'
 type KnownCampaignMeta = { id: string; name: string }
-type SidebarGroup = 'Profilo' | 'Campagna'
 const CAMPAIGN_ACTIVE_REQUIRED_SCREENS: Screen[] = [
   'Approvazione Accessi',
   'Gestione Personaggi',
@@ -126,6 +126,58 @@ const campaignToneLabel = (value: string | null | undefined): string | null => {
 }
 
 type CampaignAccessBadgeKind = 'edit' | 'player' | 'outside' | 'pending' | 'blocked' | 'banned'
+type BreadcrumbItem = {
+  label: string
+  target?: Screen
+}
+
+type ThemeMode = 'light' | 'dark'
+
+type NavigationGroup = {
+  label: string
+  items: Screen[]
+}
+
+const NAVIGATION_GROUPS: NavigationGroup[] = [
+  {
+    label: 'Account',
+    items: ['Profilo', 'Modifica Profilo'],
+  },
+  {
+    label: 'Campagne',
+    items: ['Lista Campagne', 'Crea Campagna', 'Scheda Campagna', 'Approvazione Accessi', 'Gestione Campagna', 'Notifiche'],
+  },
+  {
+    label: 'Campagna attiva',
+    items: ['Missioni', 'Stanze', 'Seleziona PG'],
+  },
+  {
+    label: 'Personaggi',
+    items: ['Gestione Personaggi', 'Scheda PG', 'Crea Personaggio'],
+  },
+  {
+    label: 'Membri',
+    items: ['Profilo Membro Campagna'],
+  },
+]
+
+const SCREEN_LABELS: Record<Screen, string> = {
+  'Lista Campagne': 'Campagne',
+  'Crea Campagna': 'Crea campagna',
+  'Scheda Campagna': 'Scheda campagna',
+  'Approvazione Accessi': 'Accessi',
+  Missioni: 'Missioni',
+  Stanze: 'Stanze',
+  Notifiche: 'Notifiche',
+  Profilo: 'Profilo',
+  'Modifica Profilo': 'Modifica profilo',
+  'Gestione Personaggi': 'Personaggi',
+  'Scheda PG': 'Scheda PG',
+  'Gestione Campagna': 'Gestione campagna',
+  'Profilo Membro Campagna': 'Profilo membro',
+  'Seleziona PG': 'Seleziona PG',
+  'Crea Personaggio': 'Crea personaggio',
+}
 
 function CampaignAccessIcon({ kind }: { kind: CampaignAccessBadgeKind }) {
   const commonProps = {
@@ -265,8 +317,16 @@ function App() {
   const [rooms, setRooms] = useState<RoomResponse[]>([])
   const [selectedCampaignMember, setSelectedCampaignMember] = useState<CampaignMembershipResponse | null>(null)
   const [selectedCampaignMemberProfile, setSelectedCampaignMemberProfile] = useState<UserProfile | null>(null)
-  const [expandedSidebarGroup, setExpandedSidebarGroup] = useState<SidebarGroup | null>('Profilo')
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const [theme, setTheme] = useState<ThemeMode>(() => {
+    const saved = localStorage.getItem(THEME_KEY)
+    return saved === 'dark' || saved === 'light' ? (saved as ThemeMode) : 'light'
+  })
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    localStorage.setItem(THEME_KEY, theme)
+  }, [theme])
 
   const selectedCharacter = useMemo(
     () => characters.find((character) => character.id === selectedCharacterId) || null,
@@ -738,20 +798,22 @@ function App() {
     return <AuthScreen onAuth={handleAuth} />
   }
 
-  const profileScreens: Screen[] = ['Profilo', 'Modifica Profilo']
-  const campaignScreens: Screen[] = [
-    'Lista Campagne',
-    'Profilo Membro Campagna',
-  ]
-  const menuGroups: { key: SidebarGroup; screens: Screen[] }[] = [
-    { key: 'Profilo', screens: profileScreens },
-    { key: 'Campagna', screens: campaignScreens },
-  ]
-  const enabledSet = new Set<Screen>([...profileScreens, ...campaignScreens])
   const isMenuScreenEnabled = (value: Screen) => {
-    if (!enabledSet.has(value)) return false
-    if (CAMPAIGN_ACTIVE_REQUIRED_SCREENS.includes(value) && !hasActiveCampaign) return false
+    if (value === 'Scheda PG' && !selectedCharacter) return false
     if (value === 'Profilo Membro Campagna' && !selectedCampaignMember) return false
+    if (
+      (value === 'Scheda Campagna' ||
+        value === 'Approvazione Accessi' ||
+        value === 'Missioni' ||
+        value === 'Stanze' ||
+        value === 'Gestione Personaggi' ||
+        value === 'Gestione Campagna' ||
+        value === 'Seleziona PG' ||
+        value === 'Crea Personaggio') &&
+      !hasActiveCampaign
+    ) {
+      return false
+    }
     return true
   }
   const campaignArea = isCampaignScope(screen)
@@ -814,6 +876,186 @@ function App() {
     (activeCampaignMembership?.role === 'CO_MASTER' ||
       activeCampaignMembership?.role === 'MASTER' ||
       activeCampaignMembership?.role === 'SUPER_MASTER')
+  const activeCampaignLabel = campaign?.name || activeCampaignMembership?.campaignName || campaignId.trim() || 'campagna attiva'
+  const selectedCharacterLabel = selectedCharacter?.name || characterDetail?.name || 'PG'
+  const selectedMemberLabel =
+    selectedCampaignMemberProfile?.profileName ||
+    memberNames[selectedCampaignMember?.userId || ''] ||
+    selectedCampaignMember?.userId ||
+    'membro'
+  const pageContext: {
+    title: string
+    subtitle: string
+    breadcrumbs: BreadcrumbItem[]
+    backTarget: Screen | null
+  } = (() => {
+    switch (screen) {
+      case 'Profilo':
+        return {
+          title: SCREEN_LABELS[screen],
+          subtitle: 'Dati personali e lookup pubblico',
+          breadcrumbs: [{ label: SCREEN_LABELS[screen] }],
+          backTarget: null as Screen | null,
+        }
+      case 'Modifica Profilo':
+        return {
+          title: SCREEN_LABELS[screen],
+          subtitle: 'Aggiorna i dati del tuo account',
+          breadcrumbs: [
+            { label: SCREEN_LABELS.Profilo, target: 'Profilo' },
+            { label: SCREEN_LABELS[screen] },
+          ],
+          backTarget: 'Profilo' as Screen,
+        }
+      case 'Lista Campagne':
+        return {
+          title: SCREEN_LABELS[screen],
+          subtitle: 'Elenco delle campagne disponibili e dei tuoi accessi',
+          breadcrumbs: [{ label: SCREEN_LABELS[screen] }],
+          backTarget: null as Screen | null,
+        }
+      case 'Crea Campagna':
+        return {
+          title: SCREEN_LABELS[screen],
+          subtitle: 'Nuova campagna con impostazioni iniziali chiare',
+          breadcrumbs: [
+            { label: SCREEN_LABELS['Lista Campagne'], target: 'Lista Campagne' },
+            { label: SCREEN_LABELS[screen] },
+          ],
+          backTarget: 'Lista Campagne' as Screen,
+        }
+      case 'Scheda Campagna':
+        return {
+          title: SCREEN_LABELS[screen],
+          subtitle: activeCampaignLabel,
+          breadcrumbs: [
+            { label: SCREEN_LABELS['Lista Campagne'], target: 'Lista Campagne' },
+            { label: activeCampaignLabel },
+          ],
+          backTarget: 'Lista Campagne' as Screen,
+        }
+      case 'Approvazione Accessi':
+        return {
+          title: SCREEN_LABELS[screen],
+          subtitle: activeCampaignLabel,
+          breadcrumbs: [
+            { label: SCREEN_LABELS['Lista Campagne'], target: 'Lista Campagne' },
+            { label: activeCampaignLabel, target: 'Scheda Campagna' },
+            { label: SCREEN_LABELS[screen] },
+          ],
+          backTarget: 'Scheda Campagna' as Screen,
+        }
+      case 'Missioni':
+        return {
+          title: SCREEN_LABELS[screen],
+          subtitle: activeCampaignLabel,
+          breadcrumbs: [
+            { label: SCREEN_LABELS['Lista Campagne'], target: 'Lista Campagne' },
+            { label: activeCampaignLabel, target: 'Scheda Campagna' },
+            { label: SCREEN_LABELS[screen] },
+          ],
+          backTarget: 'Scheda Campagna' as Screen,
+        }
+      case 'Stanze':
+        return {
+          title: SCREEN_LABELS[screen],
+          subtitle: activeCampaignLabel,
+          breadcrumbs: [
+            { label: SCREEN_LABELS['Lista Campagne'], target: 'Lista Campagne' },
+            { label: activeCampaignLabel, target: 'Scheda Campagna' },
+            { label: SCREEN_LABELS[screen] },
+          ],
+          backTarget: 'Scheda Campagna' as Screen,
+        }
+      case 'Notifiche':
+        return {
+          title: SCREEN_LABELS[screen],
+          subtitle: 'Cronologia locale delle azioni effettuate',
+          breadcrumbs: [
+            { label: SCREEN_LABELS['Lista Campagne'], target: 'Lista Campagne' },
+            { label: activeCampaignLabel, target: 'Scheda Campagna' },
+            { label: SCREEN_LABELS[screen] },
+          ],
+          backTarget: 'Scheda Campagna' as Screen,
+        }
+      case 'Gestione Personaggi':
+        return {
+          title: SCREEN_LABELS[screen],
+          subtitle: activeCampaignLabel,
+          breadcrumbs: [
+            { label: SCREEN_LABELS['Lista Campagne'], target: 'Lista Campagne' },
+            { label: activeCampaignLabel, target: 'Scheda Campagna' },
+            { label: SCREEN_LABELS[screen] },
+          ],
+          backTarget: 'Scheda Campagna' as Screen,
+        }
+      case 'Scheda PG':
+        return {
+          title: selectedCharacterLabel,
+          subtitle: 'Scheda personaggio',
+          breadcrumbs: [
+            { label: SCREEN_LABELS['Lista Campagne'], target: 'Lista Campagne' },
+            { label: activeCampaignLabel, target: 'Scheda Campagna' },
+            { label: SCREEN_LABELS['Gestione Personaggi'], target: 'Gestione Personaggi' },
+            { label: selectedCharacterLabel },
+          ],
+          backTarget: 'Gestione Personaggi' as Screen,
+        }
+      case 'Gestione Campagna':
+        return {
+          title: SCREEN_LABELS[screen],
+          subtitle: activeCampaignLabel,
+          breadcrumbs: [
+            { label: SCREEN_LABELS['Lista Campagne'], target: 'Lista Campagne' },
+            { label: activeCampaignLabel, target: 'Scheda Campagna' },
+            { label: SCREEN_LABELS[screen] },
+          ],
+          backTarget: 'Scheda Campagna' as Screen,
+        }
+      case 'Profilo Membro Campagna':
+        return {
+          title: SCREEN_LABELS[screen],
+          subtitle: selectedMemberLabel,
+          breadcrumbs: [
+            { label: SCREEN_LABELS['Lista Campagne'], target: 'Lista Campagne' },
+            { label: activeCampaignLabel, target: 'Scheda Campagna' },
+            { label: 'Membri', target: 'Scheda Campagna' },
+            { label: selectedMemberLabel },
+          ],
+          backTarget: 'Scheda Campagna' as Screen,
+        }
+      case 'Seleziona PG':
+        return {
+          title: SCREEN_LABELS[screen],
+          subtitle: activeCampaignLabel,
+          breadcrumbs: [
+            { label: SCREEN_LABELS['Lista Campagne'], target: 'Lista Campagne' },
+            { label: activeCampaignLabel, target: 'Scheda Campagna' },
+            { label: SCREEN_LABELS[screen] },
+          ],
+          backTarget: 'Scheda Campagna' as Screen,
+        }
+      case 'Crea Personaggio':
+        return {
+          title: SCREEN_LABELS[screen],
+          subtitle: activeCampaignLabel,
+          breadcrumbs: [
+            { label: SCREEN_LABELS['Lista Campagne'], target: 'Lista Campagne' },
+            { label: activeCampaignLabel, target: 'Scheda Campagna' },
+            { label: SCREEN_LABELS['Gestione Personaggi'], target: 'Gestione Personaggi' },
+            { label: SCREEN_LABELS[screen] },
+          ],
+          backTarget: 'Gestione Personaggi' as Screen,
+        }
+      default:
+        return {
+          title: SCREEN_LABELS[screen],
+          subtitle: '',
+          breadcrumbs: [{ label: SCREEN_LABELS[screen] }],
+          backTarget: null as Screen | null,
+        }
+    }
+  })()
   const goToScreen = (value: Screen) => {
     setScreen(value)
     setIsSidebarOpen(false)
@@ -830,7 +1072,7 @@ function App() {
         />
       )}
 
-      <aside className={`sidebar-drawer ${isSidebarOpen ? 'is-open' : ''}`} aria-hidden={!isSidebarOpen}>
+      <aside className={`sidebar-drawer ${isSidebarOpen ? 'is-open' : ''}`}>
         <div className="brand">
           <div className="brand-mark">T</div>
           <div>
@@ -847,40 +1089,34 @@ function App() {
           <p className="api-url">{getApiBaseUrl()}</p>
         </div>
 
-        <nav className="menu compact-menu">
-          {menuGroups.map((group) => {
-            const isExpanded = expandedSidebarGroup === group.key
-            return (
-              <div key={group.key} className="menu-group">
-                <button
-                  type="button"
-                  className={`menu-group-toggle ${isExpanded ? 'is-expanded' : ''}`}
-                  onClick={() => setExpandedSidebarGroup((prev) => (prev === group.key ? null : group.key))}
-                >
-                  <span>{group.key}</span>
-                  <span aria-hidden="true">{isExpanded ? '▾' : '▸'}</span>
-                </button>
-                <div className={`menu-group-items-wrap ${isExpanded ? 'is-expanded' : ''}`}>
-                  <div className="menu-group-items">
-                    {group.screens.map((item) => (
-                      <button
-                        key={item}
-                        type="button"
-                        className={`menu-item ${screen === item ? 'is-active' : ''} ${isMenuScreenEnabled(item) ? '' : 'is-disabled'}`}
-                        onClick={() => isMenuScreenEnabled(item) && goToScreen(item)}
-                        disabled={!isMenuScreenEnabled(item)}
-                      >
-                        {item}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+        <nav className="menu compact-menu" aria-label="Navigazione principale">
+          {NAVIGATION_GROUPS.map((group) => (
+            <div key={group.label} className="menu-group">
+              <p className="menu-group-label">{group.label}</p>
+              <div className="menu-group-items">
+                {group.items.map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    className={`menu-item ${screen === item ? 'is-active' : ''} ${isMenuScreenEnabled(item) ? '' : 'is-disabled'}`}
+                    onClick={() => isMenuScreenEnabled(item) && goToScreen(item)}
+                    disabled={!isMenuScreenEnabled(item)}
+                    title={isMenuScreenEnabled(item) ? SCREEN_LABELS[item] : 'Disponibile solo quando il contesto richiesto è attivo'}
+                    aria-current={screen === item ? 'page' : undefined}
+                  >
+                    {SCREEN_LABELS[item]}
+                  </button>
+                ))}
               </div>
-            )
-          })}
+            </div>
+          ))}
         </nav>
 
         <div className="sidebar-user">
+          <p className="sidebar-user-kicker">Contesto attivo</p>
+          <p className="sidebar-user-context">{SCREEN_LABELS[screen]}</p>
+          <p className="sidebar-user-context-name">{activeCampaignLabel}</p>
+          <div className="sidebar-user-divider" />
           <p className="sidebar-user-name">{profile.profileName}</p>
           <p className="sidebar-user-handle">@{profile.username || 'utente'}</p>
         </div>
@@ -898,23 +1134,47 @@ function App() {
               <span aria-hidden="true" />
               <span aria-hidden="true" />
             </button>
-            <div>
-              <h1>{screen}</h1>
-              {!campaignArea && <p>Utente: {profile.username || profile.profileName}</p>}
-              {campaignArea && (
-                <p>
-                  Utente: {profile.username || profile.profileName} | Campagna attiva: {activeCampaignName}
-                </p>
-              )}
+            <div className="page-heading">
+              <nav className="breadcrumbs" aria-label="Percorso">
+                {pageContext.breadcrumbs.map((crumb, index) => {
+                  const isLast = index === pageContext.breadcrumbs.length - 1
+                  const target = crumb.target
+                  if (target && !isLast) {
+                    return (
+                      <button key={`${crumb.label}-${index}`} type="button" className="breadcrumb-link" onClick={() => goToScreen(target)}>
+                        {crumb.label}
+                      </button>
+                    )
+                  }
+                  return (
+                    <span key={`${crumb.label}-${index}`} className={`breadcrumb-current ${isLast ? 'is-current' : ''}`}>
+                      {crumb.label}
+                    </span>
+                  )
+                })}
+              </nav>
+              <h1>{pageContext.title}</h1>
+              <p>
+                {pageContext.subtitle || `Utente: ${profile.username || profile.profileName}`}
+                {campaignArea ? ` | Campagna attiva: ${activeCampaignName}` : ''}
+              </p>
             </div>
           </div>
-          <div className="inline-actions">
+          <div className="inline-actions topbar-actions">
+            <button type="button" className="refresh-btn theme-toggle-btn" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>
+              {theme === 'light' ? 'Tema scuro' : 'Tema chiaro'}
+            </button>
+            {pageContext.backTarget && (
+              <button type="button" className="refresh-btn" onClick={() => goToScreen(pageContext.backTarget as Screen)}>
+                Indietro
+              </button>
+            )}
             <button type="button" className="refresh-btn" disabled={busy} onClick={() => void refreshProfile()}>
-              Refresh Profilo
+              Refresh profilo
             </button>
             {campaignArea && (
               <button type="button" className="refresh-btn" disabled={busy} onClick={() => void refreshCampaignBlock()}>
-                Refresh Campagna
+                Refresh campagna
               </button>
             )}
           </div>

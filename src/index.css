@@ -1,13 +1,14 @@
 :root {
-  font-family: Inter, Segoe UI, Roboto, Arial, sans-serif;
-  line-height: 1.4;
+  font-family: "Avenir Next", "Segoe UI", "Trebuchet MS", sans-serif;
+  line-height: 1.5;
   font-weight: 400;
   color: #e8e6f0;
-  background-color: #0f0e17;
+  background-color: #0b0a12;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  color-scheme: dark;
 }
 
 *,
@@ -19,8 +20,15 @@
 body {
   margin: 0;
   min-width: 320px;
-  background: #0f0e17;
+  background:
+    radial-gradient(circle at top left, rgba(201, 168, 76, 0.08), transparent 32%),
+    radial-gradient(circle at top right, rgba(102, 77, 180, 0.12), transparent 28%),
+    #0b0a12;
   color: #e8e6f0;
+}
+
+#root {
+  min-height: 100vh;
 }
 
 h1,
