@@ -2,6 +2,21 @@
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
+## Campaign UX flows
+
+- A campaign is always either inactive or explicitly active in the shell.
+- `Scheda Campagna` and `Gestione Campagna` can open a campaign picker when no campaign is active.
+- `Stanze` follows the same rule: if no campaign is active, the picker opens instead of showing a dead page.
+- `Missioni` is a global search/join view across all approved campaigns; creation stays available only inside the active campaign when the role allows it.
+- In `Lista Campagne`, `Apri e attiva` appears only for campaigns where membership is already approved; otherwise the primary action is `Richiedi accesso`, which submits a join request that an admin will later handle in `Accessi`.
+- Picking a campaign activates it and redirects to the requested screen.
+- The active campaign is visible in the toolbar and can be changed from there.
+- Leaving a campaign opens a confirmation modal.
+- Leaving detaches the current campaign context from the profile and retires the active character tied to that membership.
+- After leave, the app returns to `Lista Campagne` and clears the campaign workspace.
+- Room creation is available only to `MASTER` and `SUPER_MASTER`, matching the backend permission matrix for `CREATE_ROOM`.
+- `Approvazione Accessi` loads the pending requests automatically on entry; the sidebar menu shows a badge when there are pending requests for the active campaign.
+
 Currently, two official plugins are available:
 
 - [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)

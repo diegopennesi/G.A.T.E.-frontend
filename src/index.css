@@ -1,9 +1,12 @@
 :root {
-  font-family: "Avenir Next", "Segoe UI", "Trebuchet MS", sans-serif;
+  font-family: "Avenir Next", "Trebuchet MS", "Segoe UI", sans-serif;
   line-height: 1.5;
   font-weight: 400;
-  color: #e8e6f0;
-  background-color: #0b0a12;
+  color: #edf2ff;
+  background:
+    radial-gradient(circle at top left, rgba(217, 177, 92, 0.14), transparent 30%),
+    radial-gradient(circle at top right, rgba(90, 122, 211, 0.16), transparent 26%),
+    #0b1020;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -20,11 +23,8 @@
 body {
   margin: 0;
   min-width: 320px;
-  background:
-    radial-gradient(circle at top left, rgba(201, 168, 76, 0.08), transparent 32%),
-    radial-gradient(circle at top right, rgba(102, 77, 180, 0.12), transparent 28%),
-    #0b0a12;
-  color: #e8e6f0;
+  background: transparent;
+  color: inherit;
 }
 
 #root {

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Dispatch, FormEvent, SetStateAction } from 'react'
 import './App.css'
-import { ApiError, getAccessToken, getApiBaseUrl } from './services/apiClient'
+import { ApiError, getAccessToken } from './services/apiClient'
 import {
   approveCampaignMember,
   applyToCampaign,
@@ -103,13 +103,22 @@ const CAMPAIGN_ID_KEY = 'gate_campaign_id'
 const KNOWN_CAMPAIGNS_KEY = 'gate_known_campaign_ids'
 const KNOWN_CAMPAIGN_META_KEY = 'gate_known_campaign_meta'
 const THEME_KEY = 'gate_theme'
-const DEV_REMOVE_TAG = '@REMOVE_BEFORE_PROD:GATE_DEV_ONLY'
 type KnownCampaignMeta = { id: string; name: string }
+type CampaignPickerCampaign = {
+  campaignId: string
+  campaignName: string
+  role: CampaignRole
+}
+type LeaveCampaignContext = {
+  campaignName: string
+  characterWillBeRetired: boolean
+}
 const CAMPAIGN_ACTIVE_REQUIRED_SCREENS: Screen[] = [
   'Approvazione Accessi',
   'Gestione Personaggi',
   'Scheda PG',
   'Gestione Campagna',
+  'Stanze',
   'Profilo Membro Campagna',
   'Seleziona PG',
   'Crea Personaggio',
@@ -139,31 +148,33 @@ type BreadcrumbItem = {
 
 type ThemeMode = 'light' | 'dark'
 
-type NavigationGroup = {
+type NavigationSection = {
   label: string
+  description: string
   items: Screen[]
 }
 
-const NAVIGATION_GROUPS: NavigationGroup[] = [
+const NAVIGATION_SECTIONS: NavigationSection[] = [
   {
-    label: 'Account',
-    items: ['Profilo', 'Modifica Profilo'],
+    label: 'Essenziali',
+    description: 'Le viste che userai più spesso.',
+    items: ['Profilo', 'Lista Campagne', 'Missioni', 'Gestione Personaggi', 'Notifiche'],
   },
   {
-    label: 'Campagne',
-    items: ['Lista Campagne', 'Crea Campagna', 'Scheda Campagna', 'Approvazione Accessi', 'Gestione Campagna', 'Notifiche'],
-  },
-  {
-    label: 'Campagna attiva',
-    items: ['Missioni', 'Stanze', 'Seleziona PG'],
-  },
-  {
-    label: 'Personaggi',
-    items: ['Gestione Personaggi', 'Scheda PG', 'Crea Personaggio'],
-  },
-  {
-    label: 'Membri',
-    items: ['Profilo Membro Campagna'],
+    label: 'Strumenti',
+    description: 'Operazioni di supporto e dettagli.',
+    items: [
+      'Crea Campagna',
+      'Scheda Campagna',
+      'Approvazione Accessi',
+      'Gestione Campagna',
+      'Stanze',
+      'Modifica Profilo',
+      'Scheda PG',
+      'Seleziona PG',
+      'Crea Personaggio',
+      'Profilo Membro Campagna',
+    ],
   },
 ]
 
@@ -183,6 +194,39 @@ const SCREEN_LABELS: Record<Screen, string> = {
   'Profilo Membro Campagna': 'Profilo membro',
   'Seleziona PG': 'Seleziona PG',
   'Crea Personaggio': 'Crea personaggio',
+}
+
+const SCREEN_ICONS: Record<Screen, string> = {
+  'Lista Campagne': 'fa-solid fa-layer-group',
+  'Crea Campagna': 'fa-solid fa-circle-plus',
+  'Scheda Campagna': 'fa-solid fa-book-open',
+  'Approvazione Accessi': 'fa-solid fa-shield-halved',
+  Missioni: 'fa-solid fa-flag-checkered',
+  Stanze: 'fa-solid fa-door-open',
+  Notifiche: 'fa-solid fa-bell',
+  Profilo: 'fa-solid fa-user',
+  'Modifica Profilo': 'fa-solid fa-user-gear',
+  'Gestione Personaggi': 'fa-solid fa-users',
+  'Scheda PG': 'fa-solid fa-id-card',
+  'Gestione Campagna': 'fa-solid fa-sliders',
+  'Profilo Membro Campagna': 'fa-solid fa-address-card',
+  'Seleziona PG': 'fa-solid fa-address-book',
+  'Crea Personaggio': 'fa-solid fa-wand-magic-sparkles',
+}
+
+const CAMPAIGN_REQUIRED_TOOLTIP = 'Caricare prima la campagna'
+
+function Icon({ name, className = '' }: { name: string; className?: string }) {
+  return <i aria-hidden="true" className={`${name} ${className}`.trim()} />
+}
+
+function FieldLabel({ icon, label }: { icon: string; label: string }) {
+  return (
+    <span className="field-label-with-icon">
+      <Icon name={icon} className="field-label-icon" />
+      <span>{label}</span>
+    </span>
+  )
 }
 
 function CampaignAccessIcon({ kind }: { kind: CampaignAccessBadgeKind }) {
@@ -500,11 +544,15 @@ function App() {
   const [missions, setMissions] = useState<MissionResponse[]>([])
   const [selectedMissionId, setSelectedMissionId] = useState('')
   const [lastMissionAction, setLastMissionAction] = useState<MissionParticipantResponse | null>(null)
+  const [missionCharacters, setMissionCharacters] = useState<Character[]>([])
 
   const [rooms, setRooms] = useState<RoomResponse[]>([])
   const [selectedCampaignMember, setSelectedCampaignMember] = useState<CampaignMembershipResponse | null>(null)
   const [selectedCampaignMemberProfile, setSelectedCampaignMemberProfile] = useState<UserProfile | null>(null)
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const [isCampaignPickerOpen, setIsCampaignPickerOpen] = useState(false)
+  const [campaignPickerTarget, setCampaignPickerTarget] = useState<Screen | null>(null)
+  const [isLeaveCampaignOpen, setIsLeaveCampaignOpen] = useState(false)
   const [theme, setTheme] = useState<ThemeMode>(() => {
     const saved = localStorage.getItem(THEME_KEY)
     return saved === 'dark' || saved === 'light' ? (saved as ThemeMode) : 'light'
@@ -537,7 +585,8 @@ function App() {
   }, [approvedCampaignMemberships])
   const activeCampaignRole = campaignId ? approvedRoleByCampaignId[campaignId] || null : null
   const canCreateMissions = activeCampaignRole === 'CO_MASTER' || activeCampaignRole === 'MASTER' || activeCampaignRole === 'SUPER_MASTER'
-  const canManageMissions = activeCampaignRole === 'MASTER' || activeCampaignRole === 'SUPER_MASTER'
+  const canAccessCampaignManagement =
+    activeCampaignRole === 'CO_MASTER' || activeCampaignRole === 'MASTER' || activeCampaignRole === 'SUPER_MASTER'
   const missionWindowSince = () => new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
   const campaignsForList = useMemo(() => {
     const byId = new Map<string, CampaignDiscoverResponse>()
@@ -575,6 +624,32 @@ function App() {
 
     return Array.from(byId.values())
   }, [discoverableCampaigns, myCampaigns])
+  const selectableCampaigns = useMemo<CampaignPickerCampaign[]>(() => {
+    const byId = new Map<string, CampaignPickerCampaign>()
+    for (const item of myCampaigns) {
+      if (item.memberStatus === 'APPROVED') {
+        byId.set(item.campaignId, {
+          campaignId: item.campaignId,
+          campaignName: item.campaignName,
+          role: item.role,
+        })
+      }
+    }
+    for (const item of campaignsForList) {
+      if (item.membershipStatus === 'APPROVED' && item.membershipRole && !byId.has(item.id)) {
+        byId.set(item.id, {
+          campaignId: item.id,
+          campaignName: item.name,
+          role: item.membershipRole,
+        })
+      }
+    }
+    return Array.from(byId.values()).sort((left, right) => {
+      if (left.campaignId === campaignId) return -1
+      if (right.campaignId === campaignId) return 1
+      return left.campaignName.localeCompare(right.campaignName, 'it')
+    })
+  }, [campaignsForList, myCampaigns])
   const isCampaignScope = (value: Screen) =>
     value === 'Lista Campagne' ||
     value === 'Crea Campagna' ||
@@ -590,6 +665,8 @@ function App() {
   const addEvent = (text: string, level: UiEvent['level']) => {
     setEvents((prev) => [{ id: `${Date.now()}`, ts: new Date().toISOString(), text, level }, ...prev].slice(0, 50))
   }
+
+  const requiresCampaignSelection = (value: Screen) => CAMPAIGN_ACTIVE_REQUIRED_SCREENS.includes(value)
 
   const rememberCampaignId = (id: string) => {
     const trimmed = id.trim()
@@ -652,6 +729,7 @@ function App() {
         setMembers([])
         setCampaignMembersForManagement([])
         setCanManageCampaignMembers(false)
+        setPendingApplications([])
         setSelectedCampaignMember(null)
         setSelectedCampaignMemberProfile(null)
         setCharacters([])
@@ -663,6 +741,7 @@ function App() {
         setMembers([])
         setCampaignMembersForManagement([])
         setCanManageCampaignMembers(false)
+        setPendingApplications([])
         setSelectedCampaignMember(null)
         setSelectedCampaignMemberProfile(null)
         setCharacters([])
@@ -673,7 +752,15 @@ function App() {
   }
 
   const loadCampaignBlockFor = async (targetCampaignId: string) => {
-    const [campaignValue, memberValue, characterValue, missionValue, roomValue, canManageMembersPermission] = await Promise.all([
+    const [
+      campaignValue,
+      memberValue,
+      characterValue,
+      missionValue,
+      roomValue,
+      canManageMembersPermission,
+      pendingValue,
+    ] = await Promise.all([
       getCampaign(targetCampaignId),
       getCampaignMembers(targetCampaignId),
       listCharacters(targetCampaignId),
@@ -682,6 +769,11 @@ function App() {
       checkPermission(targetCampaignId, 'PROMOTE_CO_MASTER_OR_MASTER')
         .then((permission) => permission.allowed)
         .catch(() => false),
+      listPendingApplications(targetCampaignId)
+        .catch((err) => {
+          if (err instanceof ApiError && (err.status === 403 || err.status === 404)) return []
+          throw err
+        }),
     ])
     const memberManagementValue = canManageMembersPermission
       ? await listCampaignMembersForManagement(targetCampaignId).catch(() => [])
@@ -691,6 +783,7 @@ function App() {
     setMembers(memberValue)
     setCampaignMembersForManagement(memberManagementValue)
     setCanManageCampaignMembers(canManageMembersPermission)
+    setPendingApplications(pendingValue)
     setCharacters(characterValue)
     setMissions(missionValue)
     setRooms(roomValue)
@@ -705,29 +798,206 @@ function App() {
     })
   }
 
+  const openCampaignPicker = (target: Screen | null) => {
+    setCampaignPickerTarget(target)
+    setIsCampaignPickerOpen(true)
+    setIsSidebarOpen(false)
+  }
+
+  const closeCampaignPicker = () => {
+    setIsCampaignPickerOpen(false)
+    setCampaignPickerTarget(null)
+  }
+
+  const closeCampaignPickerAndGoHome = () => {
+    closeCampaignPicker()
+    setScreen('Lista Campagne')
+  }
+
+  const openLeaveCampaignModal = () => {
+    setIsLeaveCampaignOpen(true)
+  }
+
+  const closeLeaveCampaignModal = () => {
+    setIsLeaveCampaignOpen(false)
+  }
+
+  const clearCampaignWorkspace = () => {
+    setCampaign(null)
+    setMembers([])
+    setCampaignMembersForManagement([])
+    setCanManageCampaignMembers(false)
+    setPendingApplications([])
+    setPermissions([])
+    setCampaignModules([])
+    setCharacters([])
+    setSelectedCharacterId('')
+    setCharacterDetail(null)
+    setMissions([])
+    setSelectedMissionId('')
+    setLastMissionAction(null)
+    setRooms([])
+    setSelectedCampaignMember(null)
+    setSelectedCampaignMemberProfile(null)
+  }
+
+  const activateCampaignFromPicker = async (item: CampaignPickerCampaign) => {
+    const targetScreen = campaignPickerTarget || 'Scheda Campagna'
+    await activateCampaignAndNavigate(item.campaignId, targetScreen)
+    closeCampaignPicker()
+  }
+
+  const activateCampaignAndNavigate = async (targetCampaignId: string, targetScreen: Screen) => {
+    await run('Campagna attivata', async () => {
+      rememberCampaignId(targetCampaignId)
+      setSelectedCampaignMember(null)
+      setSelectedCampaignMemberProfile(null)
+      setCharacterDetail(null)
+      setLastMissionAction(null)
+      setSelectedCharacterId('')
+      setSelectedMissionId('')
+      await loadCampaignBlockFor(targetCampaignId)
+      setScreen(targetScreen)
+    })
+  }
+
+  const leaveActiveCampaign = async () => {
+    if (!campaignId.trim()) return
+    await run('Uscita dalla campagna completata', async () => {
+      await leaveCampaign(campaignId)
+      rememberCampaignId('')
+      clearCampaignWorkspace()
+      setScreen('Lista Campagne')
+      closeLeaveCampaignModal()
+      await refreshProfile()
+    })
+  }
+
+  useEffect(() => {
+    if (!getAccessToken()) return
+    if (screen !== 'Approvazione Accessi') return
+    if (!campaignId.trim()) return
+    if (!canAccessCampaignManagement) return
+
+    let cancelled = false
+    void (async () => {
+      try {
+        await run('Richieste pending caricate', async () => {
+          await loadPendingForActiveCampaign()
+        })
+      } catch (err) {
+        if (cancelled) return
+        const message = toMessage(err)
+        setError(message)
+        addEvent(`Accessi: ${message}`, 'error')
+        if (isUnauthorized(err)) handleLogout()
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [screen, campaignId, canAccessCampaignManagement])
+
   const refreshMissions = async () => {
-    const activeCampaignId = campaignId.trim()
-    if (!activeCampaignId) return
-    const nextMissions = await listMissions(activeCampaignId, missionWindowSince())
+    const approvedCampaignIds = approvedCampaignMemberships.map((membership) => membership.campaignId)
+    if (approvedCampaignIds.length === 0) {
+      setMissions([])
+      setSelectedMissionId('')
+      return
+    }
+
+    const settled = await Promise.allSettled(
+      approvedCampaignIds.map(async (targetCampaignId) => {
+        const list = await listMissions(targetCampaignId, missionWindowSince())
+        return list.map((mission) => ({ ...mission, campaignId: targetCampaignId }))
+      }),
+    )
+
+    const combined = settled.flatMap((result) => (result.status === 'fulfilled' ? result.value : []))
+    const missionRank = (status: MissionStatus) => {
+      switch (status) {
+        case 'OPEN':
+          return 0
+        case 'REOPENED':
+          return 1
+        case 'CONFIRMED':
+          return 2
+        case 'CLOSED':
+          return 3
+        case 'CANCELLED':
+        default:
+          return 4
+      }
+    }
+    const nextMissions = combined.sort((left, right) => {
+      const statusDelta = missionRank(left.status) - missionRank(right.status)
+      if (statusDelta !== 0) return statusDelta
+      const leftClose = left.closesAt ? new Date(left.closesAt).getTime() : Number.POSITIVE_INFINITY
+      const rightClose = right.closesAt ? new Date(right.closesAt).getTime() : Number.POSITIVE_INFINITY
+      if (leftClose !== rightClose) return leftClose - rightClose
+      return right.createdAt.localeCompare(left.createdAt)
+    })
     setMissions(nextMissions)
     setSelectedMissionId((prev) => (nextMissions.some((item) => item.id === prev) ? prev : nextMissions[0]?.id || ''))
   }
 
-  const activateCampaign = async (item: MyCampaignMembershipResponse) => {
-    rememberCampaignId(item.campaignId)
-    rememberCampaignMeta(item.campaignId, item.campaignName)
-    setSelectedCampaignMember(null)
-    setSelectedCampaignMemberProfile(null)
-    await run('Campagna attivata', async () => {
-      await loadCampaignBlockFor(item.campaignId)
-    })
+  const refreshMissionCharacters = async () => {
+    const approvedCampaignIds = approvedCampaignMemberships.map((membership) => membership.campaignId)
+    if (approvedCampaignIds.length === 0) {
+      setMissionCharacters([])
+      return
+    }
+
+    const settled = await Promise.allSettled(approvedCampaignIds.map((targetCampaignId) => listCharacters(targetCampaignId)))
+    const combined = settled.flatMap((result) => (result.status === 'fulfilled' ? result.value : []))
+    const nextCharacters = combined.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+    setMissionCharacters(nextCharacters)
   }
 
-  const loadPendingForActiveCampaign = async () => {
-    if (!campaignId.trim()) return
-    const list = await listPendingApplications(campaignId)
-    setPendingApplications(list)
-  }
+  useEffect(() => {
+    if (!getAccessToken()) return
+    if (screen !== 'Missioni') return
+
+    let cancelled = false
+    void (async () => {
+      try {
+        await refreshMissions()
+      } catch (err) {
+        if (cancelled) return
+        const message = toMessage(err)
+        setError(message)
+        addEvent(`Missioni caricate: ${message}`, 'error')
+        if (isUnauthorized(err)) handleLogout()
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [screen, approvedCampaignMemberships, campaignId])
+
+  useEffect(() => {
+    if (!getAccessToken()) return
+    if (screen !== 'Missioni') return
+
+    let cancelled = false
+    void (async () => {
+      try {
+        await refreshMissionCharacters()
+      } catch (err) {
+        if (cancelled) return
+        const message = toMessage(err)
+        setError(message)
+        addEvent(`Personaggi missioni caricati: ${message}`, 'error')
+        if (isUnauthorized(err)) handleLogout()
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [screen, approvedCampaignMemberships, campaignId])
 
   const loadCharactersForManagement = async () => {
     const activeCampaignId = campaignId.trim()
@@ -742,6 +1012,12 @@ function App() {
     nextCharacters.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
     setCharacters(nextCharacters)
     setSelectedCharacterId((prev) => (nextCharacters.some((item) => item.id === prev) ? prev : nextCharacters[0]?.id || ''))
+  }
+
+  const loadPendingForActiveCampaign = async () => {
+    if (!campaignId.trim()) return
+    const list = await listPendingApplications(campaignId)
+    setPendingApplications(list)
   }
 
   const approvePendingForActiveCampaign = async (userId: string) => {
@@ -860,9 +1136,40 @@ function App() {
     myCampaigns.some((item) => item.campaignId === campaignId && item.memberStatus === 'APPROVED') ||
     campaignsForList.some((item) => item.id === campaignId && item.membershipStatus === 'APPROVED')
   useEffect(() => {
-    if (!CAMPAIGN_ACTIVE_REQUIRED_SCREENS.includes(screen)) return
-    if (!hasActiveCampaign) setScreen('Lista Campagne')
-  }, [screen, hasActiveCampaign])
+    if (hasActiveCampaign) return
+    if (screen !== 'Scheda Campagna' && screen !== 'Gestione Campagna' && screen !== 'Stanze') return
+    if (isCampaignPickerOpen && campaignPickerTarget === screen) return
+    openCampaignPicker(screen)
+  }, [screen, hasActiveCampaign, isCampaignPickerOpen, campaignPickerTarget])
+
+  useEffect(() => {
+    if (screen !== 'Approvazione Accessi') return
+    if (canAccessCampaignManagement) return
+    setScreen('Scheda Campagna')
+  }, [screen, canAccessCampaignManagement])
+
+  useEffect(() => {
+    if (!getAccessToken()) return
+    if (screen !== 'Scheda Campagna') return
+    if (!campaignId.trim()) return
+
+    let cancelled = false
+    void (async () => {
+      try {
+        await refreshCampaignBlock()
+      } catch (err) {
+        if (cancelled) return
+        const message = toMessage(err)
+        setError(message)
+        addEvent(`Scheda campagna: ${message}`, 'error')
+        if (isUnauthorized(err)) handleLogout()
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [screen, campaignId])
 
   useEffect(() => {
     if (screen !== 'Scheda PG') return
@@ -917,34 +1224,6 @@ function App() {
 
   useEffect(() => {
     if (!getAccessToken()) return
-    if (screen !== 'Scheda Campagna') return
-    if (!campaignId.trim()) return
-
-    let cancelled = false
-    void (async () => {
-      try {
-        const list = await listPendingApplications(campaignId)
-        if (!cancelled) setPendingApplications(list)
-      } catch (err) {
-        if (cancelled) return
-        if (err instanceof ApiError && (err.status === 403 || err.status === 404)) {
-          setPendingApplications([])
-          return
-        }
-        const message = toMessage(err)
-        setError(message)
-        addEvent(`Richieste pending: ${message}`, 'error')
-        if (isUnauthorized(err)) handleLogout()
-      }
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [screen, campaignId])
-
-  useEffect(() => {
-    if (!getAccessToken()) return
     if (screen !== 'Crea Campagna') return
 
     let cancelled = false
@@ -979,10 +1258,12 @@ function App() {
     setCampaign(null)
     setMembers([])
     setCampaignMembersForManagement([])
+    setPendingApplications([])
     setSelectedCampaignMember(null)
     setSelectedCampaignMemberProfile(null)
     setCharacters([])
     setMissions([])
+    setMissionCharacters([])
     setRooms([])
     setPermissions([])
     setCharacterDetail(null)
@@ -1000,23 +1281,10 @@ function App() {
   const isMenuScreenEnabled = (value: Screen) => {
     if (value === 'Scheda PG' && !selectedCharacter) return false
     if (value === 'Profilo Membro Campagna' && !selectedCampaignMember) return false
-    if (
-      (value === 'Scheda Campagna' ||
-        value === 'Approvazione Accessi' ||
-        value === 'Missioni' ||
-        value === 'Stanze' ||
-        value === 'Gestione Personaggi' ||
-        value === 'Gestione Campagna' ||
-        value === 'Seleziona PG' ||
-        value === 'Crea Personaggio') &&
-      !hasActiveCampaign
-    ) {
-      return false
-    }
+    if (value === 'Approvazione Accessi' && !canAccessCampaignManagement) return false
     return true
   }
   const campaignArea = isCampaignScope(screen)
-  const characterArea = isCharacterScope(screen)
   const activeCampaignMembership =
     myCampaigns.find((item) => item.campaignId === campaignId && item.memberStatus === 'APPROVED') ||
     (() => {
@@ -1075,6 +1343,7 @@ function App() {
     (activeCampaignMembership?.role === 'CO_MASTER' ||
       activeCampaignMembership?.role === 'MASTER' ||
       activeCampaignMembership?.role === 'SUPER_MASTER')
+  const canCreateRoom = hasActiveCampaign && (activeCampaignRole === 'MASTER' || activeCampaignRole === 'SUPER_MASTER')
   const activeCampaignLabel = campaign?.name || activeCampaignMembership?.campaignName || campaignId.trim() || 'campagna attiva'
   const selectedCharacterLabel = selectedCharacter?.name || characterDetail?.name || 'PG'
   const selectedMemberLabel =
@@ -1092,7 +1361,7 @@ function App() {
       case 'Profilo':
         return {
           title: SCREEN_LABELS[screen],
-          subtitle: 'Dati personali e lookup pubblico',
+          subtitle: 'Dati personali e impostazioni account',
           breadcrumbs: [{ label: SCREEN_LABELS[screen] }],
           backTarget: null as Screen | null,
         }
@@ -1272,66 +1541,104 @@ function App() {
       )}
 
       <aside className={`sidebar-drawer ${isSidebarOpen ? 'is-open' : ''}`}>
-        <div className="brand">
-          <div className="brand-mark">T</div>
-          <div>
-            <p className="brand-title">Taverna del Codice</p>
-            <p className="brand-subtitle">MVP no-chat</p>
+        <div className="sidebar-top">
+          <div className="brand">
+            <div className="brand-mark">
+              <Icon name="fa-solid fa-dungeon" />
+            </div>
+            <div>
+              <p className="brand-title">Taverna del Codice</p>
+              <p className="brand-subtitle">Interfaccia operativa</p>
+            </div>
           </div>
           <button type="button" className="drawer-close-btn" onClick={() => setIsSidebarOpen(false)}>
-            Chiudi
+            <Icon name="fa-solid fa-xmark" />
           </button>
         </div>
 
-        <div className="api-box">
-          <p className="muted">API</p>
-          <p className="api-url">{getApiBaseUrl()}</p>
+        <div className="sidebar-context">
+          <p className="sidebar-user-kicker">Campagna attiva</p>
+          <p className="sidebar-context-title">{hasActiveCampaign ? activeCampaignLabel : 'Nessuna campagna attiva'}</p>
         </div>
 
-        <nav className="menu compact-menu" aria-label="Navigazione principale">
-          {NAVIGATION_GROUPS.map((group) => (
-            <div key={group.label} className="menu-group">
-              <p className="menu-group-label">{group.label}</p>
-              <div className="menu-group-items">
-                {group.items.map((item) => (
+        <nav className="menu" aria-label="Navigazione principale">
+          {NAVIGATION_SECTIONS.map((section) => (
+            <section key={section.label} className="menu-section">
+              <div className="menu-section-head">
+                <div>
+                  <p className="menu-group-label">{section.label}</p>
+                  <p className="menu-section-description">{section.description}</p>
+                </div>
+              </div>
+              <div className={`menu-section-grid ${section.label === 'Strumenti' ? 'is-compact' : ''}`}>
+                {section.items.map((item) => (
                   <button
                     key={item}
                     type="button"
-                    className={`menu-item ${screen === item ? 'is-active' : ''} ${isMenuScreenEnabled(item) ? '' : 'is-disabled'}`}
-                    onClick={() => isMenuScreenEnabled(item) && goToScreen(item)}
+                    className={`menu-item ${screen === item ? 'is-active' : ''} ${requiresCampaignSelection(item) && !hasActiveCampaign ? 'is-gated' : ''} ${isMenuScreenEnabled(item) ? '' : 'is-disabled'}`}
+                    onClick={() => {
+                      if (!isMenuScreenEnabled(item)) return
+                      if (requiresCampaignSelection(item) && !hasActiveCampaign) {
+                        openCampaignPicker(item)
+                        return
+                      }
+                      goToScreen(item)
+                    }}
                     disabled={!isMenuScreenEnabled(item)}
-                    title={isMenuScreenEnabled(item) ? SCREEN_LABELS[item] : 'Disponibile solo quando il contesto richiesto è attivo'}
+                    title={
+                      !isMenuScreenEnabled(item)
+                        ? item === 'Scheda PG'
+                          ? 'Seleziona prima un personaggio'
+                          : item === 'Profilo Membro Campagna'
+                            ? 'Seleziona prima un membro'
+                          : item === 'Approvazione Accessi'
+                            ? 'Serve un ruolo di gestione campagna'
+                            : 'Seleziona prima un membro'
+                        : requiresCampaignSelection(item) && !hasActiveCampaign
+                          ? CAMPAIGN_REQUIRED_TOOLTIP
+                          : item === 'Approvazione Accessi' && pendingApplications.length > 0
+                            ? `${pendingApplications.length} richieste pending`
+                          : SCREEN_LABELS[item]
+                    }
                     aria-current={screen === item ? 'page' : undefined}
                   >
-                    {SCREEN_LABELS[item]}
+                    <span className="menu-item-icon">
+                      <Icon name={SCREEN_ICONS[item]} />
+                      {item === 'Approvazione Accessi' && pendingApplications.length > 0 && (
+                        <span className="menu-item-badge" aria-hidden="true">
+                          {pendingApplications.length}
+                        </span>
+                      )}
+                    </span>
+                    <span className="menu-item-text">{SCREEN_LABELS[item]}</span>
                   </button>
                 ))}
               </div>
-            </div>
+            </section>
           ))}
         </nav>
 
-        <div className="sidebar-user">
-          <p className="sidebar-user-kicker">Contesto attivo</p>
-          <p className="sidebar-user-context">{SCREEN_LABELS[screen]}</p>
-          <p className="sidebar-user-context-name">{activeCampaignLabel}</p>
-          <div className="sidebar-user-divider" />
-          <p className="sidebar-user-name">{profile.profileName}</p>
-          <p className="sidebar-user-handle">@{profile.username || 'utente'}</p>
+        <div className="sidebar-footer">
+          <button
+            type="button"
+            className="refresh-btn theme-toggle-btn sidebar-theme-toggle"
+            onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+          >
+            <Icon name={theme === 'light' ? 'fa-solid fa-moon' : 'fa-solid fa-sun'} />
+            <span>{theme === 'light' ? 'Tema scuro' : 'Tema chiaro'}</span>
+          </button>
+          <button type="button" className="logout-btn" onClick={handleLogout}>
+            <Icon name="fa-solid fa-right-from-bracket" />
+            <span>Logout</span>
+          </button>
         </div>
-
-        <button type="button" className="logout-btn" onClick={handleLogout}>
-          Logout
-        </button>
       </aside>
 
       <main className="main">
         <header className="topbar">
           <div className="topbar-title-row">
             <button type="button" className="menu-trigger" aria-label="Apri menu" onClick={() => setIsSidebarOpen(true)}>
-              <span aria-hidden="true" />
-              <span aria-hidden="true" />
-              <span aria-hidden="true" />
+              <Icon name="fa-solid fa-bars" />
             </button>
             <div className="page-heading">
               <nav className="breadcrumbs" aria-label="Percorso">
@@ -1340,9 +1647,14 @@ function App() {
                   const target = crumb.target
                   if (target && !isLast) {
                     return (
-                      <button key={`${crumb.label}-${index}`} type="button" className="breadcrumb-link" onClick={() => goToScreen(target)}>
-                        {crumb.label}
-                      </button>
+                      [
+                        <button key={`${crumb.label}-${index}`} type="button" className="breadcrumb-link" onClick={() => goToScreen(target)}>
+                          {crumb.label}
+                        </button>,
+                        <span key={`separator-${crumb.label}-${index}`} className="breadcrumb-separator" aria-hidden="true">
+                          <Icon name="fa-solid fa-chevron-right" />
+                        </span>,
+                      ]
                     )
                   }
                   return (
@@ -1352,63 +1664,37 @@ function App() {
                   )
                 })}
               </nav>
-              <h1>{pageContext.title}</h1>
-              <p>
-                {pageContext.subtitle || `Utente: ${profile.username || profile.profileName}`}
-                {campaignArea ? ` | Campagna attiva: ${activeCampaignName}` : ''}
-              </p>
             </div>
           </div>
           <div className="inline-actions topbar-actions">
-            <button type="button" className="refresh-btn theme-toggle-btn" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>
-              {theme === 'light' ? 'Tema scuro' : 'Tema chiaro'}
+            <button
+              type="button"
+              className="campaign-context-pill"
+              onClick={() => openCampaignPicker(campaignArea ? screen : screen === 'Gestione Campagna' ? 'Gestione Campagna' : 'Scheda Campagna')}
+            >
+              <span className="campaign-context-label">Campagna attiva</span>
+              <span className="campaign-context-name">{activeCampaignName}</span>
             </button>
             {pageContext.backTarget && (
               <button type="button" className="refresh-btn" onClick={() => goToScreen(pageContext.backTarget as Screen)}>
-                Indietro
+                <Icon name="fa-solid fa-arrow-left" />
+                <span>Indietro</span>
               </button>
             )}
             <button type="button" className="refresh-btn" disabled={busy} onClick={() => void refreshProfile()}>
-              Refresh profilo
+              <Icon name="fa-solid fa-rotate-right" />
+              <span>Refresh profilo</span>
             </button>
             {campaignArea && (
               <button type="button" className="refresh-btn" disabled={busy} onClick={() => void refreshCampaignBlock()}>
-                Refresh campagna
+                <Icon name="fa-solid fa-arrows-rotate" />
+                <span>Refresh campagna</span>
               </button>
             )}
           </div>
         </header>
 
         {error && <section className="panel error">{error}</section>}
-
-        {characterArea && hasActiveCampaign && (
-          <section className="panel">
-            <label>
-              Campaign ID attivo (richiesto dalle API per PG/NPC)
-              <input
-                value={campaignId}
-                onChange={(event) => rememberCampaignId(event.target.value)}
-                placeholder="id campagna"
-              />
-            </label>
-            {myCampaigns.length > 0 && (
-              <div className="chips">
-                {myCampaigns.map((item) => (
-                  <button
-                    key={item.campaignId}
-                    type="button"
-                    className={`chip ${campaignId === item.campaignId ? 'is-active' : ''}`}
-                    onClick={() => void activateCampaign(item)}
-                  >
-                    {item.campaignName} · {item.role}
-                    {campaignId === item.campaignId ? ' · Attiva' : ''}
-                  </button>
-                ))}
-              </div>
-            )}
-            {myCampaigns.length === 0 && <p className="muted">Nessuna campagna attiva per questo profilo.</p>}
-          </section>
-        )}
 
         {screen === 'Lista Campagne' && (
           <CampaignListPage
@@ -1421,17 +1707,14 @@ function App() {
               })
             }
             onOpenCampaign={(targetCampaignId) =>
-              run('Scheda campagna caricata', async () => {
-                const [campaignValue, memberValue, memberManagementValue] = await Promise.all([
-                  getCampaign(targetCampaignId),
-                  getCampaignMembers(targetCampaignId).catch(() => []),
-                  listCampaignMembersForManagement(targetCampaignId).catch(() => []),
-                ])
-                setCampaign(campaignValue)
-                rememberCampaignMeta(campaignValue.id, campaignValue.name)
-                setMembers(memberValue)
-                setCampaignMembersForManagement(memberManagementValue)
-                setScreen('Scheda Campagna')
+              void activateCampaignAndNavigate(targetCampaignId, 'Scheda Campagna')
+            }
+            onApplyCampaign={(targetCampaignId) =>
+              run('Richiesta accesso inviata', async () => {
+                await applyToCampaign(targetCampaignId)
+                const [discover, mine] = await Promise.all([discoverCampaigns(false), listMyCampaignMemberships()])
+                setDiscoverableCampaigns(discover)
+                setMyCampaigns(mine)
               })
             }
             onCreateCampaign={() => setScreen('Crea Campagna')}
@@ -1470,25 +1753,10 @@ function App() {
         {screen === 'Scheda Campagna' && (
           <CampaignDetailPage
             campaign={campaign}
+            currentUserId={profile.id}
             members={campaignMembersForManagement.length > 0 ? campaignMembersForManagement : members}
             memberNames={memberNames}
             onReload={() => void refreshCampaignBlock()}
-            pendingApplications={pendingApplications}
-            onLoadPending={() =>
-              run('Richieste pending caricate', async () => {
-                await loadPendingForActiveCampaign()
-              })
-            }
-            onApprove={(userId) =>
-              run('Approvazione utente completata', async () => {
-                await approvePendingForActiveCampaign(userId)
-              })
-            }
-            onReject={(userId) =>
-              run('Rifiuto utente completato', async () => {
-                await rejectPendingForActiveCampaign(userId)
-              })
-            }
             onOpenMember={(userId) =>
               run('Profilo membro caricato', async () => {
                 if (!campaignId.trim()) return
@@ -1502,28 +1770,13 @@ function App() {
               })
             }
             onOpenManagement={() =>
-              run('Campagna attivata', async () => {
-                if (!campaign?.id) return
-                rememberCampaignId(campaign.id)
-                await loadCampaignBlockFor(campaign.id)
-                setScreen('Gestione Campagna')
-              })
+              campaign?.id && void activateCampaignAndNavigate(campaign.id, 'Gestione Campagna')
             }
             onOpenSelectPg={() =>
-              run('Campagna attivata', async () => {
-                if (!campaign?.id) return
-                rememberCampaignId(campaign.id)
-                await loadCampaignBlockFor(campaign.id)
-                setScreen('Seleziona PG')
-              })
+              campaign?.id && void activateCampaignAndNavigate(campaign.id, 'Seleziona PG')
             }
             onOpenCharacters={() =>
-              run('Campagna attivata', async () => {
-                if (!campaign?.id) return
-                rememberCampaignId(campaign.id)
-                await loadCampaignBlockFor(campaign.id)
-                setScreen('Gestione Personaggi')
-              })
+              campaign?.id && void activateCampaignAndNavigate(campaign.id, 'Gestione Personaggi')
             }
             canManageMembers={canManageCampaignMembers}
             onApply={() =>
@@ -1536,13 +1789,9 @@ function App() {
               })
             }
             onActivate={() =>
-              campaign?.id &&
-              run('Campagna attivata', async () => {
-                rememberCampaignId(campaign.id)
-                const [mine] = await Promise.all([listMyCampaignMemberships(), loadCampaignBlockFor(campaign.id)])
-                setMyCampaigns(mine)
-              })
+              campaign?.id && void activateCampaignAndNavigate(campaign.id, 'Scheda Campagna')
             }
+            onLeaveCampaign={openLeaveCampaignModal}
             membershipStatus={campaign?.id ? campaignsForList.find((item) => item.id === campaign.id)?.membershipStatus || null : null}
             membershipRole={campaign?.id ? campaignsForList.find((item) => item.id === campaign.id)?.membershipRole || null : null}
           />
@@ -1572,13 +1821,14 @@ function App() {
         {screen === 'Missioni' && (
           <MissionsPage
             missions={missions}
+            missionCharacters={missionCharacters}
             selectedMission={selectedMission}
-            characters={characters}
             lastMissionAction={lastMissionAction}
-            canManageMissions={canManageMissions}
             canCreateMissions={canCreateMissions}
             currentUserId={profile?.id || ''}
+            activeCampaignId={campaignId.trim()}
             activeCampaignRole={activeCampaignRole}
+            campaignNameById={campaignNameById}
             onCreate={(payload) =>
               run('Missione creata', async () => {
                 const created = await createMission(campaignId, payload)
@@ -1587,47 +1837,47 @@ function App() {
               })
             }
             onSelectMission={setSelectedMissionId}
-            onReopen={(missionId) =>
+            onReopen={(mission) =>
               run('Missione riaperta', async () => {
-                await reopenMission(campaignId, missionId)
+                await reopenMission(mission.campaignId, mission.id)
                 await refreshMissions()
               })
             }
-            onClose={(missionId) =>
+            onClose={(mission) =>
               run('Missione chiusa', async () => {
-                await closeMission(campaignId, missionId)
+                await closeMission(mission.campaignId, mission.id)
                 await refreshMissions()
               })
             }
-            onUpdate={(missionId, payload) =>
+            onUpdate={(mission, payload) =>
               run('Missione aggiornata', async () => {
-                await updateMission(campaignId, missionId, payload)
+                await updateMission(mission.campaignId, mission.id, payload)
                 await refreshMissions()
               })
             }
-            onCancel={(missionId) =>
+            onCancel={(mission) =>
               run('Missione cancellata', async () => {
-                await cancelMission(campaignId, missionId)
+                await cancelMission(mission.campaignId, mission.id)
                 await refreshMissions()
               })
             }
-            onJoin={(missionId, characterId, participationType) =>
+            onJoin={(mission, characterId, participationType) =>
               run('Join missione completato', async () => {
-                const result = await joinMission(campaignId, missionId, { characterId, participationType })
+                const result = await joinMission(mission.campaignId, mission.id, { characterId, participationType })
                 setLastMissionAction(result)
                 await refreshMissions()
               })
             }
-            onLeave={(missionId) =>
+            onLeave={(mission) =>
               run('Leave missione completato', async () => {
-                const result = await leaveMission(campaignId, missionId)
+                const result = await leaveMission(mission.campaignId, mission.id)
                 setLastMissionAction(result)
                 await refreshMissions()
               })
             }
-            onUpdateParticipationType={(missionId, participationType) =>
+            onUpdateParticipationType={(mission, participationType) =>
               run('Ruolo missione aggiornato', async () => {
-                const result = await updateMissionParticipationType(campaignId, missionId, { participationType })
+                const result = await updateMissionParticipationType(mission.campaignId, mission.id, { participationType })
                 setLastMissionAction(result)
                 await refreshMissions()
               })
@@ -1638,6 +1888,7 @@ function App() {
         {screen === 'Stanze' && (
           <RoomsPage
             rooms={rooms}
+            canCreateRoom={canCreateRoom}
             onCreate={(payload) =>
               run('Stanza creata', async () => {
                 const created = await createRoom(campaignId, payload)
@@ -1652,12 +1903,6 @@ function App() {
         {screen === 'Profilo' && (
           <ProfilePage
             profile={profile}
-            onPublicLookup={(id) =>
-              run('Profilo pubblico caricato', async () => {
-                const publicProfile = await getPublicProfile(id)
-                addEvent(`Public profile ${publicProfile.id} caricato`, 'info')
-              })
-            }
             onGoEdit={() => setScreen('Modifica Profilo')}
           />
         )}
@@ -1763,13 +2008,11 @@ function App() {
                 setScreen('Lista Campagne')
               })
             }
-            onCheckPermission={(action) =>
-              run(`Permission check ${action}`, async () => {
-                const checked = await checkPermission(campaignId, action)
-                setPermissions((prev) => [
-                  checked,
-                  ...prev.filter((item) => item.action !== action),
-                ])
+            onRefreshPermissions={() =>
+              run('Checklist permessi aggiornata', async () => {
+                const actions = ['CREATE_ROOM', 'APPROVE_OR_REJECT_APPLICATIONS', 'TRANSFER_OWNERSHIP', 'MANAGE_CAMPAIGN_SETTINGS']
+                const settled = await Promise.all(actions.map(async (actionValue) => checkPermission(campaignId, actionValue)))
+                setPermissions(settled)
               })
             }
             onTransfer={(newOwnerId) =>
@@ -1778,11 +2021,8 @@ function App() {
                 setCampaign(updated)
               })
             }
-            onLeave={() =>
-              run('Leave campaign completato', async () => {
-                await leaveCampaign(campaignId)
-              })
-            }
+            currentUserId={profile.id}
+            onLeave={openLeaveCampaignModal}
           />
         )}
 
@@ -1908,6 +2148,31 @@ function App() {
             }
           />
         )}
+        {isCampaignPickerOpen && (
+          <CampaignPickerModal
+            campaigns={selectableCampaigns}
+            targetScreen={campaignPickerTarget}
+            busy={busy}
+            onClose={
+              !hasActiveCampaign && (campaignPickerTarget === 'Scheda Campagna' || campaignPickerTarget === 'Gestione Campagna')
+                ? closeCampaignPickerAndGoHome
+                : closeCampaignPicker
+            }
+            onSelect={(campaignItem) => void activateCampaignFromPicker(campaignItem)}
+          />
+        )}
+
+        {isLeaveCampaignOpen && (
+          <LeaveCampaignModal
+            context={{
+              campaignName: activeCampaignLabel,
+              characterWillBeRetired: activeCampaignMembership?.characterStatus === 'ACTIVE',
+            }}
+            busy={busy}
+            onClose={closeLeaveCampaignModal}
+            onConfirm={() => void leaveActiveCampaign()}
+          />
+        )}
       </main>
     </div>
   )
@@ -1959,13 +2224,14 @@ function AuthScreen({ onAuth }: { onAuth: (session: AuthSession) => Promise<void
           </div>
           <label>
             Username
-            <input required value={username} onChange={(event) => setUsername(event.target.value)} />
+            <input required value={username} placeholder="Il tuo username" onChange={(event) => setUsername(event.target.value)} />
           </label>
           <label>
             Password
             <input
               required
               type="password"
+              placeholder="Password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
             />
@@ -1974,11 +2240,11 @@ function AuthScreen({ onAuth }: { onAuth: (session: AuthSession) => Promise<void
             <>
               <label>
                 Profile Name
-                <input value={profileName} onChange={(event) => setProfileName(event.target.value)} />
+                <input value={profileName} placeholder="Nome profilo" onChange={(event) => setProfileName(event.target.value)} />
               </label>
               <label>
                 Bio
-                <textarea rows={3} value={bio} onChange={(event) => setBio(event.target.value)} />
+                <textarea rows={3} placeholder="Breve presentazione del tuo profilo" value={bio} onChange={(event) => setBio(event.target.value)} />
               </label>
             </>
           )}
@@ -1997,6 +2263,7 @@ function CampaignListPage({
   founderNames,
   onDiscover,
   onOpenCampaign,
+  onApplyCampaign,
   onCreateCampaign,
   activeCampaignName,
 }: {
@@ -2004,6 +2271,7 @@ function CampaignListPage({
   founderNames: Record<string, string>
   onDiscover: () => void
   onOpenCampaign: (campaignId: string) => void
+  onApplyCampaign: (campaignId: string) => void
   onCreateCampaign: () => void
   activeCampaignName: string
 }) {
@@ -2044,9 +2312,21 @@ function CampaignListPage({
                   )}
                 </div>
                 <div className="inline-actions campaign-item-actions">
-                  <button type="button" className="secondary-btn" onClick={() => onOpenCampaign(item.id)}>
-                    Apri scheda
-                  </button>
+                  {item.membershipStatus === 'APPROVED' && (
+                    <button type="button" className="secondary-btn" onClick={() => onOpenCampaign(item.id)}>
+                      Apri e attiva
+                    </button>
+                  )}
+                  {(item.membershipStatus === null || item.membershipStatus === 'REJECTED') && item.isOpen && (
+                    <button type="button" className="primary-btn" onClick={() => onApplyCampaign(item.id)}>
+                      Richiedi accesso
+                    </button>
+                  )}
+                  {(item.membershipStatus === null || item.membershipStatus === 'REJECTED') && !item.isOpen && (
+                    <button type="button" className="secondary-btn" disabled>
+                      Campagna chiusa
+                    </button>
+                  )}
                   {item.membershipStatus === 'PENDING' && (
                     <button type="button" className="secondary-btn" disabled>
                       Richiesta inviata
@@ -2117,25 +2397,25 @@ function CreateCampaignPage({
   return (
     <section className="panel">
       <h2>Crea Campagna</h2>
+        <label>
+          <FieldLabel icon="fa-solid fa-signature" label="Nome" />
+          <input value={name} placeholder="Nome della campagna" onChange={(event) => setName(event.target.value)} />
+        </label>
       <label>
-        Nome
-        <input value={name} onChange={(event) => setName(event.target.value)} />
+        <FieldLabel icon="fa-solid fa-align-left" label="Descrizione" />
+        <textarea rows={3} placeholder="Descrizione estesa della campagna" value={description} onChange={(event) => setDescription(event.target.value)} />
       </label>
       <label>
-        Descrizione
-        <textarea rows={3} value={description} onChange={(event) => setDescription(event.target.value)} />
-      </label>
-      <label>
-        Riassunto breve
-        <textarea rows={2} value={summary} onChange={(event) => setSummary(event.target.value)} maxLength={280} />
+        <FieldLabel icon="fa-solid fa-quote-right" label="Riassunto breve" />
+        <textarea rows={2} placeholder="Riassunto breve visibile in elenco" value={summary} onChange={(event) => setSummary(event.target.value)} maxLength={280} />
       </label>
       <div className="form-grid">
         <label>
-          Ambientazione
-          <textarea rows={3} value={setting} onChange={(event) => setSetting(event.target.value)} />
+          <FieldLabel icon="fa-solid fa-map-location-dot" label="Ambientazione" />
+          <textarea rows={3} placeholder="Ambientazione, mondo o contesto di gioco" value={setting} onChange={(event) => setSetting(event.target.value)} />
         </label>
         <label>
-          Tono
+          <FieldLabel icon="fa-solid fa-wand-magic-sparkles" label="Tono" />
           <select value={tone} onChange={(event) => setTone(event.target.value)}>
             <option value="">Seleziona tono</option>
             {CAMPAIGN_TONE_OPTIONS.map((toneOption) => (
@@ -2147,16 +2427,16 @@ function CreateCampaignPage({
         </label>
       </div>
       <label>
-        Regole
-        <textarea rows={3} value={rules} onChange={(event) => setRules(event.target.value)} />
+        <FieldLabel icon="fa-solid fa-gavel" label="Regole" />
+        <textarea rows={3} placeholder="Regole principali della campagna" value={rules} onChange={(event) => setRules(event.target.value)} />
       </label>
       <label>
-        Requisiti d'ingresso
-        <textarea rows={3} value={requirements} onChange={(event) => setRequirements(event.target.value)} />
+        <FieldLabel icon="fa-solid fa-door-open" label="Requisiti d'ingresso" />
+        <textarea rows={3} placeholder="Requisiti richiesti per entrare" value={requirements} onChange={(event) => setRequirements(event.target.value)} />
       </label>
       <label>
-        URL immagine copertina
-        <input value={coverImageUrl} onChange={(event) => setCoverImageUrl(event.target.value)} />
+        <FieldLabel icon="fa-solid fa-image" label="URL immagine copertina" />
+        <input value={coverImageUrl} placeholder="https://..." onChange={(event) => setCoverImageUrl(event.target.value)} />
       </label>
       <div className="multicheck-field">
         <p className="muted">Visibilità e accesso</p>
@@ -2231,6 +2511,7 @@ function CreateCampaignPage({
           })
         }
       >
+        <Icon name="fa-solid fa-plus" />
         Crea
       </button>
     </section>
@@ -2249,13 +2530,10 @@ function InfoBlock({ title, value }: { title: string; value: string | null }) {
 
 function CampaignDetailPage({
   campaign,
+  currentUserId,
   members,
   memberNames,
-  pendingApplications,
   onReload,
-  onLoadPending,
-  onApprove,
-  onReject,
   onOpenMember,
   onOpenManagement,
   onOpenSelectPg,
@@ -2263,17 +2541,15 @@ function CampaignDetailPage({
   canManageMembers,
   onApply,
   onActivate,
+  onLeaveCampaign,
   membershipStatus,
   membershipRole,
 }: {
   campaign: CampaignResponse | null
+  currentUserId: string
   members: CampaignMembershipResponse[]
   memberNames: Record<string, string>
-  pendingApplications: CampaignApplicationResponse[]
   onReload: () => void
-  onLoadPending: () => void
-  onApprove: (userId: string) => void
-  onReject: (userId: string) => void
   onOpenMember: (userId: string) => void
   onOpenManagement: () => void
   onOpenSelectPg: () => void
@@ -2281,6 +2557,7 @@ function CampaignDetailPage({
   canManageMembers: boolean
   onApply: () => void
   onActivate: () => void
+  onLeaveCampaign: () => void
   membershipStatus: CampaignMemberStatus | null
   membershipRole: CampaignRole | null
 }) {
@@ -2373,7 +2650,7 @@ function CampaignDetailPage({
           <div className="inline-actions">
             {membershipStatus === 'APPROVED' && (
               <button type="button" className="primary-btn" onClick={onActivate}>
-                Entra
+                Attiva campagna
               </button>
             )}
             {(membershipStatus === null || membershipStatus === 'REJECTED') && campaign.isOpen && (
@@ -2399,6 +2676,11 @@ function CampaignDetailPage({
             {membershipStatus === 'APPROVED' && (
               <button type="button" className="secondary-btn" onClick={onOpenCharacters}>
                 Gestione Personaggi
+              </button>
+            )}
+            {membershipStatus === 'APPROVED' && campaign?.founderId !== currentUserId && (
+              <button type="button" className="danger-btn" onClick={onLeaveCampaign}>
+                Esci dalla campagna
               </button>
             )}
           </div>
@@ -2482,34 +2764,6 @@ function CampaignDetailPage({
               {members.length > 0 && filteredMembers.length === 0 && (
                 <p className="muted">Nessun membro trovato con questo filtro.</p>
               )}
-              <div className="divider" />
-              <div className="row-between">
-                <h3 className="section-title">Richieste Pending</h3>
-                <button type="button" className="secondary-btn" onClick={onLoadPending}>
-                  Carica richieste pending
-                </button>
-              </div>
-              {pendingApplications.length === 0 && <p className="muted">Nessuna richiesta pending.</p>}
-              {pendingApplications.length > 0 && (
-                <ul className="list-reset">
-                  {pendingApplications.map((item) => (
-                    <li key={item.userId} className="line-item">
-                      <div>
-                        <p className="character-name">{item.profileName}</p>
-                        <p className="muted">@{item.username}</p>
-                      </div>
-                      <div className="inline-actions">
-                        <button type="button" className="primary-btn" onClick={() => onApprove(item.userId)}>
-                          Approva
-                        </button>
-                        <button type="button" className="secondary-btn" onClick={() => onReject(item.userId)}>
-                          Rifiuta
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
             </>
           )}
         </>
@@ -2533,9 +2787,9 @@ function ApprovalPage({
     <section className="panel">
       <h2>Approvazione Accessi</h2>
       <div className="row-between">
-        <p className="muted">Solo profili con permesso adeguato (MASTER/SUPER_MASTER o ADMIN).</p>
+        <p className="muted">Le richieste si caricano automaticamente quando entri in questa pagina.</p>
         <button type="button" className="secondary-btn" onClick={onLoadPending}>
-          Carica richieste pending
+          Aggiorna elenco
         </button>
       </div>
       {pendingApplications.length === 0 && <p className="muted">Nessuna richiesta pending.</p>}
@@ -2565,13 +2819,14 @@ function ApprovalPage({
 
 function MissionsPage({
   missions,
+  missionCharacters,
   selectedMission,
-  characters,
   lastMissionAction,
-  canManageMissions,
   canCreateMissions,
   currentUserId,
+  activeCampaignId,
   activeCampaignRole,
+  campaignNameById,
   onCreate,
   onSelectMission,
   onReopen,
@@ -2583,13 +2838,14 @@ function MissionsPage({
   onUpdateParticipationType,
 }: {
   missions: MissionResponse[]
+  missionCharacters: Character[]
   selectedMission: MissionResponse | null
-  characters: Character[]
   lastMissionAction: MissionParticipantResponse | null
-  canManageMissions: boolean
   canCreateMissions: boolean
   currentUserId: string
+  activeCampaignId: string
   activeCampaignRole: CampaignRole | null
+  campaignNameById: Record<string, string>
   onCreate: (payload: {
     title: string
     description: string
@@ -2601,10 +2857,10 @@ function MissionsPage({
     autoReopenOnDrop: boolean
   }) => void
   onSelectMission: (id: string) => void
-  onReopen: (missionId: string) => void
-  onClose: (missionId: string) => void
+  onReopen: (mission: MissionResponse) => void
+  onClose: (mission: MissionResponse) => void
   onUpdate: (
-    missionId: string,
+    mission: MissionResponse,
     payload: {
       title: string
       description: string
@@ -2616,10 +2872,10 @@ function MissionsPage({
       autoReopenOnDrop: boolean
     },
   ) => void
-  onCancel: (missionId: string) => void
-  onJoin: (missionId: string, characterId: string, participationType: 'TITOLARE' | 'NON_TITOLARE') => void
-  onLeave: (missionId: string) => void
-  onUpdateParticipationType: (missionId: string, participationType: 'TITOLARE' | 'NON_TITOLARE') => void
+  onCancel: (mission: MissionResponse) => void
+  onJoin: (mission: MissionResponse, characterId: string, participationType: 'TITOLARE' | 'NON_TITOLARE') => void
+  onLeave: (mission: MissionResponse) => void
+  onUpdateParticipationType: (mission: MissionResponse, participationType: 'TITOLARE' | 'NON_TITOLARE') => void
 }) {
   type MissionDraft = {
     title: string
@@ -2662,6 +2918,9 @@ function MissionsPage({
   const [editError, setEditError] = useState('')
   const [characterId, setCharacterId] = useState('')
   const [participationType, setParticipationType] = useState<'TITOLARE' | 'NON_TITOLARE'>('TITOLARE')
+  const [searchText, setSearchText] = useState('')
+  const [campaignFilter, setCampaignFilter] = useState<'all' | string>('all')
+  const [statusView, setStatusView] = useState<'joinable' | 'all'>('joinable')
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000)
@@ -2674,6 +2933,7 @@ function MissionsPage({
       setEditError('')
     }
     if (mode === 'create') {
+      setCreateDraft(defaultDraft())
       setCreateError('')
     }
   }, [mode, selectedMission])
@@ -2684,6 +2944,12 @@ function MissionsPage({
       setMode('browse')
     }
   }, [mode, selectedMission])
+
+  useEffect(() => {
+    if (mode !== 'create') return
+    if (canCreateMissions && activeCampaignId) return
+    setMode('browse')
+  }, [mode, canCreateMissions, activeCampaignId])
 
   const parseOptionalInt = (value: string): number | null => {
     const trimmed = value.trim()
@@ -2733,22 +2999,64 @@ function MissionsPage({
   }
 
   const selectedMissionIsJoinable = selectedMission?.status === 'OPEN' || selectedMission?.status === 'REOPENED'
-  const selectedMissionCanBeClosed = selectedMission ? selectedMission.status !== 'CLOSED' && selectedMission.status !== 'CANCELLED' : false
+  const selectedMissionCanBeClosed =
+    selectedMission && selectedMission.campaignId === activeCampaignId
+      ? selectedMission.status !== 'CLOSED' && selectedMission.status !== 'CANCELLED'
+      : false
   const selectedMissionCanBeReopened = selectedMission
-    ? selectedMission.status === 'CLOSED' || selectedMission.status === 'CONFIRMED'
+    ? selectedMission.campaignId === activeCampaignId && (selectedMission.status === 'CLOSED' || selectedMission.status === 'CONFIRMED')
     : false
   const selectedMissionCanBeEdited =
     !!selectedMission &&
+    selectedMission.campaignId === activeCampaignId &&
     selectedMission.status !== 'CANCELLED' &&
     !!currentUserId &&
     (selectedMission.createdBy === currentUserId
       ? activeCampaignRole === 'CO_MASTER' || activeCampaignRole === 'MASTER' || activeCampaignRole === 'SUPER_MASTER'
       : activeCampaignRole === 'SUPER_MASTER')
-  const selectedMissionCanBeCancelled = !!selectedMission && activeCampaignRole === 'SUPER_MASTER' && selectedMission.status !== 'CANCELLED'
+  const selectedMissionCanBeCancelled =
+    !!selectedMission && selectedMission.campaignId === activeCampaignId && activeCampaignRole === 'SUPER_MASTER' && selectedMission.status !== 'CANCELLED'
 
-  const activeCharacters = characters.filter(
-    (character) => !character.isNpc && character.characterStatus === 'ACTIVE',
+  const activeCharacters = useMemo(
+    () =>
+      missionCharacters.filter(
+        (character) => !character.isNpc && character.characterStatus === 'ACTIVE' && character.campaignId === selectedMission?.campaignId,
+      ),
+    [missionCharacters, selectedMission?.campaignId],
   )
+  const campaignOptions = useMemo(
+    () =>
+      Array.from(
+        new Map(
+          missions
+            .filter((mission) => mission.campaignId)
+            .map((mission) => [mission.campaignId as string, campaignNameById[mission.campaignId] || mission.campaignId]),
+        ).entries(),
+      ).map(([id, name]) => ({ id, name })),
+    [missions, campaignNameById],
+  )
+  const normalizedSearchText = searchText.trim().toLowerCase()
+  const filteredMissions = missions.filter((mission) => {
+    if (campaignFilter !== 'all' && mission.campaignId !== campaignFilter) return false
+    if (statusView === 'joinable' && mission.status !== 'OPEN' && mission.status !== 'REOPENED') return false
+    if (!normalizedSearchText) return true
+    const missionCampaignName = campaignNameById[mission.campaignId] || mission.campaignId
+    return (
+      mission.title.toLowerCase().includes(normalizedSearchText) ||
+      (mission.description || '').toLowerCase().includes(normalizedSearchText) ||
+      missionCampaignName.toLowerCase().includes(normalizedSearchText)
+    )
+  })
+
+  useEffect(() => {
+    if (activeCharacters.length === 0) {
+      if (characterId) setCharacterId('')
+      return
+    }
+    if (!activeCharacters.some((character) => character.id === characterId)) {
+      setCharacterId(activeCharacters[0]?.id || '')
+    }
+  }, [activeCharacters, characterId])
 
   const submitCreate = () => {
     const sessionIso = toIsoTimestamp(createDraft.sessionAt)
@@ -2782,7 +3090,7 @@ function MissionsPage({
     }
 
     setEditError('')
-    onUpdate(selectedMission.id, {
+    onUpdate(selectedMission, {
       title: editDraft.title,
       description: editDraft.description,
       isMultiSession: editDraft.isMultiSession,
@@ -2812,11 +3120,15 @@ function MissionsPage({
       </div>
       <div className="form-grid">
         <label>
-          Titolo sessione
-          <input value={draft.title} onChange={(event) => setDraft((prev) => ({ ...prev, title: event.target.value }))} />
+          <FieldLabel icon="fa-solid fa-pen-to-square" label="Titolo sessione" />
+          <input
+            value={draft.title}
+            placeholder="Titolo breve della sessione"
+            onChange={(event) => setDraft((prev) => ({ ...prev, title: event.target.value }))}
+          />
         </label>
         <label>
-          Giorno della sessione
+          <FieldLabel icon="fa-solid fa-calendar-day" label="Giorno della sessione" />
           <input
             type="datetime-local"
             step={900}
@@ -2826,16 +3138,17 @@ function MissionsPage({
         </label>
       </div>
       <label>
-        Descrizione
+        <FieldLabel icon="fa-solid fa-align-left" label="Descrizione" />
         <textarea
           rows={3}
+          placeholder="Obiettivo, contesto e dettagli utili della sessione"
           value={draft.description}
           onChange={(event) => setDraft((prev) => ({ ...prev, description: event.target.value }))}
         />
       </label>
       <div className="form-grid">
         <label>
-          Tempo prima della chiusura
+          <FieldLabel icon="fa-solid fa-hourglass-end" label="Tempo prima della chiusura" />
           <input
             type="datetime-local"
             step={900}
@@ -2844,20 +3157,22 @@ function MissionsPage({
           />
         </label>
         <label>
-          Quorum titolari
+          <FieldLabel icon="fa-solid fa-users" label="Quorum titolari" />
           <input
             value={draft.quorum}
             inputMode="numeric"
+            placeholder="3"
             onChange={(event) => setDraft((prev) => ({ ...prev, quorum: event.target.value }))}
           />
         </label>
       </div>
       <div className="form-grid">
         <label>
-          Max partecipanti
+          <FieldLabel icon="fa-solid fa-users-between-lines" label="Max partecipanti" />
           <input
             value={draft.maxParticipants}
             inputMode="numeric"
+            placeholder="5"
             onChange={(event) => setDraft((prev) => ({ ...prev, maxParticipants: event.target.value }))}
           />
         </label>
@@ -2881,6 +3196,7 @@ function MissionsPage({
       {error && <p className="form-error">{error}</p>}
       <div className="inline-actions mission-actions">
         <button type="button" className="primary-btn" onClick={onSubmit}>
+          <Icon name="fa-solid fa-floppy-disk" />
           {submitLabel}
         </button>
         <button
@@ -2891,6 +3207,7 @@ function MissionsPage({
             setMode('browse')
           }}
         >
+          <Icon name="fa-solid fa-xmark" />
           Annulla
         </button>
       </div>
@@ -2901,36 +3218,62 @@ function MissionsPage({
     <section className="panel mission-shell">
       <div className="panel-header mission-page-header">
         <div>
-          <h2>Sessioni</h2>
-          <p className="muted">Vedi le sessioni attuali, controlla la chiusura iscrizioni e modifica solo se hai il permesso.</p>
+          <h2>Missioni</h2>
+          <p className="muted">Cerca, filtra e joina le missioni aperte delle campagne a cui sei approvato.</p>
         </div>
         <div className="inline-actions">
-          {selectedMission && <MissionStatusBadge status={selectedMission.status} sessionAt={selectedMission.sessionAt} />}
-          {canCreateMissions && mode !== 'create' && (
+          {canCreateMissions && activeCampaignId && mode !== 'create' && (
             <button type="button" className="secondary-btn" onClick={() => setMode('create')}>
-              Nuova sessione
+              <Icon name="fa-solid fa-plus" />
+              Crea missione
             </button>
           )}
         </div>
       </div>
 
-      {canCreateMissions && mode === 'create' && (
-        <div className="subpanel mission-form-panel">{renderMissionForm(createDraft, setCreateDraft, createError, setCreateError, 'Crea sessione', submitCreate)}</div>
+      {canCreateMissions && activeCampaignId && mode === 'create' && (
+        <div className="subpanel mission-form-panel">{renderMissionForm(createDraft, setCreateDraft, createError, setCreateError, 'Crea missione', submitCreate)}</div>
       )}
+
+      <div className="mission-toolbar">
+        <label className="mission-search">
+          <FieldLabel icon="fa-solid fa-magnifying-glass" label="Cerca" />
+          <input value={searchText} onChange={(event) => setSearchText(event.target.value)} placeholder="Titolo, descrizione o campagna" />
+        </label>
+        <label className="mission-campaign-filter">
+          <FieldLabel icon="fa-solid fa-folder-open" label="Campagna" />
+          <select value={campaignFilter} onChange={(event) => setCampaignFilter(event.target.value)}>
+            <option value="all">Tutte</option>
+            {campaignOptions.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="segmented-btn-group mission-status-toggle">
+          <button type="button" className={`segmented-btn ${statusView === 'joinable' ? 'is-active' : ''}`} onClick={() => setStatusView('joinable')}>
+            Aperte
+          </button>
+          <button type="button" className={`segmented-btn ${statusView === 'all' ? 'is-active' : ''}`} onClick={() => setStatusView('all')}>
+            Tutte
+          </button>
+        </div>
+      </div>
 
       <div className="mission-grid">
         <div className="subpanel mission-block mission-list-block">
           <div className="row-between">
             <div>
-              <h3 className="section-title">Sessioni attuali</h3>
-              <p className="muted">Le sessioni in corso, chiuse e completate restano qui come storico operativo.</p>
+              <h3 className="section-title">Risultati</h3>
+              <p className="muted">Le missioni sono aggregate per tutte le campagne approvate.</p>
             </div>
-            <span className="mission-count">{missions.length}</span>
+            <span className="mission-count">{filteredMissions.length}</span>
           </div>
           <ul className="list-reset mission-list">
-            {missions.length === 0 && <li className="muted">Nessuna sessione presente.</li>}
-            {missions.map((mission) => (
-              <li key={mission.id}>
+            {filteredMissions.length === 0 && <li className="muted">Nessuna missione corrisponde ai filtri.</li>}
+            {filteredMissions.map((mission) => (
+              <li key={`${mission.campaignId}-${mission.id}`}>
                 <button
                   type="button"
                   className={`character-item mission-item ${selectedMission?.id === mission.id ? 'is-selected' : ''}`}
@@ -2951,50 +3294,20 @@ function MissionsPage({
                     <div className="mission-pill-row">
                       <span className="mission-meta-pill">
                         <span className="mission-mini-icon" aria-hidden="true">
+                          <Icon name="fa-solid fa-folder-open" />
+                        </span>
+                        <span>
+                          <strong>Campagna</strong>
+                          <span>{campaignNameById[mission.campaignId] || mission.campaignId}</span>
+                        </span>
+                      </span>
+                      <span className="mission-meta-pill">
+                        <span className="mission-mini-icon" aria-hidden="true">
                           <MissionTinyIcon kind="clock" />
                         </span>
                         <span>
-                          <strong>Tempo prima della chiusura</strong>
+                          <strong>Chiusura</strong>
                           <span>{formatCountdown(mission.closesAt)}</span>
-                        </span>
-                      </span>
-                      <span className="mission-meta-pill">
-                        <span className="mission-mini-icon" aria-hidden="true">
-                          <MissionTinyIcon kind="calendar" />
-                        </span>
-                        <span>
-                          <strong>Giorno della sessione</strong>
-                          <span>{formatMissionDay(mission.sessionAt)}</span>
-                        </span>
-                      </span>
-                    </div>
-
-                    <div className="mission-pill-row">
-                      <span className="mission-meta-pill">
-                        <span className="mission-mini-icon" aria-hidden="true">
-                          <MissionTinyIcon kind="group" />
-                        </span>
-                        <span>
-                          <strong>Cap</strong>
-                          <span>{mission.maxParticipants ?? '∞'}</span>
-                        </span>
-                      </span>
-                      <span className="mission-meta-pill">
-                        <span className="mission-mini-icon" aria-hidden="true">
-                          <MissionTinyIcon kind="target" />
-                        </span>
-                        <span>
-                          <strong>Quorum</strong>
-                          <span>{mission.quorum ?? 'Manuale'}</span>
-                        </span>
-                      </span>
-                      <span className="mission-meta-pill">
-                        <span className="mission-mini-icon" aria-hidden="true">
-                          <MissionTinyIcon kind={mission.autoReopenOnDrop ? 'repeat' : 'clock'} />
-                        </span>
-                        <span>
-                          <strong>Riapertura</strong>
-                          <span>{mission.autoReopenOnDrop ? 'Automatica' : 'Bloccata'}</span>
                         </span>
                       </span>
                     </div>
@@ -3008,13 +3321,14 @@ function MissionsPage({
         <div className="subpanel mission-block mission-detail-block">
           {selectedMission ? (
             mode === 'edit' && selectedMissionCanBeEdited ? (
-              renderMissionForm(editDraft, setEditDraft, editError, setEditError, 'Modifica sessione', submitEdit)
+              renderMissionForm(editDraft, setEditDraft, editError, setEditError, 'Modifica missione', submitEdit)
             ) : (
               <>
                 <div className="row-between mission-detail-head">
                   <div>
                     <h3 className="section-title">{selectedMission.title}</h3>
                     <p className="muted">{selectedMission.description || 'Nessuna descrizione'}</p>
+                    <p className="muted">Campagna: {campaignNameById[selectedMission.campaignId] || selectedMission.campaignId}</p>
                   </div>
                   <MissionStatusBadge status={selectedMission.status} sessionAt={selectedMission.sessionAt} />
                 </div>
@@ -3023,6 +3337,10 @@ function MissionsPage({
                   <div className="info-block">
                     <p className="field-label">Stato sessione</p>
                     <p>{selectedMission.status === 'CONFIRMED' && selectedMission.sessionAt && new Date(selectedMission.sessionAt).getTime() <= now ? 'COMPLETATA' : selectedMission.status === 'CLOSED' ? 'CHIUSA' : selectedMission.status === 'CANCELLED' ? 'ANNULLATA' : 'ATTIVA'}</p>
+                  </div>
+                  <div className="info-block">
+                    <p className="field-label">Campagna</p>
+                    <p>{campaignNameById[selectedMission.campaignId] || selectedMission.campaignId}</p>
                   </div>
                   <div className="info-block">
                     <p className="field-label">Tempo prima della chiusura</p>
@@ -3044,8 +3362,8 @@ function MissionsPage({
 
                 <div className="card-section-header">
                   <div>
-                    <h4 className="section-title">Gestione sessione</h4>
-                    <p className="muted">Qui trovi le azioni di gestione e le iscrizioni dei PG.</p>
+                    <h4 className="section-title">Azioni sessione</h4>
+                    <p className="muted">Le azioni di gestione restano vincolate alla campagna attiva della sessione selezionata.</p>
                   </div>
                 </div>
 
@@ -3059,39 +3377,39 @@ function MissionsPage({
                         setMode('edit')
                       }}
                     >
-                      Modifica sessione
+                      Modifica missione
                     </button>
                   )}
-                  {canManageMissions && selectedMissionCanBeClosed && (
-                    <button type="button" className="secondary-btn" onClick={() => onClose(selectedMission.id)}>
-                      Chiudi sessione
+                  {selectedMissionCanBeClosed && (
+                    <button type="button" className="secondary-btn" onClick={() => onClose(selectedMission)}>
+                      Chiudi missione
                     </button>
                   )}
-                  {canManageMissions && selectedMissionCanBeReopened && (
-                    <button type="button" className="secondary-btn" onClick={() => onReopen(selectedMission.id)}>
-                      Riapri sessione
+                  {selectedMissionCanBeReopened && (
+                    <button type="button" className="secondary-btn" onClick={() => onReopen(selectedMission)}>
+                      Riapri missione
                     </button>
                   )}
                   {selectedMissionCanBeCancelled && (
-                    <button type="button" className="danger-btn" onClick={() => onCancel(selectedMission.id)}>
-                      CANCELLA SESSIONE
+                    <button type="button" className="danger-btn" onClick={() => onCancel(selectedMission)}>
+                      Cancella missione
                     </button>
                   )}
-                  <button type="button" className="secondary-btn" onClick={() => onLeave(selectedMission.id)}>
-                    Esci dalla sessione
+                  <button type="button" className="secondary-btn" onClick={() => onLeave(selectedMission)}>
+                    Esci dalla missione
                   </button>
                 </div>
 
                 <div className="card-section-header">
                   <div>
                     <h4 className="section-title">Iscrizione PG</h4>
-                    <p className="muted">Seleziona un personaggio attivo e poi scegli se segnarti titolare o panchina.</p>
+                    <p className="muted">Scegli un personaggio attivo della campagna della missione e poi conferma il ruolo.</p>
                   </div>
                 </div>
 
                 <div className="form-grid mission-join-grid">
                   <label>
-                    Personaggio attivo
+                    <FieldLabel icon="fa-solid fa-user" label="Personaggio attivo" />
                     <select value={characterId} onChange={(event) => setCharacterId(event.target.value)}>
                       <option value="">seleziona</option>
                       {activeCharacters.map((character) => (
@@ -3102,7 +3420,7 @@ function MissionsPage({
                     </select>
                   </label>
                   <label>
-                    Ruolo
+                    <FieldLabel icon="fa-solid fa-tag" label="Ruolo" />
                     <select
                       value={participationType}
                       onChange={(event) => setParticipationType(event.target.value as 'TITOLARE' | 'NON_TITOLARE')}
@@ -3113,12 +3431,17 @@ function MissionsPage({
                   </label>
                 </div>
 
+                {!selectedMissionIsJoinable && <p className="muted mission-last-action">La missione non è al momento aperta al join.</p>}
+                {selectedMissionIsJoinable && activeCharacters.length === 0 && (
+                  <p className="muted mission-last-action">Nessun personaggio attivo disponibile nella campagna di questa missione.</p>
+                )}
+
                 <div className="inline-actions mission-actions">
                   <button
                     type="button"
                     className="primary-btn"
                     disabled={!characterId || !selectedMissionIsJoinable}
-                    onClick={() => characterId && onJoin(selectedMission.id, characterId, 'TITOLARE')}
+                    onClick={() => characterId && onJoin(selectedMission, characterId, 'TITOLARE')}
                   >
                     Segnati titolare
                   </button>
@@ -3126,14 +3449,14 @@ function MissionsPage({
                     type="button"
                     className="secondary-btn"
                     disabled={!characterId || !selectedMissionIsJoinable}
-                    onClick={() => characterId && onJoin(selectedMission.id, characterId, 'NON_TITOLARE')}
+                    onClick={() => characterId && onJoin(selectedMission, characterId, 'NON_TITOLARE')}
                   >
                     Segnati panchina
                   </button>
                   <button
                     type="button"
                     className="secondary-btn"
-                    onClick={() => onUpdateParticipationType(selectedMission.id, participationType)}
+                    onClick={() => onUpdateParticipationType(selectedMission, participationType)}
                   >
                     Aggiorna solo ruolo
                   </button>
@@ -3150,8 +3473,8 @@ function MissionsPage({
             )
           ) : (
             <>
-              <h3 className="section-title">Dettaglio sessione</h3>
-              <p className="muted">Seleziona una sessione dalla lista per vedere i dettagli, il countdown e le azioni disponibili.</p>
+              <h3 className="section-title">Dettaglio missione</h3>
+              <p className="muted">Seleziona una missione dalla lista per vedere i dettagli, il countdown e le azioni disponibili.</p>
             </>
           )}
         </div>
@@ -3162,9 +3485,11 @@ function MissionsPage({
 
 function RoomsPage({
   rooms,
+  canCreateRoom,
   onCreate,
 }: {
   rooms: RoomResponse[]
+  canCreateRoom: boolean
   onCreate: (payload: { name: string; type: 'ROLEPLAY' | 'SPAM'; ttlHours: number; slowmodeSeconds: number }) => void
 }) {
   const [name, setName] = useState('Piazza Centrale')
@@ -3175,48 +3500,62 @@ function RoomsPage({
   return (
     <section className="panel">
       <h2>Stanze</h2>
-      <div className="form-grid">
-        <label>
-          Nome
-          <input value={name} onChange={(event) => setName(event.target.value)} />
-        </label>
-        <label>
-          Tipo
-          <select value={type} onChange={(event) => setType(event.target.value as 'ROLEPLAY' | 'SPAM')}>
-            <option value="ROLEPLAY">ROLEPLAY</option>
-            <option value="SPAM">SPAM</option>
-          </select>
-        </label>
-      </div>
-      <div className="form-grid">
-        <label>
-          TTL hours
-          <input
-            type="number"
-            min={1}
-            max={72}
-            value={ttlHours}
-            onChange={(event) => setTtlHours(Number(event.target.value))}
-          />
-        </label>
-        <label>
-          Slowmode seconds
-          <input
-            type="number"
-            min={0}
-            max={600}
-            value={slowmodeSeconds}
-            onChange={(event) => setSlowmodeSeconds(Number(event.target.value))}
-          />
-        </label>
-      </div>
-      <button
-        type="button"
-        className="primary-btn"
-        onClick={() => onCreate({ name, type, ttlHours, slowmodeSeconds })}
-      >
-        Crea Stanza
-      </button>
+      {canCreateRoom ? (
+        <>
+          <div className="form-grid">
+            <label>
+              <FieldLabel icon="fa-solid fa-signature" label="Nome" />
+              <input value={name} placeholder="Nome della stanza" onChange={(event) => setName(event.target.value)} />
+            </label>
+            <label>
+              <FieldLabel icon="fa-solid fa-layer-group" label="Tipo" />
+              <select value={type} onChange={(event) => setType(event.target.value as 'ROLEPLAY' | 'SPAM')}>
+                <option value="ROLEPLAY">ROLEPLAY</option>
+                <option value="SPAM">SPAM</option>
+              </select>
+            </label>
+          </div>
+          <div className="form-grid">
+            <label>
+              <FieldLabel icon="fa-solid fa-hourglass-half" label="TTL hours" />
+              <input
+                type="number"
+                min={1}
+                max={72}
+                placeholder="72"
+                value={ttlHours}
+                onChange={(event) => setTtlHours(Number(event.target.value))}
+              />
+            </label>
+            <label>
+              <FieldLabel icon="fa-solid fa-stopwatch" label="Slowmode seconds" />
+              <input
+                type="number"
+                min={0}
+                max={600}
+                placeholder="0"
+                value={slowmodeSeconds}
+                onChange={(event) => setSlowmodeSeconds(Number(event.target.value))}
+              />
+            </label>
+          </div>
+          <button
+            type="button"
+            className="primary-btn"
+            onClick={() => onCreate({ name, type, ttlHours, slowmodeSeconds })}
+          >
+            <Icon name="fa-solid fa-circle-plus" />
+            Crea Stanza
+          </button>
+        </>
+      ) : (
+        <div className="info-box">
+          <p className="section-title">Creazione non disponibile</p>
+          <p className="muted">
+            Solo i ruoli <strong>MASTER</strong> e <strong>SUPER_MASTER</strong> possono creare stanze.
+          </p>
+        </div>
+      )}
 
       <div className="divider" />
       <h3 className="section-title">Elenco Stanze</h3>
@@ -3240,9 +3579,7 @@ function NotificationsPage({ events }: { events: UiEvent[] }) {
   return (
     <section className="panel">
       <h2>Notifiche</h2>
-      <p className="muted">
-        Feed locale basato su azioni API client. <strong>{DEV_REMOVE_TAG}</strong>
-      </p>
+      <p className="muted">Feed locale basato su azioni API client.</p>
       <ul className="list-reset">
         {events.map((event) => (
           <li key={event.id} className="line-item">
@@ -3257,37 +3594,197 @@ function NotificationsPage({ events }: { events: UiEvent[] }) {
   )
 }
 
+function CampaignPickerModal({
+  campaigns,
+  targetScreen,
+  busy,
+  onClose,
+  onSelect,
+}: {
+  campaigns: CampaignPickerCampaign[]
+  targetScreen: Screen | null
+  busy: boolean
+  onClose: () => void
+  onSelect: (campaign: CampaignPickerCampaign) => void
+}) {
+  return (
+    <div className="modal-backdrop">
+      <div className="modal-panel campaign-picker-panel">
+        <div className="modal-panel-head">
+          <div>
+            <h3>Seleziona campagna</h3>
+            <p className="muted">
+              {targetScreen
+                ? `Carica prima una campagna per aprire ${SCREEN_LABELS[targetScreen].toLowerCase()}.`
+                : 'Scegli una campagna attiva per continuare.'}
+            </p>
+          </div>
+          <button type="button" className="drawer-close-btn" onClick={onClose}>
+            <Icon name="fa-solid fa-xmark" />
+          </button>
+        </div>
+
+        {campaigns.length > 0 ? (
+          <div className="campaign-picker-list">
+            {campaigns.map((campaign) => (
+              <button
+                key={campaign.campaignId}
+                type="button"
+                className="campaign-picker-item"
+                onClick={() => onSelect(campaign)}
+                disabled={busy}
+              >
+                <div className="campaign-picker-main">
+                  <p className="campaign-picker-name">{campaign.campaignName}</p>
+                  <p className="campaign-picker-meta">{campaign.role.replaceAll('_', ' ')}</p>
+                </div>
+                <Icon name="fa-solid fa-chevron-right" className="campaign-picker-icon" />
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="muted">Nessuna campagna approvata disponibile per l’attivazione.</p>
+        )}
+
+        <div className="inline-actions">
+          <button type="button" className="secondary-btn" onClick={onClose} disabled={busy}>
+            Annulla
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function LeaveCampaignModal({
+  context,
+  busy,
+  onClose,
+  onConfirm,
+}: {
+  context: LeaveCampaignContext
+  busy: boolean
+  onClose: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <div className="modal-backdrop">
+      <div className="modal-panel campaign-leave-panel">
+        <div className="modal-panel-head">
+          <div>
+            <h3>Esci dalla campagna</h3>
+            <p className="muted">
+              Stai per lasciare <strong>{context.campaignName}</strong>.
+            </p>
+          </div>
+          <button type="button" className="drawer-close-btn" onClick={onClose} disabled={busy}>
+            <Icon name="fa-solid fa-xmark" />
+          </button>
+        </div>
+
+        <div className="leave-warning-box">
+          <p className="leave-warning-title">Operazione irreversibile nel contesto attivo</p>
+          <p className="muted">
+            La tua membership verrà disattivata.
+            {context.characterWillBeRetired
+              ? ' Il tuo personaggio attivo in questa campagna verrà ritirato.'
+              : ' Non hai un personaggio attivo in questa campagna, quindi verrà solo rimosso il contesto.'}
+            Dopo l’uscita non potrai più usare questa campagna come contesto attivo finché non avrai una nuova membership approvata.
+          </p>
+        </div>
+
+        <div className="inline-actions">
+          <button type="button" className="secondary-btn" onClick={onClose} disabled={busy}>
+            Annulla
+          </button>
+          <button type="button" className="danger-btn" onClick={onConfirm} disabled={busy}>
+            Esci dalla campagna
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ProfilePage({
   profile,
-  onPublicLookup,
   onGoEdit,
 }: {
   profile: UserProfile
-  onPublicLookup: (userId: string) => void
   onGoEdit: () => void
 }) {
-  const [userId, setUserId] = useState('')
+  const displayValue = (value: string | null | undefined) => (value && value.trim() ? value : 'Non impostato')
+  const avatarLabel = profile.profileName?.trim() || profile.username?.trim() || 'U'
   return (
-    <section className="panel">
-      <h2>Profilo</h2>
-      <p>
-        <strong>{profile.username || profile.profileName}</strong>
-      </p>
-      <p className="muted">{profile.bio || 'Nessuna bio'}</p>
-      <p className="muted">Whatsapp: {profile.whatsapp || '-'}</p>
-      <div className="inline-actions">
-        <button type="button" className="primary-btn" onClick={onGoEdit}>
-          Modifica Profilo
-        </button>
+    <section className="panel profile-shell">
+      <div className="profile-header">
+        <div className="profile-avatar" aria-hidden="true">
+          {avatarLabel.slice(0, 2).toUpperCase()}
+        </div>
+        <div className="profile-header-copy">
+          <p className="profile-kicker">Profilo utente</p>
+          <h2>{displayValue(profile.profileName)}</h2>
+          <p className="muted">{displayValue(profile.username ? `@${profile.username}` : null)}</p>
+        </div>
+        <div className="profile-header-actions">
+          <button type="button" className="primary-btn" onClick={onGoEdit}>
+            <Icon name="fa-solid fa-pen-to-square" />
+            <span>Modifica profilo</span>
+          </button>
+        </div>
       </div>
-      <div className="divider" />
-      <label>
-        Lookup profilo pubblico per userId
-        <input value={userId} onChange={(event) => setUserId(event.target.value)} />
-      </label>
-      <button type="button" className="secondary-btn" onClick={() => onPublicLookup(userId)}>
-        Carica pubblico
-      </button>
+
+      <div className="profile-grid">
+        <article className="profile-card">
+          <div className="profile-card-head">
+            <Icon name="fa-solid fa-user" className="profile-card-icon" />
+            <p className="profile-card-label">Nome profilo</p>
+          </div>
+          <p className="profile-card-value">{displayValue(profile.profileName)}</p>
+        </article>
+
+        <article className="profile-card">
+          <div className="profile-card-head">
+            <Icon name="fa-solid fa-at" className="profile-card-icon" />
+            <p className="profile-card-label">Username</p>
+          </div>
+          <p className="profile-card-value">{displayValue(profile.username ? `@${profile.username}` : null)}</p>
+        </article>
+
+        <article className="profile-card profile-card-wide">
+          <div className="profile-card-head">
+            <Icon name="fa-solid fa-quote-left" className="profile-card-icon" />
+            <p className="profile-card-label">Bio</p>
+          </div>
+          <p className="profile-card-value profile-card-body">{displayValue(profile.bio)}</p>
+        </article>
+
+        <article className="profile-card">
+          <div className="profile-card-head">
+            <Icon name="fa-solid fa-phone" className="profile-card-icon" />
+            <p className="profile-card-label">WhatsApp</p>
+          </div>
+          <p className="profile-card-value">{displayValue(profile.whatsapp)}</p>
+        </article>
+
+        <article className="profile-card">
+          <div className="profile-card-head">
+            <Icon name="fa-brands fa-instagram" className="profile-card-icon" />
+            <p className="profile-card-label">Instagram</p>
+          </div>
+          <p className="profile-card-value">{displayValue(profile.socialLinks.instagram)}</p>
+        </article>
+
+        <article className="profile-card profile-card-wide">
+          <div className="profile-card-head">
+            <Icon name="fa-solid fa-link" className="profile-card-icon" />
+            <p className="profile-card-label">Altro social</p>
+          </div>
+          <p className="profile-card-value">{displayValue(profile.socialLinks.other)}</p>
+        </article>
+      </div>
+
+      <p className="profile-footnote muted">I campi vuoti vengono mostrati esplicitamente per evitare ambiguità nel profilo.</p>
     </section>
   )
 }
@@ -3310,45 +3807,51 @@ function EditProfilePage({
       <h2>Modifica Profilo</h2>
       <div className="form-grid">
         <label>
-          Profile Name
+          <FieldLabel icon="fa-solid fa-user" label="Profile Name" />
           <input
+            placeholder="Nome profilo"
             value={draft.profileName}
             onChange={(event) => setDraft((prev) => ({ ...prev, profileName: event.target.value }))}
           />
         </label>
         <label>
-          WhatsApp
+          <FieldLabel icon="fa-brands fa-whatsapp" label="WhatsApp" />
           <input
+            placeholder="Numero o contatto WhatsApp"
             value={draft.whatsapp}
             onChange={(event) => setDraft((prev) => ({ ...prev, whatsapp: event.target.value }))}
           />
         </label>
       </div>
-      <label>
-        Bio
-        <textarea
-          rows={4}
-          value={draft.bio}
-          onChange={(event) => setDraft((prev) => ({ ...prev, bio: event.target.value }))}
-        />
+        <label>
+          <FieldLabel icon="fa-solid fa-quote-left" label="Bio" />
+          <textarea
+            rows={4}
+            placeholder="Breve presentazione del tuo profilo"
+            value={draft.bio}
+            onChange={(event) => setDraft((prev) => ({ ...prev, bio: event.target.value }))}
+          />
       </label>
       <div className="form-grid">
         <label>
-          Instagram
+          <FieldLabel icon="fa-brands fa-instagram" label="Instagram" />
           <input
+            placeholder="@account instagram"
             value={draft.instagram}
             onChange={(event) => setDraft((prev) => ({ ...prev, instagram: event.target.value }))}
           />
         </label>
         <label>
-          Altro social
+          <FieldLabel icon="fa-solid fa-link" label="Altro social" />
           <input
+            placeholder="Link o nickname"
             value={draft.otherSocial}
             onChange={(event) => setDraft((prev) => ({ ...prev, otherSocial: event.target.value }))}
           />
         </label>
       </div>
       <button type="button" className="primary-btn" onClick={() => onSave(draft)}>
+        <Icon name="fa-solid fa-floppy-disk" />
         Salva
       </button>
     </section>
@@ -3534,7 +4037,7 @@ function CharacterListPage({
               <div>
                 <p className="character-name">
                   <span className="char-kind-icon" aria-hidden="true">
-                    {character.isNpc ? '🎭' : '🧙'}
+                    <Icon name={character.isNpc ? 'fa-solid fa-mask' : 'fa-solid fa-user'} />
                   </span>{' '}
                   {character.name}
                 </p>
@@ -3548,7 +4051,7 @@ function CharacterListPage({
                 aria-label={canOpen ? 'Modificabile' : 'Non modificabile'}
                 title={canOpen ? 'Modificabile' : 'Non modificabile'}
               >
-                {canOpen ? '✎' : '🔒'}
+                <Icon name={canOpen ? 'fa-solid fa-pen' : 'fa-solid fa-lock'} />
               </span>
               <span className={`status status-${statusTone(character.characterStatus)}`}>
                 {character.characterStatus || 'N/A'}
@@ -3605,7 +4108,7 @@ function CharacterDetailPage({
           <p>
             <strong>
               <span className="char-kind-icon" aria-hidden="true">
-                {value.isNpc ? '🎭' : '🧙'}
+                <Icon name={value.isNpc ? 'fa-solid fa-mask' : 'fa-solid fa-user'} />
               </span>{' '}
               {value.name}
             </strong>
@@ -3690,10 +4193,11 @@ function CampaignMemberProfilePage({
   }
 
   return (
-    <section className="panel">
+      <section className="panel">
       <div className="row-between">
         <h2>Profilo Membro Campagna</h2>
         <button type="button" className="secondary-btn" onClick={onRefresh}>
+          <Icon name="fa-solid fa-rotate-right" />
           Reload
         </button>
       </div>
@@ -3709,7 +4213,7 @@ function CampaignMemberProfilePage({
       <div className="divider" />
       <div className="form-grid">
         <label>
-          Ruolo campagna
+          <FieldLabel icon="fa-solid fa-shield-halved" label="Ruolo campagna" />
           <select value={role} onChange={(event) => setRole(event.target.value as CampaignRole)}>
             {roleOptions.map((option) => (
               <option key={option} value={option}>
@@ -3720,6 +4224,7 @@ function CampaignMemberProfilePage({
         </label>
         <div className="inline-actions">
           <button type="button" className="primary-btn" onClick={() => onUpdateRole(role)}>
+            <Icon name="fa-solid fa-user-gear" />
             Aggiorna ruolo
           </button>
         </div>
@@ -3728,26 +4233,31 @@ function CampaignMemberProfilePage({
       <div className="inline-actions">
         {(membership.memberStatus === 'PENDING' || membership.memberStatus === 'REJECTED') && (
           <button type="button" className="primary-btn" onClick={onApprove}>
+            <Icon name="fa-solid fa-user-check" />
             Accetta utente
           </button>
         )}
         {membership.memberStatus === 'APPROVED' && (
           <button type="button" className="secondary-btn" onClick={() => openModerationModal('suspend')}>
+            <Icon name="fa-solid fa-user-slash" />
             Sospendi utente
           </button>
         )}
         {membership.memberStatus === 'BLOCKED' && (
           <button type="button" className="secondary-btn" onClick={onUnsuspend}>
+            <Icon name="fa-solid fa-unlock" />
             Sblocca sospensione
           </button>
         )}
         {membership.memberStatus !== 'BANNED' && membership.memberStatus !== 'PENDING' && (
           <button type="button" className="secondary-btn" onClick={() => openModerationModal('ban')}>
+            <Icon name="fa-solid fa-ban" />
             Blocca utente
           </button>
         )}
         {membership.memberStatus === 'BANNED' && (
           <button type="button" className="secondary-btn" onClick={onUnban}>
+            <Icon name="fa-solid fa-unlock-keyhole" />
             Sblocca utente
           </button>
         )}
@@ -3758,10 +4268,11 @@ function CampaignMemberProfilePage({
           <div className="modal-panel">
             <h3>{moderationMode === 'ban' ? 'Motivo ban' : 'Motivo sospensione'}</h3>
             <label>
-              Motivo (max 200)
+              <FieldLabel icon="fa-solid fa-comment-dots" label="Motivo (max 200)" />
               <textarea
                 rows={4}
                 maxLength={200}
+                placeholder="Spiega il motivo della moderazione"
                 value={moderationReason}
                 onChange={(event) => setModerationReason(event.target.value)}
               />
@@ -3794,8 +4305,9 @@ function CampaignManagementPage({
   permissions,
   onLoadModules,
   onSave,
-  onCheckPermission,
+  onRefreshPermissions,
   onTransfer,
+  currentUserId,
   onLeave,
 }: {
   campaign: CampaignResponse | null
@@ -3815,11 +4327,11 @@ function CampaignManagementPage({
     isSearchable: boolean
     allowedModules: string[]
   }) => void
-  onCheckPermission: (action: string) => void
+  onRefreshPermissions: () => void
   onTransfer: (newOwnerUserId: string) => void
+  currentUserId: string
   onLeave: () => void
 }) {
-  const [action, setAction] = useState('CREATE_ROOM')
   const [newOwnerUserId, setNewOwnerUserId] = useState('')
   const [name, setName] = useState(campaign?.name || '')
   const [description, setDescription] = useState(campaign?.description || '')
@@ -3832,6 +4344,50 @@ function CampaignManagementPage({
   const [isOpen, setIsOpen] = useState(campaign?.isOpen ?? true)
   const [isSearchable, setIsSearchable] = useState(campaign?.isSearchable ?? true)
   const [selectedModules, setSelectedModules] = useState<string[]>(campaign?.allowedModules || [])
+  const permissionChecklist: Array<{
+    action: string
+    label: string
+    description: string
+  }> = [
+    {
+      action: 'CREATE_ROOM',
+      label: 'Creare stanze',
+      description: 'Nuove stanze della campagna.',
+    },
+    {
+      action: 'APPROVE_OR_REJECT_APPLICATIONS',
+      label: 'Gestire accessi',
+      description: 'Approva o rifiuta le richieste pending.',
+    },
+    {
+      action: 'TRANSFER_OWNERSHIP',
+      label: 'Trasferire proprietà',
+      description: 'Cedere la leadership della campagna.',
+    },
+    {
+      action: 'MANAGE_CAMPAIGN_SETTINGS',
+      label: 'Modificare impostazioni',
+      description: 'Aggiornare regole, requisiti e visibilità.',
+    },
+  ]
+  const permissionReminders: Array<{ role: string; items: string[] }> = [
+    {
+      role: 'GIOCATORE',
+      items: ['Giocare il tuo personaggio', 'Ritirare il tuo personaggio'],
+    },
+    {
+      role: 'CO_MASTER',
+      items: ['Creare NPC', 'Gestire i tuoi NPC', 'Aprire o riaprire missioni'],
+    },
+    {
+      role: 'MASTER',
+      items: ['Gestire qualsiasi NPC', 'Approvarе o rifiutare accessi', 'Creare stanze', 'Gestire le impostazioni campagna'],
+    },
+    {
+      role: 'SUPER_MASTER',
+      items: ['Tutto quanto sopra', 'Eliminare stanze', 'Gestire moduli', 'Trasferire ownership', 'Chiudere o cancellare la campagna'],
+    },
+  ]
 
   useEffect(() => {
     if (!campaign) return
@@ -3848,6 +4404,11 @@ function CampaignManagementPage({
     setSelectedModules(campaign.allowedModules)
   }, [campaign])
 
+  useEffect(() => {
+    if (!campaign) return
+    onRefreshPermissions()
+  }, [campaign?.id])
+
   const toggleModule = (moduleCode: string) => {
     setSelectedModules((prev) =>
       prev.includes(moduleCode) ? prev.filter((item) => item !== moduleCode) : [...prev, moduleCode],
@@ -3861,12 +4422,12 @@ function CampaignManagementPage({
       {campaign && (
         <>
           <div className="form-grid">
+        <label>
+          <FieldLabel icon="fa-solid fa-signature" label="Nome" />
+          <input value={name} placeholder="Nome della campagna" onChange={(event) => setName(event.target.value)} />
+        </label>
             <label>
-              Nome
-              <input value={name} onChange={(event) => setName(event.target.value)} />
-            </label>
-            <label>
-              Tono
+              <FieldLabel icon="fa-solid fa-wand-magic-sparkles" label="Tono" />
               <select value={tone} onChange={(event) => setTone(event.target.value)}>
                 <option value="">Seleziona tono</option>
                 {CAMPAIGN_TONE_OPTIONS.map((toneOption) => (
@@ -3878,28 +4439,28 @@ function CampaignManagementPage({
             </label>
           </div>
           <label>
-            Descrizione
-            <textarea rows={3} value={description} onChange={(event) => setDescription(event.target.value)} />
+            <FieldLabel icon="fa-solid fa-align-left" label="Descrizione" />
+            <textarea rows={3} placeholder="Descrizione estesa della campagna" value={description} onChange={(event) => setDescription(event.target.value)} />
           </label>
           <label>
-            Riassunto breve
-            <textarea rows={2} value={summary} onChange={(event) => setSummary(event.target.value)} maxLength={280} />
+            <FieldLabel icon="fa-solid fa-quote-right" label="Riassunto breve" />
+            <textarea rows={2} placeholder="Riassunto breve visibile in elenco" value={summary} onChange={(event) => setSummary(event.target.value)} maxLength={280} />
           </label>
           <label>
-            Ambientazione
-            <textarea rows={3} value={setting} onChange={(event) => setSetting(event.target.value)} />
+            <FieldLabel icon="fa-solid fa-map-location-dot" label="Ambientazione" />
+            <textarea rows={3} placeholder="Ambientazione, mondo o contesto di gioco" value={setting} onChange={(event) => setSetting(event.target.value)} />
           </label>
           <label>
-            Regole
-            <textarea rows={3} value={rules} onChange={(event) => setRules(event.target.value)} />
+            <FieldLabel icon="fa-solid fa-gavel" label="Regole" />
+            <textarea rows={3} placeholder="Regole principali della campagna" value={rules} onChange={(event) => setRules(event.target.value)} />
           </label>
           <label>
-            Requisiti d'ingresso
-            <textarea rows={3} value={requirements} onChange={(event) => setRequirements(event.target.value)} />
+            <FieldLabel icon="fa-solid fa-door-open" label="Requisiti d'ingresso" />
+            <textarea rows={3} placeholder="Requisiti richiesti per entrare" value={requirements} onChange={(event) => setRequirements(event.target.value)} />
           </label>
           <label>
-            URL immagine copertina
-            <input value={coverImageUrl} onChange={(event) => setCoverImageUrl(event.target.value)} />
+            <FieldLabel icon="fa-solid fa-image" label="URL immagine copertina" />
+            <input value={coverImageUrl} placeholder="https://..." onChange={(event) => setCoverImageUrl(event.target.value)} />
           </label>
           <div className="inline-actions">
             <label className="checkbox-row">
@@ -3915,6 +4476,7 @@ function CampaignManagementPage({
             <div className="row-between">
               <p className="muted">Moduli</p>
               <button type="button" className="secondary-btn" onClick={onLoadModules}>
+                <Icon name="fa-solid fa-arrows-rotate" />
                 Carica moduli
               </button>
             </div>
@@ -3951,51 +4513,91 @@ function CampaignManagementPage({
               })
             }
           >
+            <Icon name="fa-solid fa-floppy-disk" />
             Salva anagrafica
           </button>
           <div className="divider" />
         </>
       )}
-      <div className="form-grid">
-        <label>
-          Permission action
-          <select value={action} onChange={(event) => setAction(event.target.value)}>
-            <option value="CREATE_ROOM">CREATE_ROOM</option>
-            <option value="APPROVE_OR_REJECT_APPLICATIONS">APPROVE_OR_REJECT_APPLICATIONS</option>
-            <option value="TRANSFER_OWNERSHIP">TRANSFER_OWNERSHIP</option>
-            <option value="MANAGE_CAMPAIGN_SETTINGS">MANAGE_CAMPAIGN_SETTINGS</option>
-          </select>
-        </label>
-        <div className="inline-actions">
-          <button type="button" className="secondary-btn" onClick={() => onCheckPermission(action)}>
-            Check permission
-          </button>
+      <div className="panel-subsection">
+        <div className="row-between">
+          <h3 className="section-title">Tabella permessi</h3>
+          <div className="inline-actions">
+            <button type="button" className="secondary-btn" onClick={onRefreshPermissions}>
+              <Icon name="fa-solid fa-rotate-right" />
+              Aggiorna checklist
+            </button>
+          </div>
+        </div>
+        <p className="muted">Checklist delle azioni realmente disponibili per il tuo ruolo nella campagna attiva.</p>
+        <div className="permission-table">
+          {permissionChecklist.map((item) => {
+            const permission = permissions.find((entry) => entry.action === item.action)
+            const allowed = permission?.allowed ?? false
+            return (
+              <div key={item.action} className="permission-table-row">
+                <div className="permission-check-main">
+                  <span className={`permission-check-icon ${allowed ? 'is-allowed' : 'is-denied'}`}>
+                    <Icon name={allowed ? 'fa-solid fa-circle-check' : 'fa-solid fa-circle-xmark'} />
+                  </span>
+                  <div>
+                    <p className="permission-action-name">{item.label}</p>
+                    <p className="muted">{item.description}</p>
+                  </div>
+                </div>
+                <span className={`status ${allowed ? 'status-success' : 'status-danger'}`}>{allowed ? 'OK' : 'KO'}</span>
+              </div>
+            )
+          })}
         </div>
       </div>
-      <ul className="list-reset">
-        {permissions.map((permission) => (
-          <li key={permission.action} className="line-item">
-            <span>{permission.action}</span>
-            <span className={`status ${permission.allowed ? 'status-success' : 'status-danger'}`}>
-              {String(permission.allowed)}
-            </span>
-          </li>
-        ))}
-      </ul>
+
+      <div className="panel-subsection">
+        <details className="utility-box" open>
+          <summary className="utility-box-summary">
+            <div>
+              <p className="section-title">Accessi e opzioni per ruolo</p>
+              <p className="muted">Reminder rapido delle azioni disponibili per fascia di ruolo.</p>
+            </div>
+          </summary>
+          <div className="permission-reminders">
+            {permissionReminders.map((reminder) => (
+              <article key={reminder.role} className="permission-reminder-card">
+                <div className="row-between">
+                  <p className="permission-role-title">{reminder.role}</p>
+                  <span className="status status-info">Remind</span>
+                </div>
+                <ul className="permission-reminder-list">
+                  {reminder.items.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </article>
+            ))}
+          </div>
+        </details>
+      </div>
 
       <div className="divider" />
       <label>
-        New owner userId
-        <input value={newOwnerUserId} onChange={(event) => setNewOwnerUserId(event.target.value)} />
+        <FieldLabel icon="fa-solid fa-user-pen" label="New owner userId" />
+        <input value={newOwnerUserId} placeholder="ID utente del nuovo proprietario" onChange={(event) => setNewOwnerUserId(event.target.value)} />
       </label>
       <button type="button" className="secondary-btn" onClick={() => onTransfer(newOwnerUserId)}>
+        <Icon name="fa-solid fa-right-left" />
         Transfer ownership
       </button>
 
       <div className="divider" />
-      <button type="button" className="secondary-btn" onClick={onLeave}>
-        Leave campaign
-      </button>
+      {campaign && campaign.founderId !== currentUserId && (
+        <div className="leave-campaign-block">
+          <p className="muted">Uscendo dalla campagna il tuo personaggio attivo verrà ritirato.</p>
+          <button type="button" className="danger-btn" onClick={onLeave}>
+            <Icon name="fa-solid fa-right-from-bracket" />
+            Esci dalla campagna
+          </button>
+        </div>
+      )}
     </section>
   )
 }
@@ -4012,7 +4614,7 @@ function SelectCharacterPage({
     <section className="panel">
       <h2>Seleziona PG</h2>
       <label>
-        Personaggio
+        <FieldLabel icon="fa-solid fa-user" label="Personaggio" />
         <select value={characterId} onChange={(event) => setCharacterId(event.target.value)}>
           <option value="">scegli</option>
           {characters.map((character) => (
@@ -4023,6 +4625,7 @@ function SelectCharacterPage({
         </select>
       </label>
       <button type="button" className="primary-btn" onClick={() => characterId && onApply(characterId)}>
+        <Icon name="fa-solid fa-arrow-right" />
         Apply alla campagna con PG
       </button>
     </section>
@@ -4072,40 +4675,40 @@ function CreateCharacterPage({
       )}
       <div className="form-grid">
         <label>
-          Nome
-          <input value={name} onChange={(event) => setName(event.target.value)} />
+          <FieldLabel icon="fa-solid fa-signature" label="Nome" />
+          <input value={name} placeholder="Nome del personaggio" onChange={(event) => setName(event.target.value)} />
         </label>
         <label>
-          Nickname
-          <input value={nickname} onChange={(event) => setNickname(event.target.value)} />
+          <FieldLabel icon="fa-solid fa-quote-right" label="Nickname" />
+          <input value={nickname} placeholder="Soprannome o alias" onChange={(event) => setNickname(event.target.value)} />
         </label>
       </div>
       <label>
-        Portrait URL
-        <input value={portraitUrl} onChange={(event) => setPortraitUrl(event.target.value)} />
+        <FieldLabel icon="fa-solid fa-image" label="Portrait URL" />
+        <input value={portraitUrl} placeholder="https://..." onChange={(event) => setPortraitUrl(event.target.value)} />
       </label>
       <div>
         <div className="field-label">Tipo</div>
         <div className="segmented">
           <button
             type="button"
-            className={`segmented-btn ${!isNpc ? 'is-active' : ''}`}
-            disabled={!canCreatePlayerCharacter}
-            onClick={() => setIsNpc(false)}
-          >
+          className={`segmented-btn ${!isNpc ? 'is-active' : ''}`}
+          disabled={!canCreatePlayerCharacter}
+          onClick={() => setIsNpc(false)}
+        >
             <span className="char-kind-icon" aria-hidden="true">
-              🧙
+              <Icon name="fa-solid fa-user" />
             </span>
             Personaggio
           </button>
           <button
             type="button"
-            className={`segmented-btn ${isNpc ? 'is-active' : ''}`}
-            disabled={!canCreateNpc}
-            onClick={() => setIsNpc(true)}
-          >
+          className={`segmented-btn ${isNpc ? 'is-active' : ''}`}
+          disabled={!canCreateNpc}
+          onClick={() => setIsNpc(true)}
+        >
             <span className="char-kind-icon" aria-hidden="true">
-              🎭
+              <Icon name="fa-solid fa-mask" />
             </span>
             NPC
           </button>
@@ -4117,6 +4720,7 @@ function CreateCharacterPage({
         disabled={saveDisabled}
         onClick={() => onCreate({ name, nickname, portraitUrl, isNpc })}
       >
+        <Icon name="fa-solid fa-plus" />
         Crea
       </button>
     </section>
