@@ -5,6 +5,7 @@ export type CampaignCharacterStatus = 'ACTIVE' | 'RETIRED' | 'DEAD'
 export type MissionStatus = 'OPEN' | 'CLOSED' | 'CONFIRMED' | 'REOPENED' | 'CANCELLED'
 export type MissionParticipationType = 'TITOLARE' | 'NON_TITOLARE'
 export type RoomType = 'ROLEPLAY' | 'SPAM'
+export type PlatformRole = 'USER' | 'ADMIN' | 'SYSTEM'
 
 export interface CampaignCatalogEntry {
   code: string
@@ -17,14 +18,41 @@ export interface CampaignCatalogEntry {
 export interface UserProfile {
   id: string
   username: string | null
-  platformRole?: 'USER' | 'ADMIN' | 'SYSTEM' | null
+  platformRole?: PlatformRole | null
   profileName: string
   bio: string | null
   avatarUrl: string | null
   whatsapp: string | null
   socialLinks: Record<string, string>
-  isSysAdmin: boolean
   createdAt: string
+}
+
+export interface AdminUserListItem {
+  id: string
+  username: string
+  profileName: string
+  platformRole: PlatformRole
+  isActive: boolean
+  avatarUrl: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AdminUserUpdateRequest {
+  platformRole: PlatformRole
+  isActive: boolean
+}
+
+export interface AdminUserPage {
+  items: AdminUserListItem[]
+  page: number
+  size: number
+  totalElements: number
+  totalPages: number
+  first: boolean
+  last: boolean
+  hasNext: boolean
+  hasPrevious: boolean
 }
 
 export interface Character {
@@ -65,6 +93,7 @@ export interface CampaignResponse {
   coverImageUrl: string | null
   founderId: string
   isOpen: boolean
+  isActive: boolean
   isSearchable: boolean
   gameSystem?: string | null
   allowedModules: string[]
@@ -101,12 +130,46 @@ export interface CampaignDiscoverResponse {
   coverImageUrl: string | null
   founderId: string
   isOpen: boolean
+  isActive: boolean
   isSearchable: boolean
   gameSystem?: string | null
   createdAt: string
   membershipStatus: CampaignMemberStatus | null
   membershipRole: CampaignRole | null
   moderationReason: string | null
+}
+
+export interface AdminCampaignListItem {
+  id: string
+  name: string
+  founderId: string
+  founderProfileName: string
+  isOpen: boolean
+  isActive: boolean
+  isSearchable: boolean
+  gameSystem: string
+  allowedModules: string[]
+  createdAt: string
+}
+
+export interface AdminCampaignPage {
+  items: AdminCampaignListItem[]
+  page: number
+  size: number
+  totalElements: number
+  totalPages: number
+  first: boolean
+  last: boolean
+  hasNext: boolean
+  hasPrevious: boolean
+}
+
+export interface AdminCampaignUpdateRequest {
+  isOpen: boolean
+  isActive: boolean
+  isSearchable: boolean
+  gameSystem: string
+  allowedModules: string[]
 }
 
 export interface CampaignApplicationResponse {

@@ -1,5 +1,9 @@
 import { ApiError, apiRequest, clearTokens, setTokens } from './apiClient'
 import type {
+  AdminUserPage,
+  AdminUserUpdateRequest,
+  AdminCampaignPage,
+  AdminCampaignUpdateRequest,
   CampaignApplicationResponse,
   CampaignCatalogEntry,
   CampaignDiscoverResponse,
@@ -130,6 +134,34 @@ export async function updateMe(payload: {
 
 export async function getPublicProfile(userId: string): Promise<UserProfile> {
   return apiRequest<UserProfile>(`/users/${userId}`)
+}
+
+export async function listAdminUsers(page = 0): Promise<AdminUserPage> {
+  return apiRequest<AdminUserPage>(`/admin/users?page=${page}`)
+}
+
+export async function updateAdminUser(
+  userId: string,
+  payload: AdminUserUpdateRequest,
+): Promise<AdminUserPage['items'][number]> {
+  return apiRequest<AdminUserPage['items'][number]>(`/admin/users/${userId}`, {
+    method: 'PATCH',
+    body: payload,
+  })
+}
+
+export async function listAdminCampaigns(page = 0): Promise<AdminCampaignPage> {
+  return apiRequest<AdminCampaignPage>(`/admin/campaigns?page=${page}`)
+}
+
+export async function updateAdminCampaign(
+  campaignId: string,
+  payload: AdminCampaignUpdateRequest,
+): Promise<CampaignResponse> {
+  return apiRequest<CampaignResponse>(`/admin/campaigns/${campaignId}`, {
+    method: 'PATCH',
+    body: payload,
+  })
 }
 
 export async function createCampaign(payload: {

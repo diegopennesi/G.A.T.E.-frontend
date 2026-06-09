@@ -3,6 +3,8 @@ import type { Dispatch, FormEvent, SetStateAction } from 'react'
 import './App.css'
 import { ApiError, getAccessToken } from './services/apiClient'
 import {
+  listAdminCampaigns,
+  listAdminUsers,
   approveCampaignMember,
   applyToCampaign,
   approveApplication,
@@ -40,6 +42,8 @@ import {
   reopenMission,
   requestPasswordReset,
   confirmPasswordReset,
+  updateAdminCampaign,
+  updateAdminUser,
   updateMission,
   updateMissionParticipationType,
   suspendCampaignMember,
@@ -52,6 +56,10 @@ import {
   updateMe,
 } from './services/gateApi'
 import type {
+  AdminCampaignPage,
+  AdminCampaignUpdateRequest,
+  AdminUserPage,
+  AdminUserUpdateRequest,
   AuthSession,
   CampaignApplicationResponse,
   CampaignCatalogEntry,
@@ -69,6 +77,7 @@ import type {
   MissionResponse,
   MissionStatus,
   RoomResponse,
+  PlatformRole,
   UserProfile,
 } from './types/domain'
 
@@ -133,6 +142,8 @@ type CampaignPickerCampaign = {
   campaignId: string
   campaignName: string
   role: CampaignRole
+  isActive: boolean
+  disabled: boolean
 }
 type LeaveCampaignContext = {
   campaignName: string
@@ -199,6 +210,20 @@ const catalogEntryDescription = (entries: CampaignCatalogEntry[], code: string |
   if (!code) return null
   return catalogEntryByCode(entries, code)?.description || null
 }
+
+const platformRoleLabel = (role: PlatformRole) => {
+  switch (role) {
+    case 'ADMIN':
+      return 'ADMIN'
+    case 'SYSTEM':
+      return 'SYSTEM'
+    default:
+      return 'USER'
+  }
+}
+
+const ADMIN_PLATFORM_ROLES: PlatformRole[] = ['USER', 'ADMIN', 'SYSTEM']
+type SystemAdminView = 'users' | 'campaigns'
 
 type CampaignAccessBadgeKind = 'edit' | 'player' | 'outside' | 'pending' | 'blocked' | 'banned'
 type BreadcrumbItem = {
@@ -596,6 +621,13 @@ function App() {
   const [permissions, setPermissions] = useState<CampaignPermissionResponse[]>([])
   const [campaignModules, setCampaignModules] = useState<CampaignCatalogEntry[]>([])
   const [campaignGameSystems, setCampaignGameSystems] = useState<CampaignCatalogEntry[]>([])
+  const [adminUsersPage, setAdminUsersPage] = useState<AdminUserPage | null>(null)
+  const [adminUsersPageIndex, setAdminUsersPageIndex] = useState(0)
+  const [adminUsersDrafts, setAdminUsersDrafts] = useState<Record<string, AdminUserUpdateRequest>>({})
+  const [adminCampaignsPage, setAdminCampaignsPage] = useState<AdminCampaignPage | null>(null)
+  const [adminCampaignsPageIndex, setAdminCampaignsPageIndex] = useState(0)
+  const [adminCampaignsDrafts, setAdminCampaignsDrafts] = useState<Record<string, AdminCampaignUpdateRequest>>({})
+  const [systemAdminView, setSystemAdminView] = useState<SystemAdminView>('users')
 
   const [characters, setCharacters] = useState<Character[]>([])
   const [selectedCharacterId, setSelectedCharacterId] = useState('')
@@ -617,17 +649,16 @@ function App() {
     const saved = localStorage.getItem(THEME_KEY)
     return saved === 'dark' || saved === 'light' ? (saved as ThemeMode) : 'light'
   })
-  const isSysAdmin = profile?.isSysAdmin ?? false
   const isSystemRole = profile?.platformRole === 'SYSTEM'
-  const isSystemSession = isSysAdmin || isSystemRole
-  const effectiveTheme: EffectiveThemeMode = isSysAdmin || isSystemRole ? 'sysadmin' : theme
+  const isSystemSession = isSystemRole
+  const effectiveTheme: EffectiveThemeMode = isSystemRole ? 'sysadmin' : theme
 
   useEffect(() => {
     document.documentElement.dataset.theme = effectiveTheme
-    if (!(isSysAdmin || isSystemRole)) {
+    if (!isSystemRole) {
       localStorage.setItem(THEME_KEY, theme)
     }
-  }, [effectiveTheme, isSysAdmin, isSystemRole, theme])
+  }, [effectiveTheme, isSystemRole, theme])
 
   const selectedCharacter = useMemo(
     () => characters.find((character) => character.id === selectedCharacterId) || null,
@@ -679,6 +710,7 @@ function App() {
           coverImageUrl: null,
           founderId: '',
           isOpen: true,
+          isActive: true,
           isSearchable: false,
           createdAt: '',
           membershipStatus: membership.memberStatus,
@@ -690,23 +722,36 @@ function App() {
 
     return Array.from(byId.values())
   }, [discoverableCampaigns, myCampaigns])
+  const campaignIsActiveForCurrentUser = (campaignToCheck: string) => {
+    if (isSystemRole) return true
+    const visibleCampaign = campaignsForList.find((item) => item.id === campaignToCheck)
+    return visibleCampaign?.isActive === true
+  }
+  const canShowCampaignInNavbar = (role: CampaignRole | null | undefined) => {
+    if (isSystemRole) return true
+    return role === 'CO_MASTER' || role === 'MASTER' || role === 'SUPER_MASTER'
+  }
   const selectableCampaigns = useMemo<CampaignPickerCampaign[]>(() => {
     const byId = new Map<string, CampaignPickerCampaign>()
     for (const item of myCampaigns) {
-      if (item.memberStatus === 'APPROVED') {
+      if (item.memberStatus === 'APPROVED' && canShowCampaignInNavbar(item.role)) {
         byId.set(item.campaignId, {
           campaignId: item.campaignId,
           campaignName: item.campaignName,
           role: item.role,
+          isActive: campaignIsActiveForCurrentUser(item.campaignId),
+          disabled: !isSystemRole && !campaignIsActiveForCurrentUser(item.campaignId),
         })
       }
     }
     for (const item of campaignsForList) {
-      if (item.membershipStatus === 'APPROVED' && item.membershipRole && !byId.has(item.id)) {
+      if (item.membershipStatus === 'APPROVED' && item.membershipRole && canShowCampaignInNavbar(item.membershipRole) && !byId.has(item.id)) {
         byId.set(item.id, {
           campaignId: item.id,
           campaignName: item.name,
           role: item.membershipRole,
+          isActive: item.isActive,
+          disabled: !isSystemRole && !item.isActive,
         })
       }
     }
@@ -715,7 +760,7 @@ function App() {
       if (right.campaignId === campaignId) return 1
       return left.campaignName.localeCompare(right.campaignName, 'it')
     })
-  }, [campaignsForList, myCampaigns])
+  }, [campaignIsActiveForCurrentUser, campaignsForList, myCampaigns, canShowCampaignInNavbar, isSystemRole, campaignId])
   const isCampaignScope = (value: Screen) =>
     value === 'Lista Campagne' ||
     value === 'Crea Campagna' ||
@@ -867,6 +912,115 @@ function App() {
     })
   }
 
+  const loadAdminUsers = async (page: number) => {
+    setBusy(true)
+    setError('')
+    try {
+      const response = await listAdminUsers(page)
+      setAdminUsersPage(response)
+      setAdminUsersPageIndex(response.page)
+      setAdminUsersDrafts(
+        Object.fromEntries(
+          response.items.map((item) => [
+            item.id,
+            {
+              platformRole: item.platformRole,
+              isActive: item.isActive,
+            },
+          ]),
+        ),
+      )
+      addEvent('Lista utenti caricata', 'ok')
+    } catch (err) {
+      const message = toMessage(err)
+      setError(message)
+      addEvent(`Lista utenti: ${message}`, 'error')
+      if (isUnauthorized(err)) {
+        handleLogout()
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const loadAdminCampaigns = async (page: number) => {
+    setBusy(true)
+    setError('')
+    try {
+      const response = await listAdminCampaigns(page)
+      setAdminCampaignsPage(response)
+      setAdminCampaignsPageIndex(response.page)
+      setAdminCampaignsDrafts(
+        Object.fromEntries(
+          response.items.map((item) => [
+            item.id,
+            {
+              isOpen: item.isOpen,
+              isActive: item.isActive,
+              isSearchable: item.isSearchable,
+              gameSystem: item.gameSystem,
+              allowedModules: [...item.allowedModules],
+            },
+          ]),
+        ),
+      )
+      addEvent('Lista campagne caricata', 'ok')
+    } catch (err) {
+      const message = toMessage(err)
+      setError(message)
+      addEvent(`Lista campagne: ${message}`, 'error')
+      if (isUnauthorized(err)) {
+        handleLogout()
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const saveAdminUser = async (userId: string) => {
+    const draft = adminUsersDrafts[userId]
+    if (!draft) return
+
+    setBusy(true)
+    setError('')
+    try {
+      await updateAdminUser(userId, draft)
+      await loadAdminUsers(adminUsersPageIndex)
+      addEvent('Utente aggiornato', 'ok')
+    } catch (err) {
+      const message = toMessage(err)
+      setError(message)
+      addEvent(`Aggiornamento utente: ${message}`, 'error')
+      if (isUnauthorized(err)) {
+        handleLogout()
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const saveAdminCampaign = async (campaignIdValue: string) => {
+    const draft = adminCampaignsDrafts[campaignIdValue]
+    if (!draft) return
+
+    setBusy(true)
+    setError('')
+    try {
+      await updateAdminCampaign(campaignIdValue, draft)
+      await loadAdminCampaigns(adminCampaignsPageIndex)
+      addEvent('Campagna aggiornata', 'ok')
+    } catch (err) {
+      const message = toMessage(err)
+      setError(message)
+      addEvent(`Aggiornamento campagna: ${message}`, 'error')
+      if (isUnauthorized(err)) {
+        handleLogout()
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const openCampaignPicker = (target: Screen | null) => {
     setCampaignPickerTarget(target)
     setIsCampaignPickerOpen(true)
@@ -900,6 +1054,12 @@ function App() {
     setPermissions([])
     setCampaignModules([])
     setCampaignGameSystems([])
+    setAdminUsersPage(null)
+    setAdminUsersPageIndex(0)
+    setAdminUsersDrafts({})
+    setAdminCampaignsPage(null)
+    setAdminCampaignsPageIndex(0)
+    setAdminCampaignsDrafts({})
     setCharacters([])
     setSelectedCharacterId('')
     setCharacterDetail(null)
@@ -912,12 +1072,18 @@ function App() {
   }
 
   const activateCampaignFromPicker = async (item: CampaignPickerCampaign) => {
-    const targetScreen = campaignPickerTarget || 'Scheda Campagna'
-    await activateCampaignAndNavigate(item.campaignId, targetScreen)
-    closeCampaignPicker()
+    await run('Campagna attivata', async () => {
+      const targetScreen = campaignPickerTarget || 'Scheda Campagna'
+      await activateCampaignAndNavigate(item.campaignId, targetScreen)
+      closeCampaignPicker()
+    })
   }
 
   const activateCampaignAndNavigate = async (targetCampaignId: string, targetScreen: Screen) => {
+    const latestCampaign = await getCampaign(targetCampaignId)
+    if (!isSystemRole && !latestCampaign.isActive) {
+      throw new Error('Campagna disattivata: non selezionabile come attiva')
+    }
     await run('Campagna attivata', async () => {
       rememberCampaignId(targetCampaignId)
       setSelectedCampaignMember(null)
@@ -1203,9 +1369,24 @@ function App() {
     }
   }, [campaignsForList, campaignFounderNames])
 
+  const activeCampaignListEntry = campaignId ? campaignsForList.find((item) => item.id === campaignId) : undefined
+  const activeCampaignIsEnabled = isSystemRole || campaign?.isActive === true || activeCampaignListEntry?.isActive === true
   const hasActiveCampaign =
-    myCampaigns.some((item) => item.campaignId === campaignId && item.memberStatus === 'APPROVED') ||
-    campaignsForList.some((item) => item.id === campaignId && item.membershipStatus === 'APPROVED')
+    activeCampaignIsEnabled &&
+    (myCampaigns.some((item) => item.campaignId === campaignId && item.memberStatus === 'APPROVED') ||
+      campaignsForList.some((item) => item.id === campaignId && item.membershipStatus === 'APPROVED'))
+  useEffect(() => {
+    if (isSystemRole) return
+    if (!campaignId.trim()) return
+    if (activeCampaignIsEnabled) return
+    if (campaign?.isActive !== false && activeCampaignListEntry?.isActive !== false) return
+
+    rememberCampaignId('')
+    clearCampaignWorkspace()
+    if (screen !== 'Lista Campagne') {
+      setScreen('Lista Campagne')
+    }
+  }, [activeCampaignIsEnabled, activeCampaignListEntry?.isActive, campaign?.isActive, campaignId, isSystemRole, screen])
   useEffect(() => {
     if (hasActiveCampaign) return
     if (screen !== 'Scheda Campagna' && screen !== 'Gestione Campagna' && screen !== 'Stanze') return
@@ -1365,6 +1546,9 @@ function App() {
     setSelectedCampaignMemberProfile(null)
     setCampaignModules([])
     setCampaignGameSystems([])
+    setAdminUsersPage(null)
+    setAdminUsersPageIndex(0)
+    setAdminUsersDrafts({})
     setCharacters([])
     setMissions([])
     setMissionCharacters([])
@@ -1375,10 +1559,59 @@ function App() {
     setSelectedCharacterId('')
     setSelectedMissionId('')
     setError('')
+    setSystemAdminView('users')
     addEvent('Logout eseguito', 'info')
   }
 
   const activeUserId = profile?.id ?? null
+
+  useEffect(() => {
+    if (!isSystemSession) {
+      setAdminUsersPage(null)
+      setAdminUsersPageIndex(0)
+      setAdminUsersDrafts({})
+      setAdminCampaignsPage(null)
+      setAdminCampaignsPageIndex(0)
+      setAdminCampaignsDrafts({})
+      return
+    }
+    if (systemAdminView === 'users' && !adminUsersPage) {
+      void loadAdminUsers(0)
+    }
+    if (systemAdminView === 'campaigns' && !adminCampaignsPage) {
+      void loadAdminCampaigns(0)
+    }
+  }, [isSystemSession, profile?.id, systemAdminView])
+
+  useEffect(() => {
+    if (!isSystemSession || systemAdminView !== 'campaigns') return
+    if (campaignModules.length === 0) {
+      void (async () => {
+        try {
+          const modulesResult = await listCampaignModules()
+          setCampaignModules(modulesResult)
+        } catch (err) {
+          const message = toMessage(err)
+          setError(message)
+          addEvent(`Caricamento moduli: ${message}`, 'error')
+          if (isUnauthorized(err)) handleLogout()
+        }
+      })()
+    }
+    if (campaignGameSystems.length === 0) {
+      void (async () => {
+        try {
+          const systemsResult = await listCampaignGameSystems()
+          setCampaignGameSystems(systemsResult)
+        } catch (err) {
+          const message = toMessage(err)
+          setError(message)
+          addEvent(`Caricamento sistemi di gioco: ${message}`, 'error')
+          if (isUnauthorized(err)) handleLogout()
+        }
+      })()
+    }
+  }, [isSystemSession, systemAdminView, campaignModules.length, campaignGameSystems.length])
 
   useEffect(() => {
     if (!profile || !activeUserId) return
@@ -1496,6 +1729,7 @@ function App() {
       }
     })()
   const activeCampaignName = campaign?.name || activeCampaignMembership?.campaignName || 'non impostata'
+  const activeCampaignIsClickable = isSystemRole || campaignId.trim().length === 0 || activeCampaignIsEnabled
   const campaignNameById: Record<string, string> = {}
   for (const item of knownCampaignMeta) {
     campaignNameById[item.id] = item.name
@@ -1724,6 +1958,24 @@ function App() {
     setIsSidebarOpen(false)
   }
 
+  const systemUsers = adminUsersPage?.items ?? []
+  const systemUsersTotal = adminUsersPage?.totalElements ?? 0
+  const systemUsersPageLabel = adminUsersPage
+    ? `Pagina ${adminUsersPage.page + 1} di ${Math.max(adminUsersPage.totalPages, 1)}`
+    : 'Pagina 1 di 1'
+  const systemCampaigns = adminCampaignsPage?.items ?? []
+  const systemCampaignsTotal = adminCampaignsPage?.totalElements ?? 0
+  const systemCampaignsPageLabel = adminCampaignsPage
+    ? `Pagina ${adminCampaignsPage.page + 1} di ${Math.max(adminCampaignsPage.totalPages, 1)}`
+    : 'Pagina 1 di 1'
+  const systemViewTitle = systemAdminView === 'users' ? 'Anagrafica utenti' : 'Anagrafica campagne'
+  const systemViewSubtitle =
+    systemAdminView === 'users'
+      ? 'Tabella compatta, 15 record per pagina, con ruoli e stato immediatamente visibili.'
+      : 'Tabella compatta, 15 record per pagina, con sistema di gioco, addon e stato della campagna.'
+  const systemViewTotal = systemAdminView === 'users' ? systemUsersTotal : systemCampaignsTotal
+  const systemViewPageLabel = systemAdminView === 'users' ? systemUsersPageLabel : systemCampaignsPageLabel
+
   if (isSystemSession) {
     return (
       <div className="app-shell system-shell">
@@ -1751,6 +2003,29 @@ function App() {
             <p className="muted">Da qui gestirai utenti, campagne, sistemi di gioco e cataloghi moduli.</p>
           </div>
 
+          <div className="system-nav-tabs" role="tablist" aria-label="Selettore dashboard sistema">
+            <button
+              type="button"
+              className={`system-nav-tab ${systemAdminView === 'users' ? 'is-active' : ''}`}
+              onClick={() => {
+                setSystemAdminView('users')
+                if (!adminUsersPage) void loadAdminUsers(0)
+              }}
+            >
+              Utenti
+            </button>
+            <button
+              type="button"
+              className={`system-nav-tab ${systemAdminView === 'campaigns' ? 'is-active' : ''}`}
+              onClick={() => {
+                setSystemAdminView('campaigns')
+                if (!adminCampaignsPage) void loadAdminCampaigns(0)
+              }}
+            >
+              Campagne
+            </button>
+          </div>
+
           <div className="sidebar-footer">
             <button
               type="button"
@@ -1769,11 +2044,402 @@ function App() {
 
         <main className="main system-main">
           <section className="panel system-landing-panel">
-            <p className="menu-group-label">Dashboard amministrativa</p>
-            <h2>Benvenuto nella console sistema</h2>
-            <p className="muted">
-              Qui introdurremo la gestione globale di utenti, campagne, game system e addon.
-            </p>
+            <div className="system-panel-head">
+              <div>
+                <p className="menu-group-label">{systemAdminView === 'users' ? 'Utenti' : 'Campagne'}</p>
+                <h2>{systemViewTitle}</h2>
+                <p className="muted">{systemViewSubtitle}</p>
+              </div>
+              <div className="system-panel-meta">
+                <span className="status status-neutral">Totale {systemViewTotal}</span>
+                <span className="status status-info">{systemViewPageLabel}</span>
+              </div>
+            </div>
+
+            {error && (
+              <div className="system-inline-alert">
+                <Icon name="fa-solid fa-triangle-exclamation" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            {systemAdminView === 'users' ? (
+              <>
+                <div className="system-table-wrap">
+                  <table className="system-users-table">
+                    <thead>
+                      <tr>
+                        <th>Username</th>
+                        <th>Profilo</th>
+                        <th>Ruolo</th>
+                        <th>Stato</th>
+                        <th>Azioni</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {busy && systemUsers.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="system-empty-cell">Caricamento utenti...</td>
+                        </tr>
+                      ) : systemUsers.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="system-empty-cell">Nessun utente trovato.</td>
+                        </tr>
+                      ) : (
+                        systemUsers.map((item) => {
+                          const draft = adminUsersDrafts[item.id] || {
+                            platformRole: item.platformRole,
+                            isActive: item.isActive,
+                          }
+                          const isDirty =
+                            draft.platformRole !== item.platformRole || draft.isActive !== item.isActive
+
+                          return (
+                            <tr key={item.id}>
+                              <td>
+                                <div className="system-user-primary">
+                                  <span className="system-user-username">@{item.username}</span>
+                                  <span className="system-user-id">{item.id}</span>
+                                </div>
+                              </td>
+                              <td>
+                                <div className="system-user-secondary">
+                                  <span>{item.profileName}</span>
+                                  <span className="system-user-id">
+                                    Creato {new Date(item.createdAt).toLocaleDateString('it-IT')}
+                                  </span>
+                                </div>
+                              </td>
+                              <td>
+                                <select
+                                  className="system-inline-select"
+                                  value={draft.platformRole}
+                                  onChange={(event) =>
+                                    setAdminUsersDrafts((prev) => ({
+                                      ...prev,
+                                      [item.id]: {
+                                        ...draft,
+                                        platformRole: event.target.value as PlatformRole,
+                                      },
+                                    }))
+                                  }
+                                >
+                                  {ADMIN_PLATFORM_ROLES.map((role) => (
+                                    <option key={role} value={role}>
+                                      {platformRoleLabel(role)}
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
+                              <td>
+                                <label
+                                  className="switch system-user-switch"
+                                  aria-label={`${item.username} ${draft.isActive ? 'attivo' : 'disattivo'}`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={draft.isActive}
+                                    onChange={(event) =>
+                                      setAdminUsersDrafts((prev) => ({
+                                        ...prev,
+                                        [item.id]: {
+                                          ...draft,
+                                          isActive: event.target.checked,
+                                        },
+                                      }))
+                                    }
+                                  />
+                                  <span className="switch-track" aria-hidden="true">
+                                    <span className="switch-thumb" />
+                                  </span>
+                                </label>
+                              </td>
+                              <td>
+                                <div className="system-row-actions">
+                                  <span className={`status ${isDirty ? 'status-warning' : 'status-neutral'}`}>
+                                    {isDirty ? 'Da salvare' : 'Salvato'}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    className="refresh-btn"
+                                    disabled={busy || !isDirty}
+                                    onClick={() => void saveAdminUser(item.id)}
+                                  >
+                                    <Icon name="fa-solid fa-floppy-disk" />
+                                    <span>Salva</span>
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="system-pagination">
+                  <p className="muted">
+                    Mostrati {systemUsers.length} utenti su {systemUsersTotal}
+                  </p>
+                  <div className="system-pagination-controls">
+                    <button
+                      type="button"
+                      className="refresh-btn"
+                      disabled={busy || !adminUsersPage || adminUsersPage.first}
+                      onClick={() => void loadAdminUsers(Math.max(adminUsersPageIndex - 1, 0))}
+                    >
+                      <Icon name="fa-solid fa-chevron-left" />
+                      <span>Precedente</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="refresh-btn"
+                      disabled={busy || !adminUsersPage || adminUsersPage.last}
+                      onClick={() => void loadAdminUsers(adminUsersPageIndex + 1)}
+                    >
+                      <span>Successiva</span>
+                      <Icon name="fa-solid fa-chevron-right" />
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="system-table-wrap">
+                  <table className="system-users-table">
+                    <thead>
+                      <tr>
+                        <th>Campagna</th>
+                        <th>Sistema</th>
+                        <th>Stato</th>
+                        <th>Moduli</th>
+                        <th>Azioni</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {busy && systemCampaigns.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="system-empty-cell">Caricamento campagne...</td>
+                        </tr>
+                      ) : systemCampaigns.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="system-empty-cell">Nessuna campagna trovata.</td>
+                        </tr>
+                      ) : (
+                        systemCampaigns.map((item) => {
+                          const draft = adminCampaignsDrafts[item.id] || {
+                            isOpen: item.isOpen,
+                            isActive: item.isActive,
+                            isSearchable: item.isSearchable,
+                            gameSystem: item.gameSystem,
+                            allowedModules: [...item.allowedModules],
+                          }
+                          const draftModules = [...draft.allowedModules].sort().join('|')
+                          const itemModules = [...item.allowedModules].sort().join('|')
+                          const isDirty =
+                            draft.isOpen !== item.isOpen ||
+                            draft.isActive !== item.isActive ||
+                            draft.isSearchable !== item.isSearchable ||
+                            draft.gameSystem !== item.gameSystem ||
+                            draftModules !== itemModules
+
+                          return (
+                            <tr key={item.id}>
+                              <td>
+                                <div className="system-user-primary">
+                                  <span className="system-user-username">{item.name}</span>
+                                  <span className="system-user-id">{item.id}</span>
+                                  <span className="system-user-id">Founder {item.founderProfileName}</span>
+                                </div>
+                              </td>
+                              <td>
+                                <select
+                                  className="system-inline-select"
+                                  value={draft.gameSystem}
+                                  onChange={(event) =>
+                                    setAdminCampaignsDrafts((prev) => ({
+                                      ...prev,
+                                      [item.id]: {
+                                        ...draft,
+                                        gameSystem: event.target.value,
+                                      },
+                                    }))
+                                  }
+                                >
+                                  {(campaignGameSystems.length > 0 ? campaignGameSystems : [{ code: item.gameSystem, label: item.gameSystem, description: null, active: true, sortOrder: 0 }]).map((system) => (
+                                    <option key={system.code} value={system.code}>
+                                      {catalogEntryLabel(campaignGameSystems, system.code) || system.label || system.code}
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
+                              <td>
+                                <div className="system-campaign-statuses">
+                                  <label className="system-status-option" aria-label={`${item.name} aperta`}>
+                                    <span className="system-status-label">
+                                      <strong>Aperta</strong>
+                                      <small>Può ricevere applicazioni e accessi.</small>
+                                    </span>
+                                    <span className="switch system-user-switch">
+                                      <input
+                                        type="checkbox"
+                                        checked={draft.isOpen}
+                                        onChange={(event) =>
+                                          setAdminCampaignsDrafts((prev) => ({
+                                            ...prev,
+                                            [item.id]: {
+                                              ...draft,
+                                              isOpen: event.target.checked,
+                                            },
+                                          }))
+                                        }
+                                      />
+                                      <span className="switch-track" aria-hidden="true">
+                                        <span className="switch-thumb" />
+                                      </span>
+                                    </span>
+                                  </label>
+                                  <label className="system-status-option" aria-label={`${item.name} attiva`}>
+                                    <span className="system-status-label">
+                                      <strong>Attiva</strong>
+                                      <small>Campagna abilitata nel sistema.</small>
+                                    </span>
+                                    <span className="switch system-user-switch">
+                                      <input
+                                        type="checkbox"
+                                        checked={draft.isActive}
+                                        onChange={(event) =>
+                                          setAdminCampaignsDrafts((prev) => ({
+                                            ...prev,
+                                            [item.id]: {
+                                              ...draft,
+                                              isActive: event.target.checked,
+                                            },
+                                          }))
+                                        }
+                                      />
+                                      <span className="switch-track" aria-hidden="true">
+                                        <span className="switch-thumb" />
+                                      </span>
+                                    </span>
+                                  </label>
+                                  <label className="system-status-option" aria-label={`${item.name} cercabile`}>
+                                    <span className="system-status-label">
+                                      <strong>Cercabile</strong>
+                                      <small>Compare nei cataloghi e nelle ricerche.</small>
+                                    </span>
+                                    <span className="switch system-user-switch">
+                                      <input
+                                        type="checkbox"
+                                        checked={draft.isSearchable}
+                                        onChange={(event) =>
+                                          setAdminCampaignsDrafts((prev) => ({
+                                            ...prev,
+                                            [item.id]: {
+                                              ...draft,
+                                              isSearchable: event.target.checked,
+                                            },
+                                          }))
+                                        }
+                                      />
+                                      <span className="switch-track" aria-hidden="true">
+                                        <span className="switch-thumb" />
+                                      </span>
+                                    </span>
+                                  </label>
+                                </div>
+                              </td>
+                              <td>
+                                <div className="system-campaign-addon-list">
+                                  {(campaignModules.length > 0 ? campaignModules : item.allowedModules.map((code) => ({ code, label: code, description: null, active: true, sortOrder: 0 }))).map((module) => {
+                                    const enabled = draft.allowedModules.includes(module.code)
+                                    return (
+                                      <div key={module.code} className="system-campaign-addon-row" aria-label={`${module.code} ${enabled ? 'attivo' : 'disattivo'}`}>
+                                        <span className="system-campaign-addon-text">
+                                          <span>{catalogEntryLabel(campaignModules, module.code) || module.label || module.code}</span>
+                                          <small>{catalogEntryDescription(campaignModules, module.code) || module.description || 'Addon campagna'}</small>
+                                        </span>
+                                        <label className="switch system-user-switch">
+                                          <input
+                                            type="checkbox"
+                                            checked={enabled}
+                                            onChange={(event) =>
+                                              setAdminCampaignsDrafts((prev) => {
+                                                const current = prev[item.id] || draft
+                                                const nextModules = event.target.checked
+                                                  ? Array.from(new Set([...current.allowedModules, module.code]))
+                                                  : current.allowedModules.filter((code) => code !== module.code)
+                                                return {
+                                                  ...prev,
+                                                  [item.id]: {
+                                                    ...current,
+                                                    allowedModules: nextModules,
+                                                  },
+                                                }
+                                              })
+                                            }
+                                          />
+                                          <span className="switch-track" aria-hidden="true">
+                                            <span className="switch-thumb" />
+                                          </span>
+                                        </label>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </td>
+                              <td>
+                                <div className="system-row-actions">
+                                  <span className={`status ${isDirty ? 'status-warning' : 'status-neutral'}`}>
+                                    {isDirty ? 'Da salvare' : 'Salvato'}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    className="refresh-btn"
+                                    disabled={busy || !isDirty}
+                                    onClick={() => void saveAdminCampaign(item.id)}
+                                  >
+                                    <Icon name="fa-solid fa-floppy-disk" />
+                                    <span>Salva</span>
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="system-pagination">
+                  <p className="muted">
+                    Mostrate {systemCampaigns.length} campagne su {systemCampaignsTotal}
+                  </p>
+                  <div className="system-pagination-controls">
+                    <button
+                      type="button"
+                      className="refresh-btn"
+                      disabled={busy || !adminCampaignsPage || adminCampaignsPage.first}
+                      onClick={() => void loadAdminCampaigns(Math.max(adminCampaignsPageIndex - 1, 0))}
+                    >
+                      <Icon name="fa-solid fa-chevron-left" />
+                      <span>Precedente</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="refresh-btn"
+                      disabled={busy || !adminCampaignsPage || adminCampaignsPage.last}
+                      onClick={() => void loadAdminCampaigns(adminCampaignsPageIndex + 1)}
+                    >
+                      <span>Successiva</span>
+                      <Icon name="fa-solid fa-chevron-right" />
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </section>
         </main>
       </div>
@@ -1868,21 +2534,21 @@ function App() {
           ))}
         </nav>
 
-        <div className="sidebar-footer">
+          <div className="sidebar-footer">
             <button
               type="button"
               className="refresh-btn theme-toggle-btn sidebar-theme-toggle"
-            disabled={isSysAdmin || isSystemRole}
-            onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-          >
-            <Icon name={isSysAdmin || isSystemRole ? 'fa-solid fa-shield-halved' : theme === 'light' ? 'fa-solid fa-moon' : 'fa-solid fa-sun'} />
-            <span>{isSysAdmin || isSystemRole ? 'Tema Sistema' : theme === 'light' ? 'Tema scuro' : 'Tema chiaro'}</span>
+              disabled={isSystemRole}
+              onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+            >
+              <Icon name={isSystemRole ? 'fa-solid fa-shield-halved' : theme === 'light' ? 'fa-solid fa-moon' : 'fa-solid fa-sun'} />
+              <span>{isSystemRole ? 'Tema Sistema' : theme === 'light' ? 'Tema scuro' : 'Tema chiaro'}</span>
             </button>
-          <button type="button" className="logout-btn" onClick={handleLogout}>
-            <Icon name="fa-solid fa-right-from-bracket" />
-            <span>Logout</span>
-          </button>
-        </div>
+            <button type="button" className="logout-btn" onClick={handleLogout}>
+              <Icon name="fa-solid fa-right-from-bracket" />
+              <span>Logout</span>
+            </button>
+          </div>
       </aside>
 
       <main className="main">
@@ -1920,11 +2586,20 @@ function App() {
           <div className="inline-actions topbar-actions">
             <button
               type="button"
-              className="campaign-context-pill"
-              onClick={() => openCampaignPicker(campaignArea ? screen : screen === 'Gestione Campagna' ? 'Gestione Campagna' : 'Scheda Campagna')}
+              className={`campaign-context-pill ${!activeCampaignIsClickable ? 'is-disabled' : ''}`}
+              onClick={() =>
+                activeCampaignIsClickable &&
+                openCampaignPicker(campaignArea ? screen : screen === 'Gestione Campagna' ? 'Gestione Campagna' : 'Scheda Campagna')
+              }
+              disabled={!activeCampaignIsClickable}
+              aria-disabled={!activeCampaignIsClickable}
+              title={!activeCampaignIsClickable ? 'Campagna disattivata: non selezionabile' : undefined}
             >
               <span className="campaign-context-label">Campagna attiva</span>
-              <span className="campaign-context-name">{activeCampaignName}</span>
+              <span className="campaign-context-name">
+                {activeCampaignName}
+                {!activeCampaignIsClickable && <span className="campaign-context-badge">Disattivata</span>}
+              </span>
             </button>
             {pageContext.backTarget && (
               <button type="button" className="refresh-btn" onClick={() => goToScreen(pageContext.backTarget as Screen)}>
@@ -2697,11 +3372,15 @@ function CampaignListPage({
               (item.membershipStatus === 'BLOCKED' || item.membershipStatus === 'BANNED') && item.moderationReason
                 ? item.moderationReason
                 : null
+            const isDisabled = !item.isActive
             return (
-              <li key={item.id} className="line-item campaign-item">
+              <li key={item.id} className={`line-item campaign-item ${isDisabled ? 'is-disabled' : ''}`}>
                 <div className="campaign-item-main">
                   <div className="campaign-item-header">
-                    <p className="character-name">{item.name}</p>
+                    <div className="campaign-title-wrap">
+                      <p className="character-name">{item.name}</p>
+                      {isDisabled && <span className="campaign-state-badge">Disattivata</span>}
+                    </div>
                     <CampaignAccessBadge item={item} />
                   </div>
                   <p className="muted">{item.summary || item.description || 'Nessuna descrizione'}</p>
@@ -2712,19 +3391,24 @@ function CampaignListPage({
                   )}
                 </div>
                 <div className="inline-actions campaign-item-actions">
-                  {item.membershipStatus === 'APPROVED' && (
+                  {item.membershipStatus === 'APPROVED' && !isDisabled && (
                     <button type="button" className="secondary-btn" onClick={() => onOpenCampaign(item.id)}>
                       Apri e attiva
                     </button>
                   )}
-                  {(item.membershipStatus === null || item.membershipStatus === 'REJECTED') && item.isOpen && (
+                  {item.membershipStatus === 'APPROVED' && isDisabled && (
+                    <button type="button" className="secondary-btn" disabled title="Campagna disattivata">
+                      Disattivata
+                    </button>
+                  )}
+                  {(item.membershipStatus === null || item.membershipStatus === 'REJECTED') && item.isOpen && !isDisabled && (
                     <button type="button" className="primary-btn" onClick={() => onApplyCampaign(item.id)}>
                       Richiedi accesso
                     </button>
                   )}
-                  {(item.membershipStatus === null || item.membershipStatus === 'REJECTED') && !item.isOpen && (
+                  {(item.membershipStatus === null || item.membershipStatus === 'REJECTED') && (!item.isOpen || isDisabled) && (
                     <button type="button" className="secondary-btn" disabled>
-                      Campagna chiusa
+                      {isDisabled ? 'Disattivata' : 'Campagna chiusa'}
                     </button>
                   )}
                   {item.membershipStatus === 'PENDING' && (
@@ -4100,7 +4784,7 @@ function CampaignPickerModal({
             <p className="muted">
               {targetScreen
                 ? `Carica prima una campagna per aprire ${SCREEN_LABELS[targetScreen].toLowerCase()}.`
-                : 'Scegli una campagna attiva per continuare.'}
+                : 'Le campagne disattivate restano visibili ma non sono selezionabili.'}
             </p>
           </div>
           <button type="button" className="drawer-close-btn" onClick={onClose}>
@@ -4114,12 +4798,17 @@ function CampaignPickerModal({
               <button
                 key={campaign.campaignId}
                 type="button"
-                className="campaign-picker-item"
+                className={`campaign-picker-item ${campaign.disabled ? 'is-disabled' : ''}`}
                 onClick={() => onSelect(campaign)}
-                disabled={busy}
+                disabled={busy || campaign.disabled}
+                aria-disabled={busy || campaign.disabled}
+                title={campaign.disabled ? 'Campagna disattivata: non selezionabile' : undefined}
               >
                 <div className="campaign-picker-main">
-                  <p className="campaign-picker-name">{campaign.campaignName}</p>
+                  <p className="campaign-picker-name">
+                    {campaign.campaignName}
+                    {!campaign.isActive && <span className="campaign-picker-badge">Disattivata</span>}
+                  </p>
                   <p className="campaign-picker-meta">{campaign.role.replaceAll('_', ' ')}</p>
                 </div>
                 <Icon name="fa-solid fa-chevron-right" className="campaign-picker-icon" />
@@ -4127,7 +4816,7 @@ function CampaignPickerModal({
             ))}
           </div>
         ) : (
-          <p className="muted">Nessuna campagna approvata disponibile per l’attivazione.</p>
+          <p className="muted">Nessuna campagna disponibile per il tuo ruolo.</p>
         )}
 
         <div className="inline-actions">
