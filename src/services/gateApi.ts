@@ -1,6 +1,7 @@
 import { ApiError, apiRequest, clearTokens, setTokens } from './apiClient'
 import type {
   CampaignApplicationResponse,
+  CampaignCatalogEntry,
   CampaignDiscoverResponse,
   AuthSession,
   CampaignMembershipResponse,
@@ -53,6 +54,50 @@ export async function register(params: {
   return data
 }
 
+export async function changePassword(params: {
+  currentPassword: string
+  newPassword: string
+}): Promise<AuthSession> {
+  const data = await apiRequest<AuthResponse>('/auth/password', {
+    method: 'PATCH',
+    body: {
+      currentPassword: params.currentPassword,
+      newPassword: params.newPassword,
+    },
+  })
+  setTokens(data.accessToken, data.refreshToken)
+  return data
+}
+
+export type PasswordResetRequestResponse = {
+  resetSeed: string
+  expiresAt: string
+}
+
+export async function requestPasswordReset(username: string): Promise<PasswordResetRequestResponse> {
+  return apiRequest<PasswordResetRequestResponse>('/auth/password/reset/request', {
+    method: 'POST',
+    auth: false,
+    body: { username },
+  })
+}
+
+export async function confirmPasswordReset(params: {
+  resetSeed: string
+  newPassword: string
+}): Promise<AuthSession> {
+  const data = await apiRequest<AuthResponse>('/auth/password/reset/confirm', {
+    method: 'POST',
+    auth: false,
+    body: {
+      resetSeed: params.resetSeed,
+      newPassword: params.newPassword,
+    },
+  })
+  setTokens(data.accessToken, data.refreshToken)
+  return data
+}
+
 export function logout() {
   clearTokens()
 }
@@ -98,6 +143,7 @@ export async function createCampaign(payload: {
   coverImageUrl?: string
   isOpen?: boolean
   isSearchable?: boolean
+  gameSystem: string
   allowedModules?: string[]
 }): Promise<CampaignResponse> {
   return apiRequest<CampaignResponse>('/campaigns', {
@@ -113,6 +159,7 @@ export async function createCampaign(payload: {
       coverImageUrl: payload.coverImageUrl || null,
       isOpen: payload.isOpen ?? true,
       isSearchable: payload.isSearchable ?? true,
+      gameSystem: payload.gameSystem,
       allowedModules: payload.allowedModules ?? [],
     },
   })
@@ -160,8 +207,12 @@ export async function discoverCampaigns(openOnly = false): Promise<CampaignDisco
   return apiRequest<CampaignDiscoverResponse[]>(`/campaigns/discover?openOnly=${openOnly ? 'true' : 'false'}`)
 }
 
-export async function listCampaignModules(): Promise<string[]> {
-  return apiRequest<string[]>('/campaigns/modules')
+export async function listCampaignModules(): Promise<CampaignCatalogEntry[]> {
+  return apiRequest<CampaignCatalogEntry[]>('/campaigns/modules')
+}
+
+export async function listCampaignGameSystems(): Promise<CampaignCatalogEntry[]> {
+  return apiRequest<CampaignCatalogEntry[]>('/campaigns/game-systems')
 }
 
 export async function applyToCampaign(

@@ -6,14 +6,24 @@ export type MissionStatus = 'OPEN' | 'CLOSED' | 'CONFIRMED' | 'REOPENED' | 'CANC
 export type MissionParticipationType = 'TITOLARE' | 'NON_TITOLARE'
 export type RoomType = 'ROLEPLAY' | 'SPAM'
 
+export interface CampaignCatalogEntry {
+  code: string
+  label: string
+  description: string | null
+  active: boolean
+  sortOrder: number
+}
+
 export interface UserProfile {
   id: string
   username: string | null
+  platformRole?: 'USER' | 'ADMIN' | 'SYSTEM' | null
   profileName: string
   bio: string | null
   avatarUrl: string | null
   whatsapp: string | null
   socialLinks: Record<string, string>
+  isSysAdmin: boolean
   createdAt: string
 }
 
@@ -56,6 +66,7 @@ export interface CampaignResponse {
   founderId: string
   isOpen: boolean
   isSearchable: boolean
+  gameSystem?: string | null
   allowedModules: string[]
   createdAt: string
 }
@@ -91,6 +102,7 @@ export interface CampaignDiscoverResponse {
   founderId: string
   isOpen: boolean
   isSearchable: boolean
+  gameSystem?: string | null
   createdAt: string
   membershipStatus: CampaignMemberStatus | null
   membershipRole: CampaignRole | null

@@ -6,6 +6,7 @@ import {
   approveCampaignMember,
   applyToCampaign,
   approveApplication,
+  changePassword,
   checkPermission,
   banCampaignMember,
   createCampaign,
@@ -18,6 +19,7 @@ import {
   getCampaign,
   getCampaignMember,
   getCampaignMembers,
+  listCampaignGameSystems,
   listCampaignModules,
   listCampaignMembersForManagement,
   getCharacter,
@@ -36,6 +38,8 @@ import {
   register,
   rejectApplication,
   reopenMission,
+  requestPasswordReset,
+  confirmPasswordReset,
   updateMission,
   updateMissionParticipationType,
   suspendCampaignMember,
@@ -50,6 +54,7 @@ import {
 import type {
   AuthSession,
   CampaignApplicationResponse,
+  CampaignCatalogEntry,
   CampaignDiscoverResponse,
   CampaignMemberStatus,
   CampaignMembershipResponse,
@@ -103,6 +108,26 @@ const CAMPAIGN_ID_KEY = 'gate_campaign_id'
 const KNOWN_CAMPAIGNS_KEY = 'gate_known_campaign_ids'
 const KNOWN_CAMPAIGN_META_KEY = 'gate_known_campaign_meta'
 const THEME_KEY = 'gate_theme'
+const PENDING_APPLICATIONS_CACHE_KEY = 'gate_pending_applications_cache'
+const LEGACY_CAMPAIGN_ID_KEY = CAMPAIGN_ID_KEY
+const LEGACY_KNOWN_CAMPAIGNS_KEY = KNOWN_CAMPAIGNS_KEY
+const LEGACY_KNOWN_CAMPAIGN_META_KEY = KNOWN_CAMPAIGN_META_KEY
+
+function scopedStorageKey(baseKey: string, userId?: string | null) {
+  return userId ? `${baseKey}:${userId}` : baseKey
+}
+
+function readStoredJson<T>(storage: Storage, key: string, fallback: T): T {
+  const raw = storage.getItem(key)
+  if (!raw) return fallback
+
+  try {
+    return JSON.parse(raw) as T
+  } catch {
+    return fallback
+  }
+}
+
 type KnownCampaignMeta = { id: string; name: string }
 type CampaignPickerCampaign = {
   campaignId: string
@@ -113,6 +138,27 @@ type LeaveCampaignContext = {
   campaignName: string
   characterWillBeRetired: boolean
 }
+
+function readPendingApplicationsCache(userId?: string | null): Record<string, CampaignApplicationResponse[]> {
+  return readStoredJson(sessionStorage, scopedStorageKey(PENDING_APPLICATIONS_CACHE_KEY, userId), {})
+}
+
+function readPendingApplicationsForCampaign(userId: string | null | undefined, campaignId: string): CampaignApplicationResponse[] {
+  if (!campaignId.trim()) return []
+  return readPendingApplicationsCache(userId)[campaignId] || []
+}
+
+function writePendingApplicationsForCampaign(
+  userId: string | null | undefined,
+  campaignId: string,
+  list: CampaignApplicationResponse[],
+) {
+  if (!campaignId.trim()) return
+  const next = readPendingApplicationsCache(userId)
+  next[campaignId] = list
+  sessionStorage.setItem(scopedStorageKey(PENDING_APPLICATIONS_CACHE_KEY, userId), JSON.stringify(next))
+}
+
 const CAMPAIGN_ACTIVE_REQUIRED_SCREENS: Screen[] = [
   'Approvazione Accessi',
   'Gestione Personaggi',
@@ -140,6 +186,20 @@ const campaignToneLabel = (value: string | null | undefined): string | null => {
   return match?.label || value
 }
 
+const catalogEntryByCode = (entries: CampaignCatalogEntry[], code: string | null | undefined): CampaignCatalogEntry | null => {
+  if (!code) return null
+  return entries.find((entry) => entry.code === code) || null
+}
+
+const catalogEntryLabel = (entries: CampaignCatalogEntry[], code: string | null | undefined): string | null => {
+  return catalogEntryByCode(entries, code)?.label || code || null
+}
+
+const catalogEntryDescription = (entries: CampaignCatalogEntry[], code: string | null | undefined): string | null => {
+  if (!code) return null
+  return catalogEntryByCode(entries, code)?.description || null
+}
+
 type CampaignAccessBadgeKind = 'edit' | 'player' | 'outside' | 'pending' | 'blocked' | 'banned'
 type BreadcrumbItem = {
   label: string
@@ -147,6 +207,7 @@ type BreadcrumbItem = {
 }
 
 type ThemeMode = 'light' | 'dark'
+type EffectiveThemeMode = ThemeMode | 'sysadmin'
 
 type NavigationSection = {
   label: string
@@ -215,6 +276,10 @@ const SCREEN_ICONS: Record<Screen, string> = {
 }
 
 const CAMPAIGN_REQUIRED_TOOLTIP = 'Caricare prima la campagna'
+const MODULE_REQUIRED_BY_SCREEN: Partial<Record<Screen, string>> = {
+  Missioni: 'MISSIONI',
+  Stanze: 'STANZE',
+}
 
 function Icon({ name, className = '' }: { name: string; className?: string }) {
   return <i aria-hidden="true" className={`${name} ${className}`.trim()} />
@@ -516,15 +581,9 @@ function App() {
   const [error, setError] = useState('')
   const [events, setEvents] = useState<UiEvent[]>([])
 
-  const [campaignId, setCampaignId] = useState(localStorage.getItem(CAMPAIGN_ID_KEY) || '')
-  const [knownCampaignIds, setKnownCampaignIds] = useState<string[]>(() => {
-    const raw = localStorage.getItem(KNOWN_CAMPAIGNS_KEY)
-    return raw ? (JSON.parse(raw) as string[]) : []
-  })
-  const [knownCampaignMeta, setKnownCampaignMeta] = useState<KnownCampaignMeta[]>(() => {
-    const raw = localStorage.getItem(KNOWN_CAMPAIGN_META_KEY)
-    return raw ? (JSON.parse(raw) as KnownCampaignMeta[]) : []
-  })
+  const [campaignId, setCampaignId] = useState('')
+  const [knownCampaignIds, setKnownCampaignIds] = useState<string[]>([])
+  const [knownCampaignMeta, setKnownCampaignMeta] = useState<KnownCampaignMeta[]>([])
   const [myCampaigns, setMyCampaigns] = useState<MyCampaignMembershipResponse[]>([])
   const [discoverableCampaigns, setDiscoverableCampaigns] = useState<CampaignDiscoverResponse[]>([])
   const [pendingApplications, setPendingApplications] = useState<CampaignApplicationResponse[]>([])
@@ -535,7 +594,8 @@ function App() {
   const [canManageCampaignMembers, setCanManageCampaignMembers] = useState(false)
   const [campaignFounderNames, setCampaignFounderNames] = useState<Record<string, string>>({})
   const [permissions, setPermissions] = useState<CampaignPermissionResponse[]>([])
-  const [campaignModules, setCampaignModules] = useState<string[]>([])
+  const [campaignModules, setCampaignModules] = useState<CampaignCatalogEntry[]>([])
+  const [campaignGameSystems, setCampaignGameSystems] = useState<CampaignCatalogEntry[]>([])
 
   const [characters, setCharacters] = useState<Character[]>([])
   const [selectedCharacterId, setSelectedCharacterId] = useState('')
@@ -557,11 +617,17 @@ function App() {
     const saved = localStorage.getItem(THEME_KEY)
     return saved === 'dark' || saved === 'light' ? (saved as ThemeMode) : 'light'
   })
+  const isSysAdmin = profile?.isSysAdmin ?? false
+  const isSystemRole = profile?.platformRole === 'SYSTEM'
+  const isSystemSession = isSysAdmin || isSystemRole
+  const effectiveTheme: EffectiveThemeMode = isSysAdmin || isSystemRole ? 'sysadmin' : theme
 
   useEffect(() => {
-    document.documentElement.dataset.theme = theme
-    localStorage.setItem(THEME_KEY, theme)
-  }, [theme])
+    document.documentElement.dataset.theme = effectiveTheme
+    if (!(isSysAdmin || isSystemRole)) {
+      localStorage.setItem(THEME_KEY, theme)
+    }
+  }, [effectiveTheme, isSysAdmin, isSystemRole, theme])
 
   const selectedCharacter = useMemo(
     () => characters.find((character) => character.id === selectedCharacterId) || null,
@@ -671,22 +737,23 @@ function App() {
   const rememberCampaignId = (id: string) => {
     const trimmed = id.trim()
     setCampaignId(trimmed)
+    const storageKey = scopedStorageKey(CAMPAIGN_ID_KEY, activeUserId)
     if (trimmed) {
-      localStorage.setItem(CAMPAIGN_ID_KEY, trimmed)
+      localStorage.setItem(storageKey, trimmed)
       setKnownCampaignIds((prev) => {
         const next = Array.from(new Set([trimmed, ...prev]))
-        localStorage.setItem(KNOWN_CAMPAIGNS_KEY, JSON.stringify(next))
+        localStorage.setItem(scopedStorageKey(KNOWN_CAMPAIGNS_KEY, activeUserId), JSON.stringify(next))
         return next
       })
     } else {
-      localStorage.removeItem(CAMPAIGN_ID_KEY)
+      localStorage.removeItem(storageKey)
     }
   }
 
   const rememberCampaignMeta = (id: string, name: string) => {
     setKnownCampaignMeta((prev) => {
       const next = [{ id, name }, ...prev.filter((item) => item.id !== id)]
-      localStorage.setItem(KNOWN_CAMPAIGN_META_KEY, JSON.stringify(next))
+      localStorage.setItem(scopedStorageKey(KNOWN_CAMPAIGN_META_KEY, activeUserId), JSON.stringify(next))
       return next
     })
   }
@@ -752,6 +819,7 @@ function App() {
   }
 
   const loadCampaignBlockFor = async (targetCampaignId: string) => {
+    setPendingApplications(readPendingApplicationsForCampaign(activeUserId, targetCampaignId))
     const [
       campaignValue,
       memberValue,
@@ -784,6 +852,7 @@ function App() {
     setCampaignMembersForManagement(memberManagementValue)
     setCanManageCampaignMembers(canManageMembersPermission)
     setPendingApplications(pendingValue)
+    writePendingApplicationsForCampaign(activeUserId, targetCampaignId, pendingValue)
     setCharacters(characterValue)
     setMissions(missionValue)
     setRooms(roomValue)
@@ -830,6 +899,7 @@ function App() {
     setPendingApplications([])
     setPermissions([])
     setCampaignModules([])
+    setCampaignGameSystems([])
     setCharacters([])
     setSelectedCharacterId('')
     setCharacterDetail(null)
@@ -1018,6 +1088,7 @@ function App() {
     if (!campaignId.trim()) return
     const list = await listPendingApplications(campaignId)
     setPendingApplications(list)
+    writePendingApplicationsForCampaign(activeUserId, campaignId, list)
   }
 
   const approvePendingForActiveCampaign = async (userId: string) => {
@@ -1058,7 +1129,7 @@ function App() {
             if (index >= 0) merged[index] = { id: campaignValue.id, name: campaignValue.name }
             else merged.push({ id: campaignValue.id, name: campaignValue.name })
           }
-          localStorage.setItem(KNOWN_CAMPAIGN_META_KEY, JSON.stringify(merged))
+          localStorage.setItem(scopedStorageKey(KNOWN_CAMPAIGN_META_KEY, activeUserId), JSON.stringify(merged))
           return merged
         })
       }
@@ -1224,18 +1295,20 @@ function App() {
 
   useEffect(() => {
     if (!getAccessToken()) return
-    if (screen !== 'Crea Campagna') return
+    if (screen !== 'Crea Campagna' && screen !== 'Gestione Campagna') return
+    if (campaignModules.length > 0) return
 
     let cancelled = false
     void (async () => {
       try {
-        const modules = await listCampaignModules()
-        if (!cancelled) setCampaignModules(modules)
+        const modulesResult = await listCampaignModules()
+        if (cancelled) return
+        setCampaignModules(modulesResult)
       } catch (err) {
         if (cancelled) return
         const message = toMessage(err)
         setError(message)
-        addEvent(`Caricamento moduli campagna: ${message}`, 'error')
+        addEvent(`Caricamento dati campagna: ${message}`, 'error')
         if (isUnauthorized(err)) handleLogout()
       }
     })()
@@ -1243,7 +1316,32 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [screen])
+  }, [screen, campaignModules.length])
+
+  useEffect(() => {
+    if (!getAccessToken()) return
+    if (screen !== 'Crea Campagna') return
+    if (campaignGameSystems.length > 0) return
+
+    let cancelled = false
+    void (async () => {
+      try {
+        const systemsResult = await listCampaignGameSystems()
+        if (cancelled) return
+        setCampaignGameSystems(systemsResult)
+      } catch (err) {
+        if (cancelled) return
+        const message = toMessage(err)
+        setError(message)
+        addEvent(`Caricamento sistemi di gioco: ${message}`, 'error')
+        if (isUnauthorized(err)) handleLogout()
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [screen, campaignGameSystems.length])
 
   const handleAuth = async (session: AuthSession) => {
     setProfile(session.user)
@@ -1255,12 +1353,18 @@ function App() {
   const handleLogout = () => {
     logout()
     setProfile(null)
+    setCampaignId('')
+    setKnownCampaignIds([])
+    setKnownCampaignMeta([])
+    setPendingApplications([])
     setCampaign(null)
     setMembers([])
     setCampaignMembersForManagement([])
     setPendingApplications([])
     setSelectedCampaignMember(null)
     setSelectedCampaignMemberProfile(null)
+    setCampaignModules([])
+    setCampaignGameSystems([])
     setCharacters([])
     setMissions([])
     setMissionCharacters([])
@@ -1274,15 +1378,106 @@ function App() {
     addEvent('Logout eseguito', 'info')
   }
 
+  const activeUserId = profile?.id ?? null
+
+  useEffect(() => {
+    if (!profile || !activeUserId) return
+
+    const scopedCampaignKey = scopedStorageKey(CAMPAIGN_ID_KEY, activeUserId)
+    const scopedKnownCampaignIdsKey = scopedStorageKey(KNOWN_CAMPAIGNS_KEY, activeUserId)
+    const scopedKnownCampaignMetaKey = scopedStorageKey(KNOWN_CAMPAIGN_META_KEY, activeUserId)
+
+    const scopedCampaignId = localStorage.getItem(scopedCampaignKey)
+    const legacyCampaignId = localStorage.getItem(LEGACY_CAMPAIGN_ID_KEY) || ''
+    const nextCampaignId = scopedCampaignId || legacyCampaignId
+
+    const scopedKnownCampaignIds = readStoredJson<string[]>(localStorage, scopedKnownCampaignIdsKey, [])
+    const legacyKnownCampaignIds = readStoredJson<string[]>(localStorage, LEGACY_KNOWN_CAMPAIGNS_KEY, [])
+    const nextKnownCampaignIds = scopedKnownCampaignIds.length > 0 ? scopedKnownCampaignIds : legacyKnownCampaignIds
+
+    const scopedKnownCampaignMeta = readStoredJson<KnownCampaignMeta[]>(localStorage, scopedKnownCampaignMetaKey, [])
+    const legacyKnownCampaignMeta = readStoredJson<KnownCampaignMeta[]>(localStorage, LEGACY_KNOWN_CAMPAIGN_META_KEY, [])
+    const nextKnownCampaignMeta = scopedKnownCampaignMeta.length > 0 ? scopedKnownCampaignMeta : legacyKnownCampaignMeta
+
+    const scopedPendingApplications = readPendingApplicationsCache(activeUserId)
+    const legacyPendingApplications = readPendingApplicationsCache(null)
+    const nextPendingApplications = nextCampaignId ? scopedPendingApplications[nextCampaignId] || legacyPendingApplications[nextCampaignId] || [] : []
+
+    if (!scopedCampaignId && legacyCampaignId) {
+      localStorage.setItem(scopedCampaignKey, legacyCampaignId)
+    }
+    if (scopedKnownCampaignIds.length === 0 && legacyKnownCampaignIds.length > 0) {
+      localStorage.setItem(scopedKnownCampaignIdsKey, JSON.stringify(legacyKnownCampaignIds))
+    }
+    if (scopedKnownCampaignMeta.length === 0 && legacyKnownCampaignMeta.length > 0) {
+      localStorage.setItem(scopedKnownCampaignMetaKey, JSON.stringify(legacyKnownCampaignMeta))
+    }
+    if (nextCampaignId && !scopedPendingApplications[nextCampaignId] && legacyPendingApplications[nextCampaignId]) {
+      writePendingApplicationsForCampaign(activeUserId, nextCampaignId, legacyPendingApplications[nextCampaignId])
+    }
+
+    setCampaignId(nextCampaignId)
+    setKnownCampaignIds(nextKnownCampaignIds)
+    setKnownCampaignMeta(nextKnownCampaignMeta)
+    setPendingApplications(nextPendingApplications)
+  }, [activeUserId, profile])
+
   if (!profile) {
     return <AuthScreen onAuth={handleAuth} />
   }
 
-  const isMenuScreenEnabled = (value: Screen) => {
-    if (value === 'Scheda PG' && !selectedCharacter) return false
-    if (value === 'Profilo Membro Campagna' && !selectedCampaignMember) return false
-    if (value === 'Approvazione Accessi' && !canAccessCampaignManagement) return false
-    return true
+  const getMenuScreenState = (value: Screen) => {
+    const moduleCode = MODULE_REQUIRED_BY_SCREEN[value]
+    const hasRequiredModule = !moduleCode || (campaign?.allowedModules || []).includes(moduleCode)
+
+    if (value === 'Approvazione Accessi' && !canAccessCampaignManagement) {
+      return {
+        enabled: false,
+        title: 'Non hai permessi per gestire gli accessi',
+        showOverlayX: false,
+      }
+    }
+
+    if (moduleCode && hasActiveCampaign && !hasRequiredModule) {
+      return {
+        enabled: false,
+        title: 'Modulo non attivo per la campagna',
+        showOverlayX: true,
+      }
+    }
+
+    if (value === 'Scheda PG' && !selectedCharacter) {
+      return {
+        enabled: false,
+        title: 'Seleziona prima un personaggio',
+        showOverlayX: false,
+      }
+    }
+
+    if (value === 'Profilo Membro Campagna' && !selectedCampaignMember) {
+      return {
+        enabled: false,
+        title: 'Seleziona prima un membro',
+        showOverlayX: false,
+      }
+    }
+
+    if (requiresCampaignSelection(value) && !hasActiveCampaign) {
+      return {
+        enabled: false,
+        title: CAMPAIGN_REQUIRED_TOOLTIP,
+        showOverlayX: false,
+      }
+    }
+
+    return {
+      enabled: true,
+      title:
+        value === 'Approvazione Accessi' && pendingApplications.length > 0
+          ? `${pendingApplications.length} richieste pending`
+          : SCREEN_LABELS[value],
+      showOverlayX: false,
+    }
   }
   const campaignArea = isCampaignScope(screen)
   const activeCampaignMembership =
@@ -1529,6 +1724,62 @@ function App() {
     setIsSidebarOpen(false)
   }
 
+  if (isSystemSession) {
+    return (
+      <div className="app-shell system-shell">
+        <aside className="sidebar-drawer is-open">
+          <div className="sidebar-top">
+            <div className="brand">
+              <div className="brand-mark">
+                <Icon name="fa-solid fa-shield-halved" />
+              </div>
+              <div>
+                <p className="brand-title">Taverna del Codice</p>
+                <p className="brand-subtitle">Console amministrativa</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="sidebar-context">
+            <p className="sidebar-user-kicker">Sessione sistema</p>
+            <p className="sidebar-context-title">{profile?.profileName || 'SYSTEM'}</p>
+            <p className="sidebar-context-meta">{profile?.username ? `@${profile.username}` : 'Account tecnico'}</p>
+          </div>
+
+          <div className="system-dashboard-copy">
+            <p className="menu-group-label">Console</p>
+            <p className="muted">Da qui gestirai utenti, campagne, sistemi di gioco e cataloghi moduli.</p>
+          </div>
+
+          <div className="sidebar-footer">
+            <button
+              type="button"
+              className="refresh-btn theme-toggle-btn sidebar-theme-toggle"
+              disabled
+            >
+              <Icon name="fa-solid fa-shield-halved" />
+              <span>Tema Sistema</span>
+            </button>
+            <button type="button" className="logout-btn" onClick={handleLogout}>
+              <Icon name="fa-solid fa-right-from-bracket" />
+              <span>Logout</span>
+            </button>
+          </div>
+        </aside>
+
+        <main className="main system-main">
+          <section className="panel system-landing-panel">
+            <p className="menu-group-label">Dashboard amministrativa</p>
+            <h2>Benvenuto nella console sistema</h2>
+            <p className="muted">
+              Qui introdurremo la gestione globale di utenti, campagne, game system e addon.
+            </p>
+          </section>
+        </main>
+      </div>
+    )
+  }
+
   return (
     <div className="app-shell">
       {isSidebarOpen && (
@@ -1572,39 +1823,36 @@ function App() {
               </div>
               <div className={`menu-section-grid ${section.label === 'Strumenti' ? 'is-compact' : ''}`}>
                 {section.items.map((item) => (
-                  <button
-                    key={item}
-                    type="button"
-                    className={`menu-item ${screen === item ? 'is-active' : ''} ${requiresCampaignSelection(item) && !hasActiveCampaign ? 'is-gated' : ''} ${isMenuScreenEnabled(item) ? '' : 'is-disabled'}`}
-                    onClick={() => {
-                      if (!isMenuScreenEnabled(item)) return
+                  (() => {
+                    const itemState = getMenuScreenState(item)
+                    const isDisabled = !itemState.enabled
+                    return (
+                    <button
+                      key={item}
+                      type="button"
+                      className={`menu-item ${screen === item ? 'is-active' : ''} ${requiresCampaignSelection(item) && !hasActiveCampaign ? 'is-gated' : ''} ${isDisabled ? 'is-disabled' : ''} ${MODULE_REQUIRED_BY_SCREEN[item] && hasActiveCampaign && !(campaign?.allowedModules || []).includes(MODULE_REQUIRED_BY_SCREEN[item]!) ? 'is-module-disabled' : ''}`}
+                      onClick={() => {
+                        if (!itemState.enabled) return
                       if (requiresCampaignSelection(item) && !hasActiveCampaign) {
                         openCampaignPicker(item)
                         return
                       }
                       goToScreen(item)
                     }}
-                    disabled={!isMenuScreenEnabled(item)}
+                      disabled={isDisabled}
                     title={
-                      !isMenuScreenEnabled(item)
-                        ? item === 'Scheda PG'
-                          ? 'Seleziona prima un personaggio'
-                          : item === 'Profilo Membro Campagna'
-                            ? 'Seleziona prima un membro'
-                          : item === 'Approvazione Accessi'
-                            ? 'Serve un ruolo di gestione campagna'
-                            : 'Seleziona prima un membro'
-                        : requiresCampaignSelection(item) && !hasActiveCampaign
-                          ? CAMPAIGN_REQUIRED_TOOLTIP
-                          : item === 'Approvazione Accessi' && pendingApplications.length > 0
-                            ? `${pendingApplications.length} richieste pending`
-                          : SCREEN_LABELS[item]
+                      itemState.title
                     }
                     aria-current={screen === item ? 'page' : undefined}
                   >
                     <span className="menu-item-icon">
                       <Icon name={SCREEN_ICONS[item]} />
-                      {item === 'Approvazione Accessi' && pendingApplications.length > 0 && (
+                      {itemState.showOverlayX && (
+                        <span className="menu-item-overlay" aria-hidden="true">
+                          <Icon name="fa-solid fa-xmark" />
+                        </span>
+                      )}
+                      {item === 'Approvazione Accessi' && itemState.enabled && pendingApplications.length > 0 && (
                         <span className="menu-item-badge" aria-hidden="true">
                           {pendingApplications.length}
                         </span>
@@ -1612,6 +1860,8 @@ function App() {
                     </span>
                     <span className="menu-item-text">{SCREEN_LABELS[item]}</span>
                   </button>
+                    )
+                  })()
                 ))}
               </div>
             </section>
@@ -1619,14 +1869,15 @@ function App() {
         </nav>
 
         <div className="sidebar-footer">
-          <button
-            type="button"
-            className="refresh-btn theme-toggle-btn sidebar-theme-toggle"
+            <button
+              type="button"
+              className="refresh-btn theme-toggle-btn sidebar-theme-toggle"
+            disabled={isSysAdmin || isSystemRole}
             onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
           >
-            <Icon name={theme === 'light' ? 'fa-solid fa-moon' : 'fa-solid fa-sun'} />
-            <span>{theme === 'light' ? 'Tema scuro' : 'Tema chiaro'}</span>
-          </button>
+            <Icon name={isSysAdmin || isSystemRole ? 'fa-solid fa-shield-halved' : theme === 'light' ? 'fa-solid fa-moon' : 'fa-solid fa-sun'} />
+            <span>{isSysAdmin || isSystemRole ? 'Tema Sistema' : theme === 'light' ? 'Tema scuro' : 'Tema chiaro'}</span>
+            </button>
           <button type="button" className="logout-btn" onClick={handleLogout}>
             <Icon name="fa-solid fa-right-from-bracket" />
             <span>Logout</span>
@@ -1725,6 +1976,7 @@ function App() {
         {screen === 'Crea Campagna' && (
           <CreateCampaignPage
             availableModules={campaignModules}
+            availableGameSystems={campaignGameSystems}
             onCreate={(payload) =>
               run('Campagna creata', async () => {
                 const created = await createCampaign(payload)
@@ -1756,6 +2008,8 @@ function App() {
             currentUserId={profile.id}
             members={campaignMembersForManagement.length > 0 ? campaignMembersForManagement : members}
             memberNames={memberNames}
+            availableModules={campaignModules}
+            availableGameSystems={campaignGameSystems}
             onReload={() => void refreshCampaignBlock()}
             onOpenMember={(userId) =>
               run('Profilo membro caricato', async () => {
@@ -1917,6 +2171,12 @@ function App() {
                 setScreen('Profilo')
               })
             }
+            onChangePassword={(payload) =>
+              run('Password aggiornata', async () => {
+                const session = await changePassword(payload)
+                setProfile(session.user)
+              })
+            }
           />
         )}
 
@@ -1978,13 +2238,8 @@ function App() {
           <CampaignManagementPage
             campaign={campaign}
             availableModules={campaignModules}
+            availableGameSystems={campaignGameSystems}
             permissions={permissions}
-            onLoadModules={() =>
-              run('Moduli campagna caricati', async () => {
-                const modules = await listCampaignModules()
-                setCampaignModules(modules)
-              })
-            }
             onSave={(payload) =>
               campaign?.id &&
               run('Campagna aggiornata', async () => {
@@ -2179,24 +2434,72 @@ function App() {
 }
 
 function AuthScreen({ onAuth }: { onAuth: (session: AuthSession) => Promise<void> }) {
-  const [mode, setMode] = useState<'login' | 'register'>('login')
+  const [mode, setMode] = useState<'login' | 'register' | 'recover'>('login')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [profileName, setProfileName] = useState('')
   const [bio, setBio] = useState('')
+  const [resetSeed, setResetSeed] = useState('')
+  const [resetExpiresAt, setResetExpiresAt] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [recoveryStep, setRecoveryStep] = useState<'request' | 'confirm'>('request')
   const [error, setError] = useState('')
+  const [info, setInfo] = useState('')
   const [busy, setBusy] = useState(false)
+
+  const resetRecoveryState = () => {
+    setResetSeed('')
+    setResetExpiresAt('')
+    setNewPassword('')
+    setConfirmPassword('')
+    setRecoveryStep('request')
+    setInfo('')
+  }
+
+  const switchMode = (nextMode: typeof mode) => {
+    setMode(nextMode)
+    setError('')
+    if (nextMode !== 'recover') {
+      resetRecoveryState()
+    }
+  }
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setError('')
+    setInfo('')
     setBusy(true)
     try {
-      const session =
-        mode === 'login'
-          ? await login(username, password)
-          : await register({ username, password, profileName, bio })
-      await onAuth(session)
+      if (mode === 'login') {
+        await onAuth(await login(username, password))
+        return
+      }
+
+      if (mode === 'register') {
+        await onAuth(await register({ username, password, profileName, bio }))
+        return
+      }
+
+      if (recoveryStep === 'request') {
+        const response = await requestPasswordReset(username)
+        setResetSeed(response.resetSeed)
+        setResetExpiresAt(response.expiresAt)
+        setRecoveryStep('confirm')
+        setInfo('Seed di reset generato. Usa il seed ricevuto per confermare il reset.')
+        return
+      }
+
+      if (newPassword !== confirmPassword) {
+        throw new Error('La nuova password e la conferma non coincidono')
+      }
+
+      await onAuth(
+        await confirmPasswordReset({
+          resetSeed,
+          newPassword,
+        }),
+      )
     } catch (err) {
       setError(toMessage(err))
     } finally {
@@ -2212,32 +2515,75 @@ function AuthScreen({ onAuth }: { onAuth: (session: AuthSession) => Promise<void
       </section>
       <section className="auth-panel">
         <form className="auth-card" onSubmit={submit}>
-          <div className="row-between">
-            <h2>{mode === 'login' ? 'Login' : 'Registrazione'}</h2>
-            <button
-              type="button"
-              className="secondary-btn"
-              onClick={() => setMode((value) => (value === 'login' ? 'register' : 'login'))}
-            >
-              {mode === 'login' ? 'Vai a registrazione' : 'Vai a login'}
-            </button>
+          <div className="auth-mode-picker" role="tablist" aria-label="Accesso e password">
+            {[
+              {
+                key: 'login' as const,
+                label: 'Login',
+                hint: 'Entra con username e password.',
+              },
+              {
+                key: 'register' as const,
+                label: 'Registrazione',
+                hint: 'Crea un nuovo account con profilo base.',
+              },
+              {
+                key: 'recover' as const,
+                label: 'Recupero password',
+                hint: 'Richiedi un seed e conferma il reset in due passi.',
+              },
+            ].map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                className={`auth-mode-pill ${mode === item.key ? 'is-active' : ''}`}
+                onClick={() => switchMode(item.key)}
+                title={item.hint}
+                aria-label={`${item.label}. ${item.hint}`}
+              >
+                <span>{item.label}</span>
+                <span className="auth-mode-hint" aria-hidden="true">
+                  {item.hint}
+                </span>
+              </button>
+            ))}
           </div>
-          <label>
-            Username
-            <input required value={username} placeholder="Il tuo username" onChange={(event) => setUsername(event.target.value)} />
-          </label>
-          <label>
-            Password
-            <input
-              required
-              type="password"
-              placeholder="Password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-            />
-          </label>
+          <h2>{mode === 'login' ? 'Login' : mode === 'register' ? 'Registrazione' : 'Recupero password'}</h2>
+          {mode === 'recover' && (
+            <p className="auth-note">
+              Il reset è pubblico e avviene in due passaggi. Prima richiedi un seed, poi confermi il reset con il seed e la nuova password.
+            </p>
+          )}
+          {mode !== 'recover' && (
+            <label>
+              Username
+              <input required value={username} placeholder="Il tuo username" onChange={(event) => setUsername(event.target.value)} />
+            </label>
+          )}
+          {mode === 'login' && (
+            <label>
+              Password
+              <input
+                required
+                type="password"
+                placeholder="Password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+              />
+            </label>
+          )}
           {mode === 'register' && (
             <>
+              <label>
+                Password
+                <input
+                  required
+                  type="password"
+                  placeholder="Password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                />
+              </label>
               <label>
                 Profile Name
                 <input value={profileName} placeholder="Nome profilo" onChange={(event) => setProfileName(event.target.value)} />
@@ -2248,10 +2594,64 @@ function AuthScreen({ onAuth }: { onAuth: (session: AuthSession) => Promise<void
               </label>
             </>
           )}
+          {mode === 'recover' && (
+            <>
+              {recoveryStep === 'request' ? (
+                <label>
+                  Username
+                  <input
+                    required
+                    value={username}
+                    placeholder="Username dell'account"
+                    onChange={(event) => setUsername(event.target.value)}
+                  />
+                </label>
+              ) : (
+                <>
+                  <div className="auth-result-box">
+                    <p className="auth-result-label">Seed di reset</p>
+                    <p className="auth-result-value">{resetSeed}</p>
+                    <p className="auth-result-meta">Scadenza: {resetExpiresAt || 'n/d'}</p>
+                  </div>
+                  <label>
+                    Reset seed
+                    <input required value={resetSeed} placeholder="Seed ricevuto dal request" onChange={(event) => setResetSeed(event.target.value)} />
+                  </label>
+                  <label>
+                    Nuova password
+                    <input
+                      required
+                      type="password"
+                      placeholder="Nuova password"
+                      value={newPassword}
+                      onChange={(event) => setNewPassword(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Conferma nuova password
+                    <input
+                      required
+                      type="password"
+                      placeholder="Ripeti la nuova password"
+                      value={confirmPassword}
+                      onChange={(event) => setConfirmPassword(event.target.value)}
+                    />
+                  </label>
+                </>
+              )}
+            </>
+          )}
           {error && <p className="form-error">{error}</p>}
-          <button className="primary-btn" disabled={busy} type="submit">
-            {busy ? 'Attendere...' : mode === 'login' ? 'Accedi' : 'Crea account'}
-          </button>
+          {info && <p className="auth-note">{info}</p>}
+          {mode === 'recover' ? (
+            <button className="primary-btn" disabled={busy} type="submit">
+              {busy ? 'Attendere...' : recoveryStep === 'request' ? 'Richiedi seed' : 'Conferma reset'}
+            </button>
+          ) : (
+            <button className="primary-btn" disabled={busy} type="submit">
+              {busy ? 'Attendere...' : mode === 'login' ? 'Accedi' : 'Crea account'}
+            </button>
+          )}
         </form>
       </section>
     </div>
@@ -2345,9 +2745,11 @@ function CampaignListPage({
 
 function CreateCampaignPage({
   availableModules,
+  availableGameSystems,
   onCreate,
 }: {
-  availableModules: string[]
+  availableModules: CampaignCatalogEntry[]
+  availableGameSystems: CampaignCatalogEntry[]
   onCreate: (payload: {
     name: string
     description: string
@@ -2359,6 +2761,7 @@ function CreateCampaignPage({
     coverImageUrl: string
     isOpen: boolean
     isSearchable: boolean
+    gameSystem: string
     allowedModules: string[]
   }) => void
 }) {
@@ -2372,24 +2775,35 @@ function CreateCampaignPage({
   const [coverImageUrl, setCoverImageUrl] = useState('')
   const [isOpen, setIsOpen] = useState(true)
   const [isSearchable, setIsSearchable] = useState(true)
+  const [selectedGameSystem, setSelectedGameSystem] = useState('DND5E')
   const [selectedModules, setSelectedModules] = useState<string[]>([])
-  const [moduleMenuOpen, setModuleMenuOpen] = useState(false)
   const [visibilityMenuOpen, setVisibilityMenuOpen] = useState(false)
 
   useEffect(() => {
     if (availableModules.length === 0) return
     setSelectedModules((prev) => {
-      if (prev.length === 0) return [...availableModules]
-      return prev.filter((moduleCode) => availableModules.includes(moduleCode))
+      if (prev.length === 0) return availableModules.map((module) => module.code)
+      const allowed = new Set(availableModules.map((module) => module.code))
+      return prev.filter((moduleCode) => allowed.has(moduleCode))
     })
   }, [availableModules])
+
+  useEffect(() => {
+    if (availableGameSystems.length === 0) {
+      setSelectedGameSystem('DND5E')
+      return
+    }
+    setSelectedGameSystem((prev) => {
+      const allowed = new Set(availableGameSystems.map((item) => item.code))
+      return allowed.has(prev) ? prev : availableGameSystems[0]?.code || 'DND5E'
+    })
+  }, [availableGameSystems])
 
   const toggleModule = (moduleCode: string) => {
     setSelectedModules((prev) =>
       prev.includes(moduleCode) ? prev.filter((item) => item !== moduleCode) : [...prev, moduleCode]
     )
   }
-  const selectedModulesLabel = selectedModules.length > 0 ? selectedModules.join(', ') : 'Nessun modulo selezionato'
   const selectedVisibilityLabel = [isOpen ? 'Aperta' : null, isSearchable ? 'Ricercabile' : null]
     .filter(Boolean)
     .join(', ') || 'Nessuna opzione selezionata'
@@ -2397,6 +2811,26 @@ function CreateCampaignPage({
   return (
     <section className="panel">
       <h2>Crea Campagna</h2>
+      <label>
+        <FieldLabel icon="fa-solid fa-gamepad" label="Sistema di gioco" />
+        <select
+          required
+          value={selectedGameSystem}
+          onChange={(event) => setSelectedGameSystem(event.target.value)}
+        >
+          {availableGameSystems.length > 0 ? (
+            availableGameSystems.map((gameSystem) => (
+              <option key={gameSystem.code} value={gameSystem.code}>
+                {gameSystem.label || gameSystem.code}
+              </option>
+            ))
+          ) : (
+            <option value="DND5E">D&D 5E</option>
+          )}
+        </select>
+        <p className="muted">{catalogEntryDescription(availableGameSystems, selectedGameSystem)}</p>
+        <p className="muted">Obbligatorio. Definisce il template della scheda e la logica base della campagna.</p>
+      </label>
         <label>
           <FieldLabel icon="fa-solid fa-signature" label="Nome" />
           <input value={name} placeholder="Nome della campagna" onChange={(event) => setName(event.target.value)} />
@@ -2465,33 +2899,13 @@ function CreateCampaignPage({
           </div>
         )}
       </div>
-      <div className="multicheck-field">
-        <p className="muted">Moduli</p>
-        <button
-          type="button"
-          className="secondary-btn multicheck-trigger"
-          onClick={() => setModuleMenuOpen((prev) => !prev)}
-          disabled={availableModules.length === 0}
-        >
-          <span className="multicheck-value">{selectedModulesLabel}</span>
-          <span aria-hidden="true">{moduleMenuOpen ? '▴' : '▾'}</span>
-        </button>
-        {moduleMenuOpen && availableModules.length > 0 && (
-          <div className="multicheck-menu">
-            {availableModules.map((moduleCode) => (
-              <label key={moduleCode} className="checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={selectedModules.includes(moduleCode)}
-                  onChange={() => toggleModule(moduleCode)}
-                />
-                {moduleCode}
-              </label>
-            ))}
-          </div>
-        )}
-        {availableModules.length === 0 && <p className="muted">Nessun modulo disponibile.</p>}
-      </div>
+      <CampaignAddonToggleList
+        title="Addon campagna"
+        description="I moduli sono sempre visibili e puoi attivarli o disattivarli senza passaggi aggiuntivi."
+        availableModules={availableModules}
+        selectedModules={selectedModules}
+        onToggle={toggleModule}
+      />
       <button
         type="button"
         className="primary-btn"
@@ -2507,6 +2921,7 @@ function CreateCampaignPage({
             coverImageUrl,
             isOpen,
             isSearchable,
+            gameSystem: selectedGameSystem,
             allowedModules: selectedModules,
           })
         }
@@ -2528,11 +2943,66 @@ function InfoBlock({ title, value }: { title: string; value: string | null }) {
   )
 }
 
+function CampaignAddonToggleList({
+  title,
+  description,
+  availableModules,
+  selectedModules,
+  onToggle,
+}: {
+  title: string
+  description: string
+  availableModules: CampaignCatalogEntry[]
+  selectedModules: string[]
+  onToggle: (moduleCode: string) => void
+}) {
+  return (
+    <section className="addon-panel">
+      <div className="row-between">
+        <div>
+          <h3 className="section-title">{title}</h3>
+          <p className="muted">{description}</p>
+        </div>
+        <span className="readonly-chip">{selectedModules.length} attivi</span>
+      </div>
+      {availableModules.length > 0 ? (
+        <div className="addon-list">
+          {availableModules.map((module) => {
+            const enabled = selectedModules.includes(module.code)
+            return (
+              <div key={module.code} className="addon-row">
+                <div className="addon-copy">
+                  <p className="addon-title">{module.label || module.code}</p>
+                  <p className="addon-description">{module.description || 'Addon disponibile per la campagna.'}</p>
+                </div>
+                <label className="switch" aria-label={`${module.label || module.code} ${enabled ? 'attivo' : 'disattivo'}`}>
+                  <input
+                    type="checkbox"
+                    checked={enabled}
+                    onChange={() => onToggle(module.code)}
+                  />
+                  <span className="switch-track" aria-hidden="true">
+                    <span className="switch-thumb" />
+                  </span>
+                </label>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <p className="muted">Lista addon non ancora disponibile.</p>
+      )}
+    </section>
+  )
+}
+
 function CampaignDetailPage({
   campaign,
   currentUserId,
   members,
   memberNames,
+  availableModules,
+  availableGameSystems,
   onReload,
   onOpenMember,
   onOpenManagement,
@@ -2549,6 +3019,8 @@ function CampaignDetailPage({
   currentUserId: string
   members: CampaignMembershipResponse[]
   memberNames: Record<string, string>
+  availableModules: CampaignCatalogEntry[]
+  availableGameSystems: CampaignCatalogEntry[]
   onReload: () => void
   onOpenMember: (userId: string) => void
   onOpenManagement: () => void
@@ -2575,8 +3047,6 @@ function CampaignDetailPage({
     'MASTER',
     'SUPER_MASTER',
   ])
-  const [statusMenuOpen, setStatusMenuOpen] = useState(false)
-  const [roleMenuOpen, setRoleMenuOpen] = useState(false)
 
   const normalizedQuery = memberQuery.trim().toLowerCase()
   const filteredMembers = members.filter((member) => {
@@ -2632,21 +3102,35 @@ function CampaignDetailPage({
           <div className="campaign-profile-grid">
             <InfoBlock title="Ambientazione" value={campaign.setting} />
             <InfoBlock title="Tono" value={campaignToneLabel(campaign.tone)} />
+            <InfoBlock title="Sistema di gioco" value={catalogEntryLabel(availableGameSystems, campaign.gameSystem)} />
+            <InfoBlock
+              title="Descrizione sistema"
+              value={catalogEntryDescription(availableGameSystems, campaign.gameSystem)}
+            />
             <InfoBlock title="Regole" value={campaign.rules} />
             <InfoBlock title="Requisiti d'ingresso" value={campaign.requirements} />
           </div>
           <p className="muted">
             open: {String(campaign.isOpen)} | searchable: {String(campaign.isSearchable)}
           </p>
-          {campaign.allowedModules.length > 0 && (
-            <div className="chips">
-              {campaign.allowedModules.map((moduleCode) => (
-                <span key={moduleCode} className="chip readonly-chip">
-                  {moduleCode}
-                </span>
-              ))}
+          <div className="campaign-addon-section">
+            <div className="row-between">
+              <h3 className="section-title">Addon attivi</h3>
+              <span className="readonly-chip">{campaign.allowedModules.length} attivi</span>
             </div>
-          )}
+            {campaign.allowedModules.length > 0 ? (
+              <div className="campaign-addon-grid">
+                {campaign.allowedModules.map((moduleCode) => (
+                  <article key={moduleCode} className="campaign-addon-card">
+                    <p className="field-label">{catalogEntryLabel(availableModules, moduleCode)}</p>
+                    <p className="muted">{catalogEntryDescription(availableModules, moduleCode)}</p>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p className="muted">Nessun addon attivo per questa campagna.</p>
+            )}
+          </div>
           <div className="inline-actions">
             {membershipStatus === 'APPROVED' && (
               <button type="button" className="primary-btn" onClick={onActivate}>
@@ -2688,59 +3172,59 @@ function CampaignDetailPage({
             <>
               <div className="divider" />
               <h3 className="section-title">Membri Campagna</h3>
-              <label>
-                Cerca membro per nome
-                <input
-                  value={memberQuery}
-                  onChange={(event) => setMemberQuery(event.target.value)}
-                  placeholder="es. Sandro"
-                />
-              </label>
-              <div className="multicheck-field">
-                <p className="muted">Filtro stato membro</p>
-                <button
-                  type="button"
-                  className="secondary-btn multicheck-trigger"
-                  onClick={() => setStatusMenuOpen((prev) => !prev)}
-                >
-                  <span className="multicheck-value">{statusFilterLabel}</span>
-                  <span aria-hidden="true">{statusMenuOpen ? '▴' : '▾'}</span>
-                </button>
-                {statusMenuOpen && (
-                  <div className="multicheck-menu">
-                    {(['APPROVED', 'PENDING', 'BLOCKED', 'BANNED', 'REJECTED'] as CampaignMemberStatus[]).map((status) => (
-                      <label key={status} className="checkbox-row">
-                        <input
-                          type="checkbox"
-                          checked={statusFilters.includes(status)}
-                          onChange={() => toggleStatusFilter(status)}
-                        />
-                        {status}
-                      </label>
-                    ))}
+              <div className="member-filters-panel">
+                <div className="member-filters-head">
+                  <div>
+                    <p className="section-title">Filtro membri</p>
+                    <p className="muted">Un solo pannello per ricerca, stato e grado. Passa sopra le opzioni per i suggerimenti.</p>
                   </div>
-                )}
-              </div>
-              <div className="multicheck-field">
-                <p className="muted">Filtro grado</p>
-                <button
-                  type="button"
-                  className="secondary-btn multicheck-trigger"
-                  onClick={() => setRoleMenuOpen((prev) => !prev)}
-                >
-                  <span className="multicheck-value">{roleFilterLabel}</span>
-                  <span aria-hidden="true">{roleMenuOpen ? '▴' : '▾'}</span>
-                </button>
-                {roleMenuOpen && (
-                  <div className="multicheck-menu">
-                    {(['GIOCATORE', 'CO_MASTER', 'MASTER', 'SUPER_MASTER'] as CampaignRole[]).map((role) => (
-                      <label key={role} className="checkbox-row">
-                        <input type="checkbox" checked={roleFilters.includes(role)} onChange={() => toggleRoleFilter(role)} />
-                        {role}
-                      </label>
-                    ))}
+                  <div className="member-filters-summary">
+                    <span className="status status-info" title={statusFilterLabel}>
+                      Stato: {statusFilters.length}
+                    </span>
+                    <span className="status status-info" title={roleFilterLabel}>
+                      Gradi: {roleFilters.length}
+                    </span>
                   </div>
-                )}
+                </div>
+                <label>
+                  Cerca membro per nome
+                  <input value={memberQuery} onChange={(event) => setMemberQuery(event.target.value)} placeholder="es. Sandro" />
+                </label>
+                <div className="member-filter-row">
+                  <div className="member-filter-group">
+                    <p className="muted">Stato membro</p>
+                    <div className="member-filter-chips">
+                      {(['APPROVED', 'PENDING', 'BLOCKED', 'BANNED', 'REJECTED'] as CampaignMemberStatus[]).map((status) => (
+                        <button
+                          key={status}
+                          type="button"
+                          className={`filter-chip ${statusFilters.includes(status) ? 'is-active' : ''}`}
+                          onClick={() => toggleStatusFilter(status)}
+                          title={`Mostra i membri con stato ${status}`}
+                        >
+                          {status}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="member-filter-group">
+                    <p className="muted">Grado</p>
+                    <div className="member-filter-chips">
+                      {(['GIOCATORE', 'CO_MASTER', 'MASTER', 'SUPER_MASTER'] as CampaignRole[]).map((role) => (
+                        <button
+                          key={role}
+                          type="button"
+                          className={`filter-chip ${roleFilters.includes(role) ? 'is-active' : ''}`}
+                          onClick={() => toggleRoleFilter(role)}
+                          title={`Mostra i membri con grado ${role}`}
+                        >
+                          {role}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
               {members.length === 0 && <p className="muted">Nessun membro</p>}
               <ul className="list-reset">
@@ -3792,15 +4276,45 @@ function ProfilePage({
 function EditProfilePage({
   profile,
   onSave,
+  onChangePassword,
 }: {
   profile: UserProfile
   onSave: (draft: ProfileDraft) => void
+  onChangePassword: (params: { currentPassword: string; newPassword: string }) => Promise<void>
 }) {
   const [draft, setDraft] = useState<ProfileDraft>(() => profileToDraft(profile))
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordBusy, setPasswordBusy] = useState(false)
+  const [passwordError, setPasswordError] = useState('')
+  const [passwordInfo, setPasswordInfo] = useState('')
 
   useEffect(() => {
     setDraft(profileToDraft(profile))
   }, [profile.id, profile.profileName, profile.bio, profile.whatsapp, profile.socialLinks])
+
+  const submitPasswordChange = async () => {
+    setPasswordError('')
+    setPasswordInfo('')
+    if (newPassword !== confirmPassword) {
+      setPasswordError('La nuova password e la conferma non coincidono.')
+      return
+    }
+
+    setPasswordBusy(true)
+    try {
+      await onChangePassword({ currentPassword, newPassword })
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+      setPasswordInfo('Password aggiornata con successo.')
+    } catch (err) {
+      setPasswordError(toMessage(err))
+    } finally {
+      setPasswordBusy(false)
+    }
+  }
 
   return (
     <section className="panel">
@@ -3823,14 +4337,14 @@ function EditProfilePage({
           />
         </label>
       </div>
-        <label>
-          <FieldLabel icon="fa-solid fa-quote-left" label="Bio" />
-          <textarea
-            rows={4}
-            placeholder="Breve presentazione del tuo profilo"
-            value={draft.bio}
-            onChange={(event) => setDraft((prev) => ({ ...prev, bio: event.target.value }))}
-          />
+      <label>
+        <FieldLabel icon="fa-solid fa-quote-left" label="Bio" />
+        <textarea
+          rows={4}
+          placeholder="Breve presentazione del tuo profilo"
+          value={draft.bio}
+          onChange={(event) => setDraft((prev) => ({ ...prev, bio: event.target.value }))}
+        />
       </label>
       <div className="form-grid">
         <label>
@@ -3854,6 +4368,49 @@ function EditProfilePage({
         <Icon name="fa-solid fa-floppy-disk" />
         Salva
       </button>
+      <div className="divider" />
+      <div className="profile-password-block">
+        <div className="row-between">
+          <h3 className="section-title">Cambio password</h3>
+          <span className="status status-info">Protetto</span>
+        </div>
+        <p className="muted">Usa la password attuale per aggiornare le credenziali e invalidare le sessioni precedenti.</p>
+        <label>
+          <FieldLabel icon="fa-solid fa-key" label="Password corrente" />
+          <input
+            type="password"
+            placeholder="Password corrente"
+            value={currentPassword}
+            onChange={(event) => setCurrentPassword(event.target.value)}
+          />
+        </label>
+        <div className="form-grid">
+          <label>
+            <FieldLabel icon="fa-solid fa-lock" label="Nuova password" />
+            <input
+              type="password"
+              placeholder="Nuova password"
+              value={newPassword}
+              onChange={(event) => setNewPassword(event.target.value)}
+            />
+          </label>
+          <label>
+            <FieldLabel icon="fa-solid fa-lock" label="Conferma nuova password" />
+            <input
+              type="password"
+              placeholder="Ripeti la nuova password"
+              value={confirmPassword}
+              onChange={(event) => setConfirmPassword(event.target.value)}
+            />
+          </label>
+        </div>
+        {passwordError && <p className="form-error">{passwordError}</p>}
+        {passwordInfo && <p className="auth-note">{passwordInfo}</p>}
+        <button type="button" className="secondary-btn" disabled={passwordBusy} onClick={() => void submitPasswordChange()}>
+          <Icon name="fa-solid fa-unlock-keyhole" />
+          {passwordBusy ? 'Attendere...' : 'Aggiorna password'}
+        </button>
+      </div>
     </section>
   )
 }
@@ -4302,8 +4859,8 @@ function CampaignMemberProfilePage({
 function CampaignManagementPage({
   campaign,
   availableModules,
+  availableGameSystems,
   permissions,
-  onLoadModules,
   onSave,
   onRefreshPermissions,
   onTransfer,
@@ -4311,9 +4868,9 @@ function CampaignManagementPage({
   onLeave,
 }: {
   campaign: CampaignResponse | null
-  availableModules: string[]
+  availableModules: CampaignCatalogEntry[]
+  availableGameSystems: CampaignCatalogEntry[]
   permissions: CampaignPermissionResponse[]
-  onLoadModules: () => void
   onSave: (payload: {
     name: string
     description: string
@@ -4462,6 +5019,12 @@ function CampaignManagementPage({
             <FieldLabel icon="fa-solid fa-image" label="URL immagine copertina" />
             <input value={coverImageUrl} placeholder="https://..." onChange={(event) => setCoverImageUrl(event.target.value)} />
           </label>
+          <label>
+            <FieldLabel icon="fa-solid fa-gamepad" label="Sistema di gioco" />
+            <input value={catalogEntryLabel(availableGameSystems, campaign.gameSystem) || campaign.gameSystem || ''} disabled />
+            <p className="muted">{catalogEntryDescription(availableGameSystems, campaign.gameSystem)}</p>
+            <p className="muted">Definito in creazione. Per cambiare sistema va creata una nuova campagna.</p>
+          </label>
           <div className="inline-actions">
             <label className="checkbox-row">
               <input checked={isOpen} onChange={(event) => setIsOpen(event.target.checked)} type="checkbox" />
@@ -4472,28 +5035,13 @@ function CampaignManagementPage({
               Ricercabile
             </label>
           </div>
-          <div className="multicheck-field">
-            <div className="row-between">
-              <p className="muted">Moduli</p>
-              <button type="button" className="secondary-btn" onClick={onLoadModules}>
-                <Icon name="fa-solid fa-arrows-rotate" />
-                Carica moduli
-              </button>
-            </div>
-            <div className="chips">
-              {availableModules.map((moduleCode) => (
-                <button
-                  key={moduleCode}
-                  type="button"
-                  className={`chip ${selectedModules.includes(moduleCode) ? 'is-active' : ''}`}
-                  onClick={() => toggleModule(moduleCode)}
-                >
-                  {moduleCode}
-                </button>
-              ))}
-              {availableModules.length === 0 && <p className="muted">Premi "Carica moduli" per modificare i moduli.</p>}
-            </div>
-          </div>
+          <CampaignAddonToggleList
+            title="Addon campagna"
+            description="I moduli sono sempre disponibili e puoi accenderli o spegnerli senza ricaricare la lista."
+            availableModules={availableModules}
+            selectedModules={selectedModules}
+            onToggle={toggleModule}
+          />
           <button
             type="button"
             className="primary-btn"
@@ -4519,47 +5067,54 @@ function CampaignManagementPage({
           <div className="divider" />
         </>
       )}
-      <div className="panel-subsection">
-        <div className="row-between">
-          <h3 className="section-title">Tabella permessi</h3>
-          <div className="inline-actions">
+      <details className="utility-box">
+        <summary className="utility-box-summary">
+          <div>
+            <p className="section-title">Tabella permessi</p>
+            <p className="muted">Apri solo se ti serve vedere i dettagli delle azioni consentite.</p>
+          </div>
+          <span className="readonly-chip">{permissions.length || permissionChecklist.length} voci</span>
+        </summary>
+        <div className="utility-box-body">
+          <div className="row-between utility-box-actions">
+            <p className="muted">Checklist delle azioni realmente disponibili per il tuo ruolo nella campagna attiva.</p>
             <button type="button" className="secondary-btn" onClick={onRefreshPermissions}>
               <Icon name="fa-solid fa-rotate-right" />
-              Aggiorna checklist
+              Aggiorna
             </button>
           </div>
-        </div>
-        <p className="muted">Checklist delle azioni realmente disponibili per il tuo ruolo nella campagna attiva.</p>
-        <div className="permission-table">
-          {permissionChecklist.map((item) => {
-            const permission = permissions.find((entry) => entry.action === item.action)
-            const allowed = permission?.allowed ?? false
-            return (
-              <div key={item.action} className="permission-table-row">
-                <div className="permission-check-main">
-                  <span className={`permission-check-icon ${allowed ? 'is-allowed' : 'is-denied'}`}>
-                    <Icon name={allowed ? 'fa-solid fa-circle-check' : 'fa-solid fa-circle-xmark'} />
-                  </span>
-                  <div>
-                    <p className="permission-action-name">{item.label}</p>
-                    <p className="muted">{item.description}</p>
+          <div className="permission-table">
+            {permissionChecklist.map((item) => {
+              const permission = permissions.find((entry) => entry.action === item.action)
+              const allowed = permission?.allowed ?? false
+              return (
+                <div key={item.action} className="permission-table-row">
+                  <div className="permission-check-main">
+                    <span className={`permission-check-icon ${allowed ? 'is-allowed' : 'is-denied'}`}>
+                      <Icon name={allowed ? 'fa-solid fa-circle-check' : 'fa-solid fa-circle-xmark'} />
+                    </span>
+                    <div>
+                      <p className="permission-action-name">{item.label}</p>
+                      <p className="muted">{item.description}</p>
+                    </div>
                   </div>
+                  <span className={`status ${allowed ? 'status-success' : 'status-danger'}`}>{allowed ? 'OK' : 'KO'}</span>
                 </div>
-                <span className={`status ${allowed ? 'status-success' : 'status-danger'}`}>{allowed ? 'OK' : 'KO'}</span>
-              </div>
-            )
-          })}
+              )
+            })}
+          </div>
         </div>
-      </div>
+      </details>
 
-      <div className="panel-subsection">
-        <details className="utility-box" open>
-          <summary className="utility-box-summary">
-            <div>
-              <p className="section-title">Accessi e opzioni per ruolo</p>
-              <p className="muted">Reminder rapido delle azioni disponibili per fascia di ruolo.</p>
-            </div>
-          </summary>
+      <details className="utility-box">
+        <summary className="utility-box-summary">
+          <div>
+            <p className="section-title">Accessi e opzioni per ruolo</p>
+            <p className="muted">Reminder rapido delle azioni disponibili per fascia di ruolo.</p>
+          </div>
+          <span className="readonly-chip">{permissionReminders.length} fasce</span>
+        </summary>
+        <div className="utility-box-body">
           <div className="permission-reminders">
             {permissionReminders.map((reminder) => (
               <article key={reminder.role} className="permission-reminder-card">
@@ -4575,8 +5130,8 @@ function CampaignManagementPage({
               </article>
             ))}
           </div>
-        </details>
-      </div>
+        </div>
+      </details>
 
       <div className="divider" />
       <label>
