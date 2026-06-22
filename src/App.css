@@ -816,6 +816,64 @@ textarea {
   line-height: 1.5;
 }
 
+.campaign-hero-head {
+  margin-top: 4px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.campaign-hero-title-block {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.campaign-hero-kicker {
+  margin: 0;
+  color: #8b87a0;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.campaign-hero-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.campaign-hero-title {
+  margin: 0;
+  font-size: 1.55rem;
+  line-height: 1.15;
+}
+
+.campaign-hero-status {
+  flex: 0 0 auto;
+  padding-top: 3px;
+}
+
+.campaign-system-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(201, 168, 76, 0.32);
+  background: rgba(201, 168, 76, 0.08);
+  color: #e7cf8f;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 0.86rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.campaign-system-inline i {
+  font-size: 0.9rem;
+}
+
 .campaign-profile-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -829,19 +887,51 @@ textarea {
   gap: 10px;
 }
 
-.campaign-addon-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+.campaign-detail-actions {
+  margin-top: 12px;
 }
 
-.campaign-addon-card {
+.campaign-addon-icons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.campaign-addon-icon {
+  min-height: 38px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   border: 1px solid #2e2a45;
   border-radius: 10px;
-  background: linear-gradient(180deg, rgba(18, 16, 27, 0.92), rgba(18, 16, 27, 0.78));
-  padding: 12px;
-  display: grid;
-  gap: 6px;
+  background: rgba(18, 16, 27, 0.88);
+  color: #c9a84c;
+  cursor: default;
+  flex: 0 0 auto;
+}
+
+.campaign-addon-icon i {
+  font-size: 0.95rem;
+}
+
+.campaign-addon-icon-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.campaign-addon-icon.is-inactive {
+  color: #8b87a0;
+  background: rgba(18, 16, 27, 0.54);
+  border-color: rgba(53, 49, 73, 0.9);
+  text-decoration: line-through;
+}
+
+.campaign-addon-icon.is-inactive i,
+.campaign-addon-icon.is-inactive .campaign-addon-icon-label {
+  opacity: 0.72;
 }
 
 .addon-panel {
@@ -1274,21 +1364,6 @@ textarea {
   background: rgba(62, 24, 31, 0.55);
 }
 
-.campaign-context-badge {
-  display: inline-flex;
-  align-items: center;
-  border: 1px solid rgba(239, 143, 132, 0.34);
-  background: rgba(239, 143, 132, 0.1);
-  color: #ffbeb6;
-  border-radius: 999px;
-  padding: 2px 8px;
-  font-size: 0.64rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  flex: 0 0 auto;
-}
-
 .campaign-leave-panel {
   width: min(640px, 100%);
   gap: 14px;
@@ -1466,6 +1541,11 @@ textarea {
 
 .inline-actions input {
   flex: 1;
+}
+
+.campaign-list-actions {
+  flex-wrap: nowrap;
+  margin-left: auto;
 }
 
 .subpanel {
@@ -3623,29 +3703,14 @@ body {
   border-radius: 999px;
   min-height: 42px;
   padding: 0 14px;
-  flex: 1 1 260px;
+  flex: 0 1 auto;
   justify-content: space-between;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  cursor: pointer;
+  cursor: default;
   min-width: 0;
   text-align: left;
-}
-
-.campaign-context-pill:hover,
-.campaign-context-pill:focus-visible {
-  outline: none;
-  border-color: var(--border-strong);
-  background: rgba(217, 177, 92, 0.08);
-}
-
-.campaign-context-label {
-  color: var(--text-soft);
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  white-space: nowrap;
 }
 
 .campaign-context-name {
@@ -3654,6 +3719,11 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 700;
+}
+
+.campaign-context-warning {
+  color: var(--warning);
+  font-size: 1rem;
 }
 
 .logout-btn,
@@ -3739,6 +3809,9 @@ body {
 
 .topbar-actions {
   gap: 10px;
+  flex-wrap: nowrap;
+  margin-left: auto;
+  width: auto;
 }
 
 .refresh-btn {
@@ -3948,13 +4021,12 @@ textarea::placeholder {
   }
 
   .topbar-actions {
-    width: 100%;
     justify-content: flex-start;
   }
 
   .campaign-context-pill {
-    flex: 1 1 100%;
-    width: 100%;
+    flex: 0 1 auto;
+    width: auto;
   }
 }
 

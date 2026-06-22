@@ -88,6 +88,10 @@ async function ensureRefreshed() {
   await refreshPromise
 }
 
+export async function refreshSession() {
+  await ensureRefreshed()
+}
+
 export async function apiRequest<T>(
   path: string,
   options?: {

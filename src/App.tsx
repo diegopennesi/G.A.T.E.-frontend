@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Dispatch, FormEvent, SetStateAction } from 'react'
 import './App.css'
 import { ApiError, getAccessToken } from './services/apiClient'
@@ -63,6 +63,7 @@ import {
   updateCharacterSheet,
   updateMe,
 } from './services/gateApi'
+import { connectResourceInvalidationStream } from './services/realtime'
 import type {
   AdminCampaignPage,
   AdminCampaignUpdateRequest,
@@ -95,6 +96,7 @@ import type {
   AdminGameSystemUpsertRequest,
   AdminSheetTypeUpsertRequest,
 } from './types/domain'
+import type { ResourceInvalidationPayload } from './types/realtime'
 
 type Screen =
   | 'Lista Campagne'
@@ -254,6 +256,30 @@ type NavigationSection = {
   label: string
   description: string
   items: Screen[]
+}
+
+type RealtimeActionMap = {
+  refreshProfile: () => Promise<void>
+  refreshCampaignBlock: () => Promise<void>
+  refreshCharacterBlock: () => Promise<void>
+  refreshMissions: () => Promise<void>
+  refreshMissionCharacters: () => Promise<void>
+  loadDiscoverableCampaigns: () => Promise<void>
+  loadCharactersForManagement: () => Promise<void>
+  loadPendingForActiveCampaign: () => Promise<void>
+  loadAdminUsers: (page: number) => Promise<void>
+  loadAdminCampaigns: (page: number) => Promise<void>
+  loadAdminSheetCatalogs: () => Promise<void>
+}
+
+type RealtimeStateSnapshot = {
+  screen: Screen
+  campaignId: string
+  activeUserId: string | null
+  isSystemSession: boolean
+  systemAdminView: SystemAdminView
+  adminUsersPageIndex: number
+  adminCampaignsPageIndex: number
 }
 
 const NAVIGATION_SECTIONS: NavigationSection[] = [
@@ -789,15 +815,6 @@ function App() {
       return left.campaignName.localeCompare(right.campaignName, 'it')
     })
   }, [campaignIsActiveForCurrentUser, campaignsForList, myCampaigns, canShowCampaignInNavbar, isSystemRole, campaignId])
-  const isCampaignScope = (value: Screen) =>
-    value === 'Lista Campagne' ||
-    value === 'Crea Campagna' ||
-    value === 'Scheda Campagna' ||
-    value === 'Approvazione Accessi' ||
-    value === 'Gestione Personaggi' ||
-    value === 'Scheda PG' ||
-    value === 'Profilo Membro Campagna' ||
-    value === 'Crea Personaggio'
   const isCharacterScope = (value: Screen) =>
     value === 'Gestione Personaggi' || value === 'Scheda PG' || value === 'Crea Personaggio'
 
@@ -1253,6 +1270,13 @@ function App() {
     })
   }
 
+  const detachActiveCampaign = () => {
+    if (!campaignId.trim()) return
+    rememberCampaignId('')
+    clearCampaignWorkspace()
+    setScreen('Lista Campagne')
+  }
+
   useEffect(() => {
     if (!getAccessToken()) return
     if (screen !== 'Approvazione Accessi') return
@@ -1333,6 +1357,11 @@ function App() {
     const combined = settled.flatMap((result) => (result.status === 'fulfilled' ? result.value : []))
     const nextCharacters = combined.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
     setMissionCharacters(nextCharacters)
+  }
+
+  const loadDiscoverableCampaigns = async () => {
+    const list = await discoverCampaigns(false)
+    setDiscoverableCampaigns(list)
   }
 
   useEffect(() => {
@@ -1718,6 +1747,142 @@ function App() {
 
   const activeUserId = profile?.id ?? null
 
+  const realtimeActionsRef = useRef<RealtimeActionMap>({
+    refreshProfile: async () => {},
+    refreshCampaignBlock: async () => {},
+    refreshCharacterBlock: async () => {},
+    refreshMissions: async () => {},
+    refreshMissionCharacters: async () => {},
+    loadDiscoverableCampaigns: async () => {},
+    loadCharactersForManagement: async () => {},
+    loadPendingForActiveCampaign: async () => {},
+    loadAdminUsers: async () => {},
+    loadAdminCampaigns: async () => {},
+    loadAdminSheetCatalogs: async () => {},
+  })
+  const realtimeStateRef = useRef<RealtimeStateSnapshot>({
+    screen,
+    campaignId,
+    activeUserId,
+    isSystemSession,
+    systemAdminView,
+    adminUsersPageIndex,
+    adminCampaignsPageIndex,
+  })
+
+  useEffect(() => {
+    realtimeActionsRef.current = {
+      refreshProfile,
+      refreshCampaignBlock,
+      refreshCharacterBlock,
+      refreshMissions,
+      refreshMissionCharacters,
+      loadDiscoverableCampaigns,
+      loadCharactersForManagement,
+      loadPendingForActiveCampaign,
+      loadAdminUsers,
+      loadAdminCampaigns,
+      loadAdminSheetCatalogs,
+    }
+    realtimeStateRef.current = {
+      screen,
+      campaignId,
+      activeUserId,
+      isSystemSession,
+      systemAdminView,
+      adminUsersPageIndex,
+      adminCampaignsPageIndex,
+    }
+  }, [
+    activeUserId,
+    adminCampaignsPageIndex,
+    adminUsersPageIndex,
+    campaignId,
+    isSystemSession,
+    loadAdminCampaigns,
+    loadAdminSheetCatalogs,
+    loadAdminUsers,
+    loadCharactersForManagement,
+    loadDiscoverableCampaigns,
+    loadPendingForActiveCampaign,
+    refreshCampaignBlock,
+    refreshCharacterBlock,
+    refreshMissionCharacters,
+    refreshMissions,
+    refreshProfile,
+    screen,
+    systemAdminView,
+  ])
+
+  const handleRealtimeInvalidation = useCallback((payload: ResourceInvalidationPayload) => {
+    const snapshot = realtimeStateRef.current
+    const keys = new Set(payload.keys)
+    const currentCampaignKey = snapshot.campaignId.trim() ? `campaigns:${snapshot.campaignId}` : ''
+    const campaignKeyMatch = currentCampaignKey
+      ? payload.keys.some((key) => key === currentCampaignKey || key.startsWith(`${currentCampaignKey}:`))
+      : false
+    const missionKeyMatch = payload.keys.some((key) => key.startsWith('campaigns:') && key.endsWith(':missions'))
+    const characterKeyMatch = payload.keys.some((key) => key.startsWith('campaigns:') && key.endsWith(':characters'))
+    const userProfileKey = snapshot.activeUserId ? `users:${snapshot.activeUserId}:profile` : ''
+
+    if (keys.has('campaigns:discover') && snapshot.screen === 'Lista Campagne') {
+      void realtimeActionsRef.current.loadDiscoverableCampaigns()
+    }
+
+    if (userProfileKey && keys.has(userProfileKey)) {
+      void realtimeActionsRef.current.refreshProfile()
+    }
+
+    if (snapshot.isSystemSession) {
+      if (snapshot.systemAdminView === 'users' && keys.has('admin:users')) {
+        void realtimeActionsRef.current.loadAdminUsers(snapshot.adminUsersPageIndex)
+      }
+      if (snapshot.systemAdminView === 'campaigns' && keys.has('admin:campaigns')) {
+        void realtimeActionsRef.current.loadAdminCampaigns(snapshot.adminCampaignsPageIndex)
+      }
+      if (snapshot.systemAdminView === 'sheets' && keys.has('admin:catalogs')) {
+        void realtimeActionsRef.current.loadAdminSheetCatalogs()
+      }
+    }
+
+    if (snapshot.screen === 'Missioni' && (campaignKeyMatch || missionKeyMatch || characterKeyMatch)) {
+      void realtimeActionsRef.current.refreshMissions()
+      void realtimeActionsRef.current.refreshMissionCharacters()
+      return
+    }
+
+    if (!campaignKeyMatch) return
+
+    if (snapshot.screen === 'Scheda PG' && characterKeyMatch) {
+      void realtimeActionsRef.current.refreshCharacterBlock()
+      return
+    }
+
+    if (snapshot.screen === 'Gestione Personaggi' && characterKeyMatch) {
+      void realtimeActionsRef.current.loadCharactersForManagement()
+      return
+    }
+
+    if (snapshot.screen === 'Approvazione Accessi') {
+      void realtimeActionsRef.current.refreshCampaignBlock()
+      return
+    }
+
+    if (snapshot.screen === 'Scheda Campagna' || snapshot.screen === 'Gestione Campagna' || snapshot.screen === 'Stanze') {
+      void realtimeActionsRef.current.refreshCampaignBlock()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!getAccessToken()) return
+
+    return connectResourceInvalidationStream({
+      onInvalidate: handleRealtimeInvalidation,
+      onUnauthorized: handleLogout,
+      onError: (message) => addEvent(`Realtime: ${message}`, 'info'),
+    })
+  }, [handleRealtimeInvalidation, activeUserId])
+
   useEffect(() => {
     if (!isSystemSession) {
       setAdminUsersPage(null)
@@ -1871,7 +2036,6 @@ function App() {
       showOverlayX: false,
     }
   }
-  const campaignArea = isCampaignScope(screen)
   const activeCampaignMembership =
     myCampaigns.find((item) => item.campaignId === campaignId && item.memberStatus === 'APPROVED') ||
     (() => {
@@ -1887,8 +2051,8 @@ function App() {
         isFounder: false,
       }
     })()
-  const activeCampaignName = campaign?.name || activeCampaignMembership?.campaignName || 'non impostata'
-  const activeCampaignIsClickable = isSystemRole || campaignId.trim().length === 0 || activeCampaignIsEnabled
+  const activeCampaignName = campaign?.name || activeCampaignMembership?.campaignName || campaignId.trim() || ''
+  const hasActiveCampaignName = activeCampaignName.trim().length > 0
   const campaignNameById: Record<string, string> = {}
   for (const item of knownCampaignMeta) {
     campaignNameById[item.id] = item.name
@@ -2113,7 +2277,7 @@ function App() {
           subtitle: '',
           breadcrumbs: [{ label: SCREEN_LABELS[screen] }],
           backTarget: null as Screen | null,
-        }
+      }
     }
   })()
   const goToScreen = (value: Screen) => {
@@ -2797,37 +2961,20 @@ function App() {
             </div>
           </div>
           <div className="inline-actions topbar-actions">
-            <button
-              type="button"
-              className={`campaign-context-pill ${!activeCampaignIsClickable ? 'is-disabled' : ''}`}
-              onClick={() =>
-                activeCampaignIsClickable &&
-                openCampaignPicker(campaignArea ? screen : screen === 'Gestione Campagna' ? 'Gestione Campagna' : 'Scheda Campagna')
-              }
-              disabled={!activeCampaignIsClickable}
-              aria-disabled={!activeCampaignIsClickable}
-              title={!activeCampaignIsClickable ? 'Campagna disattivata: non selezionabile' : undefined}
+            <span
+              className={`campaign-context-pill ${hasActiveCampaignName ? '' : 'is-disabled'}`}
+              aria-label={hasActiveCampaignName ? `Campagna attiva: ${activeCampaignName}` : 'Nessuna campagna attiva'}
             >
-              <span className="campaign-context-label">Campagna attiva</span>
-              <span className="campaign-context-name">
-                {activeCampaignName}
-                {!activeCampaignIsClickable && <span className="campaign-context-badge">Disattivata</span>}
-              </span>
-            </button>
-            {pageContext.backTarget && (
-              <button type="button" className="refresh-btn" onClick={() => goToScreen(pageContext.backTarget as Screen)}>
-                <Icon name="fa-solid fa-arrow-left" />
-                <span>Indietro</span>
-              </button>
-            )}
-            <button type="button" className="refresh-btn" disabled={busy} onClick={() => void refreshProfile()}>
-              <Icon name="fa-solid fa-rotate-right" />
-              <span>Refresh profilo</span>
-            </button>
-            {campaignArea && (
-              <button type="button" className="refresh-btn" disabled={busy} onClick={() => void refreshCampaignBlock()}>
-                <Icon name="fa-solid fa-arrows-rotate" />
-                <span>Refresh campagna</span>
+              {hasActiveCampaignName ? (
+                <span className="campaign-context-name">{activeCampaignName}</span>
+              ) : (
+                <Icon name="fa-solid fa-triangle-exclamation" className="campaign-context-warning" />
+              )}
+            </span>
+            {hasActiveCampaign && (
+              <button type="button" className="danger-btn" onClick={detachActiveCampaign}>
+                <Icon name="fa-solid fa-right-from-bracket" />
+                <span>Exit</span>
               </button>
             )}
           </div>
@@ -2893,6 +3040,7 @@ function App() {
         {screen === 'Scheda Campagna' && (
           <CampaignDetailPage
             campaign={campaign}
+            isActiveCampaign={campaign?.id === campaignId}
             currentUserId={profile.id}
             members={campaignMembersForManagement.length > 0 ? campaignMembersForManagement : members}
             memberNames={memberNames}
@@ -3570,7 +3718,7 @@ function CampaignListPage({
     <section className="panel">
       <div className="row-between">
         <h2>Lista Campagne</h2>
-        <div className="inline-actions">
+        <div className="inline-actions campaign-list-actions">
           <button type="button" className="secondary-btn" onClick={onDiscover}>
             Cerca campagne
           </button>
@@ -3846,6 +3994,20 @@ function InfoBlock({ title, value }: { title: string; value: string | null }) {
   )
 }
 
+function campaignModuleIconName(module: CampaignCatalogEntry): string {
+  const token = `${module.code} ${module.label}`.toLowerCase()
+  if (token.includes('notif')) return 'fa-solid fa-bell'
+  if (token.includes('chat') || token.includes('messag') || token.includes('comment')) return 'fa-solid fa-comment-dots'
+  if (token.includes('stanza') || token.includes('room') || token.includes('door')) return 'fa-solid fa-door-open'
+  if (token.includes('mission') || token.includes('quest') || token.includes('board') || token.includes('bacheca'))
+    return 'fa-solid fa-clipboard-list'
+  return 'fa-solid fa-circle-info'
+}
+
+function campaignModuleTitle(module: CampaignCatalogEntry): string {
+  return module.label || module.code
+}
+
 function CampaignAddonToggleList({
   title,
   description,
@@ -3866,7 +4028,7 @@ function CampaignAddonToggleList({
           <h3 className="section-title">{title}</h3>
           <p className="muted">{description}</p>
         </div>
-        <span className="readonly-chip">{selectedModules.length} attivi</span>
+        <span className="readonly-chip">{selectedModules.length}/{availableModules.length} attivi</span>
       </div>
       {availableModules.length > 0 ? (
         <div className="addon-list">
@@ -3902,6 +4064,7 @@ function CampaignAddonToggleList({
 function CampaignDetailPage({
   campaign,
   currentUserId,
+  isActiveCampaign,
   members,
   memberNames,
   availableModules,
@@ -3920,6 +4083,7 @@ function CampaignDetailPage({
 }: {
   campaign: CampaignResponse | null
   currentUserId: string
+  isActiveCampaign: boolean
   members: CampaignMembershipResponse[]
   memberNames: Record<string, string>
   availableModules: CampaignCatalogEntry[]
@@ -3997,48 +4161,65 @@ function CampaignDetailPage({
           {campaign.coverImageUrl && (
             <img className="campaign-cover" src={campaign.coverImageUrl} alt="" />
           )}
-          <p>
-            <strong>{campaign.name}</strong>
-          </p>
+          <div className="campaign-hero-head">
+            <div className="campaign-hero-title-block">
+              <p className="campaign-hero-kicker">Scheda Campagna</p>
+              <div className="campaign-hero-title-row">
+                <h2 className="campaign-hero-title">{campaign.name}</h2>
+                <span className="campaign-system-inline" title={catalogEntryDescription(availableGameSystems, campaign.gameSystem) || undefined}>
+                  <Icon name="fa-solid fa-gamepad" />
+                  <span>{catalogEntryLabel(availableGameSystems, campaign.gameSystem) || 'Sistema non disponibile'}</span>
+                </span>
+              </div>
+            </div>
+            <div className="campaign-hero-status">
+              <p className="campaign-status-line">
+                Stato campagna: <CampaignStatusBadge isActive={campaign.isActive} />
+              </p>
+            </div>
+          </div>
           <p className="campaign-status-line">
-            Stato campagna: <CampaignStatusBadge isActive={campaign.isActive} />
+            open: {String(campaign.isOpen)} | searchable: {String(campaign.isSearchable)}
           </p>
           {campaign.summary && <p className="campaign-summary">{campaign.summary}</p>}
           <p className="muted">{campaign.description || 'Nessuna descrizione'}</p>
           <div className="campaign-profile-grid">
             <InfoBlock title="Ambientazione" value={campaign.setting} />
             <InfoBlock title="Tono" value={campaignToneLabel(campaign.tone)} />
-            <InfoBlock title="Sistema di gioco" value={catalogEntryLabel(availableGameSystems, campaign.gameSystem)} />
-            <InfoBlock
-              title="Descrizione sistema"
-              value={catalogEntryDescription(availableGameSystems, campaign.gameSystem)}
-            />
             <InfoBlock title="Regole" value={campaign.rules} />
             <InfoBlock title="Requisiti d'ingresso" value={campaign.requirements} />
           </div>
-          <p className="muted">
-            open: {String(campaign.isOpen)} | searchable: {String(campaign.isSearchable)}
-          </p>
           <div className="campaign-addon-section">
             <div className="row-between">
-              <h3 className="section-title">Addon attivi</h3>
+              <h3 className="section-title">Addon campagna</h3>
               <span className="readonly-chip">{campaign.allowedModules.length} attivi</span>
             </div>
-            {campaign.allowedModules.length > 0 ? (
-              <div className="campaign-addon-grid">
-                {campaign.allowedModules.map((moduleCode) => (
-                  <article key={moduleCode} className="campaign-addon-card">
-                    <p className="field-label">{catalogEntryLabel(availableModules, moduleCode)}</p>
-                    <p className="muted">{catalogEntryDescription(availableModules, moduleCode)}</p>
-                  </article>
-                ))}
+            {availableModules.length > 0 ? (
+              <div className="campaign-addon-icons" role="list" aria-label="Addon campagna">
+                {availableModules.map((module) => {
+                  const active = campaign.allowedModules.includes(module.code)
+                  const label = campaignModuleTitle(module)
+                  const description = module.description || 'Addon campagna'
+                  return (
+                    <span
+                      key={module.code}
+                      role="listitem"
+                      className={`campaign-addon-icon ${active ? '' : 'is-inactive'}`}
+                      title={`${label} - ${description}`}
+                      aria-label={`${label} ${active ? 'attivo' : 'inattivo'}: ${description}`}
+                    >
+                      <Icon name={campaignModuleIconName(module)} />
+                      <span className="campaign-addon-icon-label">{label}</span>
+                    </span>
+                  )
+                })}
               </div>
             ) : (
-              <p className="muted">Nessun addon attivo per questa campagna.</p>
+              <p className="muted">Lista addon non ancora disponibile.</p>
             )}
           </div>
-          <div className="inline-actions">
-            {membershipStatus === 'APPROVED' && (
+          <div className="inline-actions campaign-detail-actions">
+            {!isActiveCampaign && membershipStatus === 'APPROVED' && (
               <button type="button" className="primary-btn" onClick={onActivate}>
                 Attiva campagna
               </button>

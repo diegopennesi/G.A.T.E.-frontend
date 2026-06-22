@@ -16,6 +16,12 @@ This template provides a minimal setup to get React working in Vite with HMR and
 - After leave, the app returns to `Lista Campagne` and clears the campaign workspace.
 - Room creation is available only to `MASTER` and `SUPER_MASTER`, matching the backend permission matrix for `CREATE_ROOM`.
 - `Approvazione Accessi` loads the pending requests automatically on entry; the sidebar menu shows a badge when there are pending requests for the active campaign.
+- Realtime refresh is driven by SSE invalidation events from the backend:
+  - `campaigns:discover` refreshes the public campaign list
+  - `campaigns:{id}` refreshes the current campaign workspace
+  - `campaigns:{id}:missions` and `campaigns:{id}:characters` refresh the mission board and character views
+  - `users:{id}:profile` refreshes the current user profile and membership cache
+- The FE reconnects automatically and does not need polling for the common create/update flows.
 
 Currently, two official plugins are available:
 
