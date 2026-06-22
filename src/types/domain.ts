@@ -6,6 +6,25 @@ export type MissionStatus = 'OPEN' | 'CLOSED' | 'CONFIRMED' | 'REOPENED' | 'CANC
 export type MissionParticipationType = 'TITOLARE' | 'NON_TITOLARE'
 export type RoomType = 'ROLEPLAY' | 'SPAM'
 export type PlatformRole = 'USER' | 'ADMIN' | 'SYSTEM'
+export type SheetEntityType = 'CHARACTER' | 'ARMY' | 'DECK'
+
+export interface SheetSchemaField {
+  key?: string
+  label?: string
+  type?: string
+  required?: boolean
+  placeholder?: string | null
+  helpText?: string | null
+  defaultValue?: unknown
+  options?: Array<unknown>
+}
+
+export interface SheetSchemaBlock {
+  key?: string
+  label?: string
+  description?: string | null
+  fields?: SheetSchemaField[]
+}
 
 export interface CampaignCatalogEntry {
   code: string
@@ -13,6 +32,59 @@ export interface CampaignCatalogEntry {
   description: string | null
   active: boolean
   sortOrder: number
+}
+
+export interface SheetTypeCatalogEntry {
+  code: string
+  label: string
+  description: string | null
+  gameSystemCode: string
+  entityType: SheetEntityType
+  schemaVersion: number
+  sortOrder: number
+  active: boolean
+  isDefault: boolean
+  schemaJson: Record<string, unknown>
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AdminGameSystemUpsertRequest {
+  code: string
+  label: string
+  description?: string
+  active: boolean
+  sortOrder: number
+}
+
+export interface AdminSheetTypeUpsertRequest {
+  code: string
+  label: string
+  description?: string
+  gameSystemCode: string
+  entityType: SheetEntityType
+  schemaVersion: number
+  sortOrder: number
+  active: boolean
+  isDefault: boolean
+  schemaJson: Record<string, unknown>
+}
+
+export interface CharacterSheetResponse {
+  characterId: string
+  campaignId: string
+  gameSystemCode: string | null
+  sheetTypeCode: string | null
+  schemaVersion: number
+  schemaJson: Record<string, unknown>
+  dataJson: Record<string, unknown>
+  hasTemplate: boolean
+  editable: boolean
+  updatedAt: string | null
+}
+
+export interface UpdateCharacterSheetRequest {
+  dataJson: Record<string, unknown>
 }
 
 export interface UserProfile {

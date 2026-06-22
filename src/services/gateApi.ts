@@ -1,5 +1,6 @@
 import { ApiError, apiRequest, clearTokens, setTokens } from './apiClient'
 import type {
+  AdminGameSystemUpsertRequest,
   AdminUserPage,
   AdminUserUpdateRequest,
   AdminCampaignPage,
@@ -12,12 +13,16 @@ import type {
   CampaignPermissionResponse,
   CampaignResponse,
   Character,
+  CharacterSheetResponse,
   CharacterStatus,
   MyCampaignMembershipResponse,
   MissionParticipantResponse,
   MissionParticipationType,
   MissionResponse,
   RoomResponse,
+  SheetTypeCatalogEntry,
+  AdminSheetTypeUpsertRequest,
+  UpdateCharacterSheetRequest,
   UserProfile,
 } from '../types/domain'
 
@@ -159,6 +164,52 @@ export async function updateAdminCampaign(
   payload: AdminCampaignUpdateRequest,
 ): Promise<CampaignResponse> {
   return apiRequest<CampaignResponse>(`/admin/campaigns/${campaignId}`, {
+    method: 'PATCH',
+    body: payload,
+  })
+}
+
+export async function listAdminGameSystems(): Promise<CampaignCatalogEntry[]> {
+  return apiRequest<CampaignCatalogEntry[]>('/admin/catalogs/game-systems')
+}
+
+export async function createAdminGameSystem(
+  payload: AdminGameSystemUpsertRequest,
+): Promise<CampaignCatalogEntry> {
+  return apiRequest<CampaignCatalogEntry>('/admin/catalogs/game-systems', {
+    method: 'POST',
+    body: payload,
+  })
+}
+
+export async function updateAdminGameSystem(
+  code: string,
+  payload: AdminGameSystemUpsertRequest,
+): Promise<CampaignCatalogEntry> {
+  return apiRequest<CampaignCatalogEntry>(`/admin/catalogs/game-systems/${encodeURIComponent(code)}`, {
+    method: 'PATCH',
+    body: payload,
+  })
+}
+
+export async function listAdminSheetTypes(): Promise<SheetTypeCatalogEntry[]> {
+  return apiRequest<SheetTypeCatalogEntry[]>('/admin/catalogs/sheet-types')
+}
+
+export async function createAdminSheetType(
+  payload: AdminSheetTypeUpsertRequest,
+): Promise<SheetTypeCatalogEntry> {
+  return apiRequest<SheetTypeCatalogEntry>('/admin/catalogs/sheet-types', {
+    method: 'POST',
+    body: payload,
+  })
+}
+
+export async function updateAdminSheetType(
+  code: string,
+  payload: AdminSheetTypeUpsertRequest,
+): Promise<SheetTypeCatalogEntry> {
+  return apiRequest<SheetTypeCatalogEntry>(`/admin/catalogs/sheet-types/${encodeURIComponent(code)}`, {
     method: 'PATCH',
     body: payload,
   })
@@ -407,6 +458,21 @@ export async function listCharacters(campaignId: string): Promise<Character[]> {
 
 export async function getCharacter(campaignId: string, characterId: string): Promise<Character> {
   return apiRequest<Character>(`/campaigns/${campaignId}/characters/${characterId}`)
+}
+
+export async function getCharacterSheet(campaignId: string, characterId: string): Promise<CharacterSheetResponse> {
+  return apiRequest<CharacterSheetResponse>(`/campaigns/${campaignId}/characters/${characterId}/sheet`)
+}
+
+export async function updateCharacterSheet(
+  campaignId: string,
+  characterId: string,
+  payload: UpdateCharacterSheetRequest,
+): Promise<CharacterSheetResponse> {
+  return apiRequest<CharacterSheetResponse>(`/campaigns/${campaignId}/characters/${characterId}/sheet`, {
+    method: 'PATCH',
+    body: payload,
+  })
 }
 
 export async function createCharacter(

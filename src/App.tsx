@@ -1,10 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import type { Dispatch, FormEvent, SetStateAction } from 'react'
 import './App.css'
 import { ApiError, getAccessToken } from './services/apiClient'
 import {
+  createAdminGameSystem,
+  createAdminSheetType,
   listAdminCampaigns,
+  listAdminGameSystems,
   listAdminUsers,
+  listAdminSheetTypes,
   approveCampaignMember,
   applyToCampaign,
   approveApplication,
@@ -25,6 +29,7 @@ import {
   listCampaignModules,
   listCampaignMembersForManagement,
   getCharacter,
+  getCharacterSheet,
   getMe,
   getPublicProfile,
   joinMission,
@@ -43,6 +48,8 @@ import {
   requestPasswordReset,
   confirmPasswordReset,
   updateAdminCampaign,
+  updateAdminGameSystem,
+  updateAdminSheetType,
   updateAdminUser,
   updateMission,
   updateMissionParticipationType,
@@ -53,6 +60,7 @@ import {
   updateCampaign,
   updateCampaignMemberRole,
   updateCharacterStatus,
+  updateCharacterSheet,
   updateMe,
 } from './services/gateApi'
 import type {
@@ -70,6 +78,7 @@ import type {
   CampaignRole,
   CampaignResponse,
   Character,
+  CharacterSheetResponse,
   CharacterStatus,
   MyCampaignMembershipResponse,
   MissionParticipantResponse,
@@ -78,7 +87,13 @@ import type {
   MissionStatus,
   RoomResponse,
   PlatformRole,
+  SheetEntityType,
+  SheetSchemaBlock,
+  SheetSchemaField,
+  SheetTypeCatalogEntry,
   UserProfile,
+  AdminGameSystemUpsertRequest,
+  AdminSheetTypeUpsertRequest,
 } from './types/domain'
 
 type Screen =
@@ -175,6 +190,7 @@ const CAMPAIGN_ACTIVE_REQUIRED_SCREENS: Screen[] = [
   'Gestione Personaggi',
   'Scheda PG',
   'Gestione Campagna',
+  'Missioni',
   'Stanze',
   'Profilo Membro Campagna',
   'Seleziona PG',
@@ -223,7 +239,7 @@ const platformRoleLabel = (role: PlatformRole) => {
 }
 
 const ADMIN_PLATFORM_ROLES: PlatformRole[] = ['USER', 'ADMIN', 'SYSTEM']
-type SystemAdminView = 'users' | 'campaigns'
+type SystemAdminView = 'users' | 'campaigns' | 'sheets'
 
 type CampaignAccessBadgeKind = 'edit' | 'player' | 'outside' | 'pending' | 'blocked' | 'banned'
 type BreadcrumbItem = {
@@ -414,6 +430,14 @@ function CampaignAccessBadge({ item }: { item: CampaignDiscoverResponse }) {
         <CampaignAccessIcon kind={badge.kind} />
       </span>
       <span className="campaign-access-label">{badge.label}</span>
+    </span>
+  )
+}
+
+function CampaignStatusBadge({ isActive }: { isActive: boolean }) {
+  return (
+    <span className={`campaign-status-badge ${isActive ? 'is-active' : 'is-disabled'}`}>
+      {isActive ? 'Attiva' : 'Disattivata'}
     </span>
   )
 }
@@ -627,11 +651,15 @@ function App() {
   const [adminCampaignsPage, setAdminCampaignsPage] = useState<AdminCampaignPage | null>(null)
   const [adminCampaignsPageIndex, setAdminCampaignsPageIndex] = useState(0)
   const [adminCampaignsDrafts, setAdminCampaignsDrafts] = useState<Record<string, AdminCampaignUpdateRequest>>({})
+  const [adminGameSystems, setAdminGameSystems] = useState<CampaignCatalogEntry[]>([])
+  const [adminSheetTypes, setAdminSheetTypes] = useState<SheetTypeCatalogEntry[]>([])
+  const [adminSheetCatalogsLoaded, setAdminSheetCatalogsLoaded] = useState(false)
   const [systemAdminView, setSystemAdminView] = useState<SystemAdminView>('users')
 
   const [characters, setCharacters] = useState<Character[]>([])
   const [selectedCharacterId, setSelectedCharacterId] = useState('')
   const [characterDetail, setCharacterDetail] = useState<Character | null>(null)
+  const [characterSheetDetail, setCharacterSheetDetail] = useState<CharacterSheetResponse | null>(null)
 
   const [missions, setMissions] = useState<MissionResponse[]>([])
   const [selectedMissionId, setSelectedMissionId] = useState('')
@@ -912,6 +940,23 @@ function App() {
     })
   }
 
+  const loadCharacterDetailBlock = async (targetCampaignId: string, targetCharacterId: string) => {
+    const [detailValue, sheetValue] = await Promise.all([
+      getCharacter(targetCampaignId, targetCharacterId),
+      getCharacterSheet(targetCampaignId, targetCharacterId),
+    ])
+    setCharacterDetail(detailValue)
+    setCharacterSheetDetail(sheetValue)
+  }
+
+  const refreshCharacterBlock = async () => {
+    const targetCampaignId = selectedCharacter?.campaignId || campaignId
+    if (!targetCampaignId || !selectedCharacterId) return
+    await run('Scheda personaggio caricata', async () => {
+      await loadCharacterDetailBlock(targetCampaignId, selectedCharacterId)
+    })
+  }
+
   const loadAdminUsers = async (page: number) => {
     setBusy(true)
     setError('')
@@ -977,6 +1022,27 @@ function App() {
     }
   }
 
+  const loadAdminSheetCatalogs = async () => {
+    setBusy(true)
+    setError('')
+    setAdminSheetCatalogsLoaded(true)
+    try {
+      const [gameSystems, sheetTypes] = await Promise.all([listAdminGameSystems(), listAdminSheetTypes()])
+      setAdminGameSystems(gameSystems)
+      setAdminSheetTypes(sheetTypes)
+      addEvent('Cataloghi schede caricati', 'ok')
+    } catch (err) {
+      const message = toMessage(err)
+      setError(message)
+      addEvent(`Cataloghi schede: ${message}`, 'error')
+      if (isUnauthorized(err)) {
+        handleLogout()
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const saveAdminUser = async (userId: string) => {
     const draft = adminUsersDrafts[userId]
     if (!draft) return
@@ -1013,6 +1079,82 @@ function App() {
       const message = toMessage(err)
       setError(message)
       addEvent(`Aggiornamento campagna: ${message}`, 'error')
+      if (isUnauthorized(err)) {
+        handleLogout()
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const saveAdminGameSystem = async (code: string, payload: AdminGameSystemUpsertRequest) => {
+    setBusy(true)
+    setError('')
+    try {
+      await updateAdminGameSystem(code, payload)
+      await loadAdminSheetCatalogs()
+      addEvent('Sistema di gioco aggiornato', 'ok')
+    } catch (err) {
+      const message = toMessage(err)
+      setError(message)
+      addEvent(`Aggiornamento sistema di gioco: ${message}`, 'error')
+      if (isUnauthorized(err)) {
+        handleLogout()
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const createAdminGameSystemEntry = async (payload: AdminGameSystemUpsertRequest) => {
+    setBusy(true)
+    setError('')
+    try {
+      await createAdminGameSystem(payload)
+      await loadAdminSheetCatalogs()
+      addEvent('Sistema di gioco creato', 'ok')
+    } catch (err) {
+      const message = toMessage(err)
+      setError(message)
+      addEvent(`Creazione sistema di gioco: ${message}`, 'error')
+      if (isUnauthorized(err)) {
+        handleLogout()
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const saveAdminSheetType = async (code: string, payload: AdminSheetTypeUpsertRequest) => {
+    setBusy(true)
+    setError('')
+    try {
+      await updateAdminSheetType(code, payload)
+      await loadAdminSheetCatalogs()
+      addEvent('Sheet type aggiornato', 'ok')
+    } catch (err) {
+      const message = toMessage(err)
+      setError(message)
+      addEvent(`Aggiornamento sheet type: ${message}`, 'error')
+      if (isUnauthorized(err)) {
+        handleLogout()
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const createAdminSheetTypeEntry = async (payload: AdminSheetTypeUpsertRequest) => {
+    setBusy(true)
+    setError('')
+    try {
+      await createAdminSheetType(payload)
+      await loadAdminSheetCatalogs()
+      addEvent('Sheet type creato', 'ok')
+    } catch (err) {
+      const message = toMessage(err)
+      setError(message)
+      addEvent(`Creazione sheet type: ${message}`, 'error')
       if (isUnauthorized(err)) {
         handleLogout()
       }
@@ -1063,6 +1205,7 @@ function App() {
     setCharacters([])
     setSelectedCharacterId('')
     setCharacterDetail(null)
+    setCharacterSheetDetail(null)
     setMissions([])
     setSelectedMissionId('')
     setLastMissionAction(null)
@@ -1089,6 +1232,7 @@ function App() {
       setSelectedCampaignMember(null)
       setSelectedCampaignMemberProfile(null)
       setCharacterDetail(null)
+      setCharacterSheetDetail(null)
       setLastMissionAction(null)
       setSelectedCharacterId('')
       setSelectedMissionId('')
@@ -1242,6 +1386,7 @@ function App() {
       setCharacters([])
       setSelectedCharacterId('')
       setCharacterDetail(null)
+      setCharacterSheetDetail(null)
       return
     }
     const nextCharacters = await listCharacters(activeCampaignId)
@@ -1425,8 +1570,12 @@ function App() {
 
   useEffect(() => {
     if (screen !== 'Scheda PG') return
-    if (!selectedCharacterId) setScreen('Gestione Personaggi')
-  }, [screen, selectedCharacterId])
+    if (!selectedCharacterId) {
+      setScreen('Gestione Personaggi')
+      return
+    }
+    void refreshCharacterBlock()
+  }, [screen, selectedCharacterId, campaignId])
 
   useEffect(() => {
     if (!getAccessToken()) return
@@ -1550,11 +1699,15 @@ function App() {
     setAdminUsersPageIndex(0)
     setAdminUsersDrafts({})
     setCharacters([])
+    setAdminGameSystems([])
+    setAdminSheetTypes([])
+    setAdminSheetCatalogsLoaded(false)
     setMissions([])
     setMissionCharacters([])
     setRooms([])
     setPermissions([])
     setCharacterDetail(null)
+    setCharacterSheetDetail(null)
     setLastMissionAction(null)
     setSelectedCharacterId('')
     setSelectedMissionId('')
@@ -1573,6 +1726,9 @@ function App() {
       setAdminCampaignsPage(null)
       setAdminCampaignsPageIndex(0)
       setAdminCampaignsDrafts({})
+      setAdminGameSystems([])
+      setAdminSheetTypes([])
+      setAdminSheetCatalogsLoaded(false)
       return
     }
     if (systemAdminView === 'users' && !adminUsersPage) {
@@ -1581,7 +1737,10 @@ function App() {
     if (systemAdminView === 'campaigns' && !adminCampaignsPage) {
       void loadAdminCampaigns(0)
     }
-  }, [isSystemSession, profile?.id, systemAdminView])
+    if (systemAdminView === 'sheets' && !adminSheetCatalogsLoaded) {
+      void loadAdminSheetCatalogs()
+    }
+  }, [isSystemSession, profile?.id, systemAdminView, adminSheetCatalogsLoaded])
 
   useEffect(() => {
     if (!isSystemSession || systemAdminView !== 'campaigns') return
@@ -1763,10 +1922,14 @@ function App() {
     if (userId === profile.id) return profile.profileName
     return memberNames[userId] || 'Profilo non disponibile'
   }
-  const hasPlayerCharacterInActiveCampaign = characters.some(
-    (character) => !character.isNpc && character.userId === profile.id && character.campaignId === campaignId,
+  const hasActivePlayerCharacterInActiveCampaign = characters.some(
+    (character) =>
+      !character.isNpc &&
+      character.userId === profile.id &&
+      character.campaignId === campaignId &&
+      character.characterStatus === 'ACTIVE',
   )
-  const canCreatePlayerCharacter = hasActiveCampaign && !hasPlayerCharacterInActiveCampaign
+  const canCreatePlayerCharacter = hasActiveCampaign && !hasActivePlayerCharacterInActiveCampaign
   const canCreateNpc =
     hasActiveCampaign &&
     (activeCampaignMembership?.role === 'CO_MASTER' ||
@@ -1968,13 +2131,42 @@ function App() {
   const systemCampaignsPageLabel = adminCampaignsPage
     ? `Pagina ${adminCampaignsPage.page + 1} di ${Math.max(adminCampaignsPage.totalPages, 1)}`
     : 'Pagina 1 di 1'
-  const systemViewTitle = systemAdminView === 'users' ? 'Anagrafica utenti' : 'Anagrafica campagne'
-  const systemViewSubtitle =
-    systemAdminView === 'users'
-      ? 'Tabella compatta, 15 record per pagina, con ruoli e stato immediatamente visibili.'
-      : 'Tabella compatta, 15 record per pagina, con sistema di gioco, addon e stato della campagna.'
-  const systemViewTotal = systemAdminView === 'users' ? systemUsersTotal : systemCampaignsTotal
-  const systemViewPageLabel = systemAdminView === 'users' ? systemUsersPageLabel : systemCampaignsPageLabel
+  const systemViewMeta = (() => {
+    switch (systemAdminView) {
+      case 'users':
+        return {
+          kicker: 'Utenti',
+          title: 'Anagrafica utenti',
+          subtitle: 'Tabella compatta, 15 record per pagina, con ruoli e stato immediatamente visibili.',
+          primaryMeta: `Totale ${systemUsersTotal}`,
+          secondaryMeta: systemUsersPageLabel,
+        }
+      case 'campaigns':
+        return {
+          kicker: 'Campagne',
+          title: 'Anagrafica campagne',
+          subtitle: 'Tabella compatta, 15 record per pagina, con sistema di gioco, addon e stato della campagna.',
+          primaryMeta: `Totale ${systemCampaignsTotal}`,
+          secondaryMeta: systemCampaignsPageLabel,
+        }
+      case 'sheets':
+        return {
+          kicker: 'Schede',
+          title: 'Catalogo schede di gioco',
+          subtitle: 'Definisci i sistemi di gioco e i template scheda riusabili per ogni campaign module.',
+          primaryMeta: `Sistemi ${adminGameSystems.length}`,
+          secondaryMeta: `Schede ${adminSheetTypes.length}`,
+        }
+      default:
+        return {
+          kicker: 'SYSTEM',
+          title: 'Dashboard sistema',
+          subtitle: '',
+          primaryMeta: '',
+          secondaryMeta: '',
+        }
+    }
+  })()
 
   if (isSystemSession) {
     return (
@@ -2024,6 +2216,16 @@ function App() {
             >
               Campagne
             </button>
+            <button
+              type="button"
+              className={`system-nav-tab ${systemAdminView === 'sheets' ? 'is-active' : ''}`}
+              onClick={() => {
+                setSystemAdminView('sheets')
+                if (!adminSheetCatalogsLoaded) void loadAdminSheetCatalogs()
+              }}
+            >
+              Schede
+            </button>
           </div>
 
           <div className="sidebar-footer">
@@ -2046,13 +2248,13 @@ function App() {
           <section className="panel system-landing-panel">
             <div className="system-panel-head">
               <div>
-                <p className="menu-group-label">{systemAdminView === 'users' ? 'Utenti' : 'Campagne'}</p>
-                <h2>{systemViewTitle}</h2>
-                <p className="muted">{systemViewSubtitle}</p>
+                <p className="menu-group-label">{systemViewMeta.kicker}</p>
+                <h2>{systemViewMeta.title}</h2>
+                <p className="muted">{systemViewMeta.subtitle}</p>
               </div>
               <div className="system-panel-meta">
-                <span className="status status-neutral">Totale {systemViewTotal}</span>
-                <span className="status status-info">{systemViewPageLabel}</span>
+                <span className="status status-neutral">{systemViewMeta.primaryMeta}</span>
+                <span className="status status-info">{systemViewMeta.secondaryMeta}</span>
               </div>
             </div>
 
@@ -2204,7 +2406,7 @@ function App() {
                   </div>
                 </div>
               </>
-            ) : (
+            ) : systemAdminView === 'campaigns' ? (
               <>
                 <div className="system-table-wrap">
                   <table className="system-users-table">
@@ -2439,6 +2641,17 @@ function App() {
                   </div>
                 </div>
               </>
+            ) : (
+              <SystemCatalogsPage
+                busy={busy}
+                gameSystems={adminGameSystems}
+                sheetTypes={adminSheetTypes}
+                onRefresh={() => void loadAdminSheetCatalogs()}
+                onCreateGameSystem={createAdminGameSystemEntry}
+                onSaveGameSystem={saveAdminGameSystem}
+                onCreateSheetType={createAdminSheetTypeEntry}
+                onSaveSheetType={saveAdminSheetType}
+              />
             )}
           </section>
         </main>
@@ -2870,6 +3083,7 @@ function App() {
               }
               setSelectedCharacterId(character.id)
               setCharacterDetail(null)
+              setCharacterSheetDetail(null)
               setScreen('Scheda PG')
             }}
             onCreateScreen={() => setScreen('Crea Personaggio')}
@@ -2884,13 +3098,15 @@ function App() {
         {screen === 'Scheda PG' && (
           <CharacterDetailPage
             character={selectedCharacter}
-            onRefresh={() =>
-              run('Scheda personaggio caricata', async () => {
+            sheet={characterSheetDetail}
+            onRefresh={() => void refreshCharacterBlock()}
+            onSaveSheet={(dataJson) =>
+              run('Scheda personaggio salvata', async () => {
                 if (!selectedCharacterId) return
                 const detailCampaignId = selectedCharacter?.campaignId || campaignId
                 if (!detailCampaignId) return
-                const detail = await getCharacter(detailCampaignId, selectedCharacterId)
-                setCharacterDetail(detail)
+                const updated = await updateCharacterSheet(detailCampaignId, selectedCharacterId, { dataJson })
+                setCharacterSheetDetail(updated)
               })
             }
             externalDetail={characterDetail}
@@ -3383,6 +3599,9 @@ function CampaignListPage({
                     </div>
                     <CampaignAccessBadge item={item} />
                   </div>
+                  <p className="campaign-status-line">
+                    Stato campagna: <CampaignStatusBadge isActive={item.isActive} />
+                  </p>
                   <p className="muted">{item.summary || item.description || 'Nessuna descrizione'}</p>
                   {item.founderId && (
                     <p className="campaign-creator">
@@ -3781,6 +4000,9 @@ function CampaignDetailPage({
           <p>
             <strong>{campaign.name}</strong>
           </p>
+          <p className="campaign-status-line">
+            Stato campagna: <CampaignStatusBadge isActive={campaign.isActive} />
+          </p>
           {campaign.summary && <p className="campaign-summary">{campaign.summary}</p>}
           <p className="muted">{campaign.description || 'Nessuna descrizione'}</p>
           <div className="campaign-profile-grid">
@@ -3937,6 +4159,911 @@ function CampaignDetailPage({
         </>
       )}
     </section>
+  )
+}
+
+function SystemCatalogsPage({
+  busy,
+  gameSystems,
+  sheetTypes,
+  onRefresh,
+  onCreateGameSystem,
+  onSaveGameSystem,
+  onCreateSheetType,
+  onSaveSheetType,
+}: {
+  busy: boolean
+  gameSystems: CampaignCatalogEntry[]
+  sheetTypes: SheetTypeCatalogEntry[]
+  onRefresh: () => void
+  onCreateGameSystem: (payload: AdminGameSystemUpsertRequest) => Promise<void>
+  onSaveGameSystem: (code: string, payload: AdminGameSystemUpsertRequest) => Promise<void>
+  onCreateSheetType: (payload: AdminSheetTypeUpsertRequest) => Promise<void>
+  onSaveSheetType: (code: string, payload: AdminSheetTypeUpsertRequest) => Promise<void>
+}) {
+  type GameSystemDraft = {
+    code: string
+    label: string
+    description: string
+    active: boolean
+    sortOrder: number
+  }
+  type SheetTypeDraft = {
+    code: string
+    label: string
+    description: string
+    gameSystemCode: string
+    entityType: SheetEntityType
+    schemaVersion: string
+    sortOrder: string
+    active: boolean
+    isDefault: boolean
+    schemaJsonText: string
+  }
+
+  const entityTypeOptions: Array<{ value: SheetEntityType; label: string }> = [
+    { value: 'CHARACTER', label: 'Character' },
+    { value: 'ARMY', label: 'Army' },
+    { value: 'DECK', label: 'Deck' },
+  ]
+
+  const createDefaultGameSystemDraft = (): GameSystemDraft => ({
+    code: '',
+    label: '',
+    description: '',
+    active: true,
+    sortOrder: 0,
+  })
+
+  const createDefaultSheetTypeDraft = (defaultGameSystemCode: string): SheetTypeDraft => ({
+    code: '',
+    label: '',
+    description: '',
+    gameSystemCode: defaultGameSystemCode,
+    entityType: 'CHARACTER',
+    schemaVersion: '1',
+    sortOrder: '0',
+    active: true,
+    isDefault: false,
+    schemaJsonText: JSON.stringify(
+      {
+        version: 1,
+        blocks: [
+          { code: 'identity', label: 'Identita', order: 1 },
+          { code: 'core', label: 'Core', order: 2 },
+          { code: 'notes', label: 'Notes', order: 3 },
+        ],
+      },
+      null,
+      2,
+    ),
+  })
+
+  const parseSchemaJson = (text: string): Record<string, unknown> => {
+    const parsed = JSON.parse(text)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('schemaJson deve essere un oggetto JSON')
+    }
+    return parsed as Record<string, unknown>
+  }
+
+  const toNumberOrThrow = (value: string, fieldLabel: string) => {
+    const parsed = Number.parseInt(value.trim(), 10)
+    if (!Number.isFinite(parsed)) {
+      throw new Error(`${fieldLabel} non valido`)
+    }
+    return parsed
+  }
+
+  const [newGameSystem, setNewGameSystem] = useState<GameSystemDraft>(createDefaultGameSystemDraft)
+  const [newGameSystemError, setNewGameSystemError] = useState('')
+  const [gameSystemDrafts, setGameSystemDrafts] = useState<Record<string, GameSystemDraft>>({})
+  const [gameSystemErrors, setGameSystemErrors] = useState<Record<string, string>>({})
+  const [newSheetType, setNewSheetType] = useState<SheetTypeDraft>(createDefaultSheetTypeDraft(gameSystems[0]?.code || ''))
+  const [newSheetTypeError, setNewSheetTypeError] = useState('')
+  const [sheetTypeDrafts, setSheetTypeDrafts] = useState<Record<string, SheetTypeDraft>>({})
+  const [sheetTypeErrors, setSheetTypeErrors] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    setGameSystemDrafts(
+      Object.fromEntries(
+        gameSystems.map((item) => [
+          item.code,
+          {
+            code: item.code,
+            label: item.label,
+            description: item.description || '',
+            active: item.active,
+            sortOrder: item.sortOrder,
+          },
+        ]),
+      ),
+    )
+    setGameSystemErrors({})
+  }, [gameSystems])
+
+  useEffect(() => {
+    const defaultGameSystemCode = gameSystems[0]?.code || ''
+    setNewSheetType((prev) =>
+      prev.gameSystemCode && gameSystems.some((item) => item.code === prev.gameSystemCode)
+        ? prev
+        : createDefaultSheetTypeDraft(defaultGameSystemCode),
+    )
+  }, [gameSystems])
+
+  useEffect(() => {
+    setSheetTypeDrafts(
+      Object.fromEntries(
+        sheetTypes.map((item) => [
+          item.code,
+          {
+            code: item.code,
+            label: item.label,
+            description: item.description || '',
+            gameSystemCode: item.gameSystemCode,
+            entityType: item.entityType,
+            schemaVersion: String(item.schemaVersion),
+            sortOrder: String(item.sortOrder),
+            active: item.active,
+            isDefault: item.isDefault,
+            schemaJsonText: JSON.stringify(item.schemaJson || {}, null, 2),
+          },
+        ]),
+      ),
+    )
+    setSheetTypeErrors({})
+  }, [sheetTypes])
+
+  const sortedGameSystems = [...gameSystems].sort((left, right) => {
+    if (left.sortOrder !== right.sortOrder) return left.sortOrder - right.sortOrder
+    return left.label.localeCompare(right.label, 'it')
+  })
+
+  const sortedSheetTypes = [...sheetTypes].sort((left, right) => {
+    if (left.gameSystemCode !== right.gameSystemCode) return left.gameSystemCode.localeCompare(right.gameSystemCode, 'it')
+    if (left.sortOrder !== right.sortOrder) return left.sortOrder - right.sortOrder
+    return left.label.localeCompare(right.label, 'it')
+  })
+
+  const submitNewGameSystem = async () => {
+    const code = newGameSystem.code.trim()
+    const label = newGameSystem.label.trim()
+    if (!code || !label) {
+      setNewGameSystemError('Codice e label sono obbligatori')
+      return
+    }
+
+    setNewGameSystemError('')
+    await onCreateGameSystem({
+      code,
+      label,
+      description: newGameSystem.description.trim(),
+      active: newGameSystem.active,
+      sortOrder: Number.isFinite(newGameSystem.sortOrder) ? newGameSystem.sortOrder : 0,
+    })
+    setNewGameSystem(createDefaultGameSystemDraft())
+  }
+
+  const saveGameSystem = async (code: string) => {
+    const draft = gameSystemDrafts[code]
+    if (!draft) return
+    const normalizedCode = code.trim()
+    const label = draft.label.trim()
+    if (!normalizedCode || !label) {
+      setGameSystemErrors((prev) => ({
+        ...prev,
+        [code]: 'Codice e label sono obbligatori',
+      }))
+      return
+    }
+
+    await onSaveGameSystem(code, {
+      code: normalizedCode,
+      label,
+      description: draft.description.trim(),
+      active: draft.active,
+      sortOrder: Number.isFinite(draft.sortOrder) ? draft.sortOrder : 0,
+    })
+  }
+
+  const submitNewSheetType = async () => {
+    const code = newSheetType.code.trim()
+    const label = newSheetType.label.trim()
+    const gameSystemCode = newSheetType.gameSystemCode.trim()
+    if (!code || !label || !gameSystemCode) {
+      setNewSheetTypeError('Codice, label e sistema di gioco sono obbligatori')
+      return
+    }
+
+    let schemaJson: Record<string, unknown>
+    try {
+      schemaJson = parseSchemaJson(newSheetType.schemaJsonText)
+    } catch (err) {
+      setNewSheetTypeError(err instanceof Error ? err.message : 'schemaJson non valido')
+      return
+    }
+
+    setNewSheetTypeError('')
+    await onCreateSheetType({
+      code,
+      label,
+      description: newSheetType.description.trim(),
+      gameSystemCode,
+      entityType: newSheetType.entityType,
+      schemaVersion: toNumberOrThrow(newSheetType.schemaVersion, 'Schema version'),
+      sortOrder: toNumberOrThrow(newSheetType.sortOrder, 'Sort order'),
+      active: newSheetType.active,
+      isDefault: newSheetType.isDefault,
+      schemaJson,
+    })
+    setNewSheetType(createDefaultSheetTypeDraft(gameSystems[0]?.code || ''))
+  }
+
+  const saveSheetType = async (code: string) => {
+    const draft = sheetTypeDrafts[code]
+    if (!draft) return
+    const normalizedCode = code.trim()
+    const label = draft.label.trim()
+    const gameSystemCode = draft.gameSystemCode.trim()
+    if (!normalizedCode || !label || !gameSystemCode) {
+      setSheetTypeErrors((prev) => ({ ...prev, [code]: 'Codice, label e sistema di gioco sono obbligatori' }))
+      return
+    }
+
+    let schemaJson: Record<string, unknown>
+    try {
+      schemaJson = parseSchemaJson(draft.schemaJsonText)
+    } catch (err) {
+      setSheetTypeErrors((prev) => ({ ...prev, [code]: err instanceof Error ? err.message : 'schemaJson non valido' }))
+      return
+    }
+
+    setSheetTypeErrors((prev) => ({ ...prev, [code]: '' }))
+    await onSaveSheetType(code, {
+      code: normalizedCode,
+      label,
+      description: draft.description.trim(),
+      gameSystemCode,
+      entityType: draft.entityType,
+      schemaVersion: toNumberOrThrow(draft.schemaVersion, 'Schema version'),
+      sortOrder: toNumberOrThrow(draft.sortOrder, 'Sort order'),
+      active: draft.active,
+      isDefault: draft.isDefault,
+      schemaJson,
+    })
+  }
+
+  return (
+    <div className="system-catalogs-layout">
+      <section className="system-catalog-hero">
+        <div className="system-catalog-hero-copy">
+          <p className="menu-group-label">SYSTEM / SCHEDE</p>
+          <h3>Cataloghi configurabili, riusabili e versionati</h3>
+          <p className="muted">
+            Qui definisci i sistemi di gioco censiti a database e la struttura scheda che poi il frontend usera'
+            per comporre i moduli runtime.
+          </p>
+        </div>
+        <div className="system-catalog-hero-meta">
+          <span className="status status-neutral">Sistemi {gameSystems.length}</span>
+          <span className="status status-info">Schede {sheetTypes.length}</span>
+          <button type="button" className="refresh-btn" disabled={busy} onClick={onRefresh}>
+            <Icon name="fa-solid fa-rotate-right" />
+            <span>Ricarica</span>
+          </button>
+        </div>
+      </section>
+
+      <div className="system-catalogs-grid">
+        <section className="system-catalog-panel">
+          <div className="system-catalog-panel-head">
+            <div>
+              <h3 className="section-title">Sistemi di gioco</h3>
+              <p className="muted">Catalogo amministrativo dei mondi di gioco disponibili.</p>
+            </div>
+            <span className="readonly-chip">{gameSystems.length} record</span>
+          </div>
+
+          <div className="system-catalog-form">
+            <div className="system-catalog-form-grid">
+              <label>
+                <FieldLabel icon="fa-solid fa-key" label="Codice nuovo sistema" />
+                <input
+                  value={newGameSystem.code}
+                  onChange={(event) => setNewGameSystem((prev) => ({ ...prev, code: event.target.value }))}
+                  placeholder="DND5E"
+                />
+              </label>
+              <label>
+                <FieldLabel icon="fa-solid fa-signature" label="Label" />
+                <input
+                  value={newGameSystem.label}
+                  onChange={(event) => setNewGameSystem((prev) => ({ ...prev, label: event.target.value }))}
+                  placeholder="D&D 5E"
+                />
+              </label>
+            </div>
+            <label>
+              <FieldLabel icon="fa-solid fa-align-left" label="Descrizione" />
+              <textarea
+                rows={3}
+                value={newGameSystem.description}
+                onChange={(event) => setNewGameSystem((prev) => ({ ...prev, description: event.target.value }))}
+                placeholder="Descrizione amministrativa del sistema"
+              />
+            </label>
+            <div className="system-toggle-row">
+              <label className="system-status-option">
+                <span className="system-status-label">
+                  <strong>Attivo</strong>
+                  <small>Visibile nelle campagne e nei template.</small>
+                </span>
+                <span className="switch system-user-switch">
+                  <input
+                    type="checkbox"
+                    checked={newGameSystem.active}
+                    onChange={(event) => setNewGameSystem((prev) => ({ ...prev, active: event.target.checked }))}
+                  />
+                  <span className="switch-track" aria-hidden="true">
+                    <span className="switch-thumb" />
+                  </span>
+                </span>
+              </label>
+              <label>
+                <FieldLabel icon="fa-solid fa-sort" label="Ordine" />
+                <input
+                  type="number"
+                  value={String(newGameSystem.sortOrder)}
+                  onChange={(event) =>
+                    setNewGameSystem((prev) => ({
+                      ...prev,
+                      sortOrder: Number.parseInt(event.target.value || '0', 10),
+                    }))
+                  }
+                />
+              </label>
+            </div>
+            {newGameSystemError && <p className="system-inline-error">{newGameSystemError}</p>}
+            <button type="button" className="primary-btn" disabled={busy} onClick={() => void submitNewGameSystem()}>
+              <Icon name="fa-solid fa-plus" />
+              <span>Crea sistema</span>
+            </button>
+          </div>
+
+          <div className="system-catalog-table-wrap">
+            <table className="system-catalog-table">
+              <thead>
+                <tr>
+                  <th>Codice</th>
+                  <th>Label</th>
+                  <th>Descrizione</th>
+                  <th>Stato</th>
+                  <th>Ordine</th>
+                  <th>Azioni</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedGameSystems.length === 0 ? (
+                  <tr>
+                    <td className="system-empty-cell" colSpan={6}>
+                      Nessun sistema di gioco censito.
+                    </td>
+                  </tr>
+                ) : (
+                  sortedGameSystems.map((item) => {
+                    const draft = gameSystemDrafts[item.code] || {
+                      code: item.code,
+                      label: item.label,
+                      description: item.description || '',
+                      active: item.active,
+                      sortOrder: item.sortOrder,
+                    }
+                    const isDirty =
+                      draft.label !== item.label ||
+                      (draft.description || '') !== (item.description || '') ||
+                      draft.active !== item.active ||
+                      draft.sortOrder !== item.sortOrder
+
+                    return (
+                      <Fragment key={item.code}>
+                        <tr key={item.code}>
+                          <td>
+                            <div className="system-catalog-code-block">
+                              <span className="system-user-username">{item.code}</span>
+                              <span className="system-user-id">Readonly code</span>
+                            </div>
+                          </td>
+                          <td>
+                            <input
+                              className="system-inline-input"
+                              value={draft.label}
+                              onChange={(event) =>
+                                setGameSystemDrafts((prev) => ({
+                                  ...prev,
+                                  [item.code]: {
+                                    ...draft,
+                                    label: event.target.value,
+                                  },
+                                }))
+                              }
+                            />
+                          </td>
+                          <td>
+                            <textarea
+                              className="system-inline-textarea"
+                              rows={3}
+                              value={draft.description}
+                              onChange={(event) =>
+                                setGameSystemDrafts((prev) => ({
+                                  ...prev,
+                                  [item.code]: {
+                                    ...draft,
+                                    description: event.target.value,
+                                  },
+                                }))
+                              }
+                            />
+                          </td>
+                          <td>
+                            <label className="switch system-user-switch" aria-label={`${item.code} ${draft.active ? 'attivo' : 'disattivo'}`}>
+                              <input
+                                type="checkbox"
+                                checked={draft.active}
+                                onChange={(event) =>
+                                  setGameSystemDrafts((prev) => ({
+                                    ...prev,
+                                    [item.code]: {
+                                      ...draft,
+                                      active: event.target.checked,
+                                    },
+                                  }))
+                                }
+                              />
+                              <span className="switch-track" aria-hidden="true">
+                                <span className="switch-thumb" />
+                              </span>
+                            </label>
+                          </td>
+                          <td>
+                            <input
+                              className="system-inline-input system-inline-input-narrow"
+                              type="number"
+                              value={String(draft.sortOrder)}
+                              onChange={(event) =>
+                                setGameSystemDrafts((prev) => ({
+                                  ...prev,
+                                  [item.code]: {
+                                    ...draft,
+                                    sortOrder: Number.parseInt(event.target.value || '0', 10),
+                                  },
+                                }))
+                              }
+                            />
+                          </td>
+                          <td>
+                            <div className="system-row-actions">
+                              <span className={`status ${isDirty ? 'status-warning' : 'status-neutral'}`}>
+                                {isDirty ? 'Da salvare' : 'Salvato'}
+                              </span>
+                              <button
+                                type="button"
+                                className="refresh-btn"
+                                disabled={busy || !isDirty}
+                                onClick={() => void saveGameSystem(item.code)}
+                              >
+                                <Icon name="fa-solid fa-floppy-disk" />
+                                <span>Salva</span>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                        {gameSystemErrors[item.code] && (
+                          <tr>
+                            <td colSpan={6} className="system-inline-error-row">
+                              {gameSystemErrors[item.code]}
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    )
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="system-catalog-panel system-catalog-panel-wide">
+          <div className="system-catalog-panel-head">
+            <div>
+              <h3 className="section-title">Sheet type</h3>
+              <p className="muted">Definisci i template scheda per character, army o deck.</p>
+            </div>
+            <span className="readonly-chip">{sheetTypes.length} record</span>
+          </div>
+
+          <div className="system-catalog-form system-catalog-form-compact">
+            <div className="system-catalog-form-grid">
+              <label>
+                <FieldLabel icon="fa-solid fa-key" label="Codice nuovo sheet type" />
+                <input
+                  value={newSheetType.code}
+                  onChange={(event) => setNewSheetType((prev) => ({ ...prev, code: event.target.value }))}
+                  placeholder="DND5E_CHARACTER"
+                />
+              </label>
+              <label>
+                <FieldLabel icon="fa-solid fa-signature" label="Label" />
+                <input
+                  value={newSheetType.label}
+                  onChange={(event) => setNewSheetType((prev) => ({ ...prev, label: event.target.value }))}
+                  placeholder="D&D Character Sheet"
+                />
+              </label>
+            </div>
+            <label>
+              <FieldLabel icon="fa-solid fa-align-left" label="Descrizione" />
+              <textarea
+                rows={3}
+                value={newSheetType.description}
+                onChange={(event) => setNewSheetType((prev) => ({ ...prev, description: event.target.value }))}
+                placeholder="Descrizione del template scheda"
+              />
+            </label>
+            <div className="system-catalog-form-grid">
+              <label>
+                <FieldLabel icon="fa-solid fa-gamepad" label="Sistema di gioco" />
+                <select
+                  value={newSheetType.gameSystemCode}
+                  onChange={(event) => setNewSheetType((prev) => ({ ...prev, gameSystemCode: event.target.value }))}
+                >
+                  {gameSystems.length > 0 ? (
+                    gameSystems.map((item) => (
+                      <option key={item.code} value={item.code}>
+                        {item.label || item.code}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="">Nessun sistema disponibile</option>
+                  )}
+                </select>
+              </label>
+              <label>
+                <FieldLabel icon="fa-solid fa-layer-group" label="Entity type" />
+                <select
+                  value={newSheetType.entityType}
+                  onChange={(event) =>
+                    setNewSheetType((prev) => ({
+                      ...prev,
+                      entityType: event.target.value as SheetEntityType,
+                    }))
+                  }
+                >
+                  {entityTypeOptions.map((item) => (
+                    <option key={item.value} value={item.value}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="system-catalog-form-grid">
+              <label>
+                <FieldLabel icon="fa-solid fa-code-branch" label="Schema version" />
+                <input
+                  type="number"
+                  value={newSheetType.schemaVersion}
+                  onChange={(event) => setNewSheetType((prev) => ({ ...prev, schemaVersion: event.target.value }))}
+                />
+              </label>
+              <label>
+                <FieldLabel icon="fa-solid fa-sort" label="Ordine" />
+                <input
+                  type="number"
+                  value={newSheetType.sortOrder}
+                  onChange={(event) => setNewSheetType((prev) => ({ ...prev, sortOrder: event.target.value }))}
+                />
+              </label>
+            </div>
+            <div className="system-toggle-row">
+              <label className="system-status-option">
+                <span className="system-status-label">
+                  <strong>Attivo</strong>
+                  <small>Utilizzabile dalle campagne.</small>
+                </span>
+                <span className="switch system-user-switch">
+                  <input
+                    type="checkbox"
+                    checked={newSheetType.active}
+                    onChange={(event) => setNewSheetType((prev) => ({ ...prev, active: event.target.checked }))}
+                  />
+                  <span className="switch-track" aria-hidden="true">
+                    <span className="switch-thumb" />
+                  </span>
+                </span>
+              </label>
+              <label className="system-status-option">
+                <span className="system-status-label">
+                  <strong>Default</strong>
+                  <small>Template base per il sistema e la entity.</small>
+                </span>
+                <span className="switch system-user-switch">
+                  <input
+                    type="checkbox"
+                    checked={newSheetType.isDefault}
+                    onChange={(event) => setNewSheetType((prev) => ({ ...prev, isDefault: event.target.checked }))}
+                  />
+                  <span className="switch-track" aria-hidden="true">
+                    <span className="switch-thumb" />
+                  </span>
+                </span>
+              </label>
+            </div>
+            <label>
+              <FieldLabel icon="fa-solid fa-diagram-project" label="Schema JSON" />
+              <textarea
+                className="system-json-editor"
+                rows={10}
+                value={newSheetType.schemaJsonText}
+                onChange={(event) => setNewSheetType((prev) => ({ ...prev, schemaJsonText: event.target.value }))}
+              />
+            </label>
+            <p className="muted">Il JSON deve essere un oggetto valido. Serve al FE per comporre i blocchi in modo configurabile.</p>
+            {newSheetTypeError && <p className="system-inline-error">{newSheetTypeError}</p>}
+            <button type="button" className="primary-btn" disabled={busy || gameSystems.length === 0} onClick={() => void submitNewSheetType()}>
+              <Icon name="fa-solid fa-plus" />
+              <span>Crea sheet type</span>
+            </button>
+          </div>
+
+          <div className="system-sheet-list">
+            {sortedSheetTypes.length === 0 ? (
+              <div className="system-empty-cell system-sheet-empty">Nessuno sheet type configurato.</div>
+            ) : (
+              sortedSheetTypes.map((item) => {
+                const draft = sheetTypeDrafts[item.code] || {
+                  code: item.code,
+                  label: item.label,
+                  description: item.description || '',
+                  gameSystemCode: item.gameSystemCode,
+                  entityType: item.entityType,
+                  schemaVersion: String(item.schemaVersion),
+                  sortOrder: String(item.sortOrder),
+                  active: item.active,
+                  isDefault: item.isDefault,
+                  schemaJsonText: JSON.stringify(item.schemaJson || {}, null, 2),
+                }
+                const isDirty =
+                  draft.label !== item.label ||
+                  (draft.description || '') !== (item.description || '') ||
+                  draft.gameSystemCode !== item.gameSystemCode ||
+                  draft.entityType !== item.entityType ||
+                  draft.schemaVersion !== String(item.schemaVersion) ||
+                  draft.sortOrder !== String(item.sortOrder) ||
+                  draft.active !== item.active ||
+                  draft.isDefault !== item.isDefault ||
+                  draft.schemaJsonText !== JSON.stringify(item.schemaJson || {}, null, 2)
+
+                return (
+                  <article key={item.code} className="system-sheet-card">
+                    <div className="system-sheet-card-head">
+                      <div>
+                        <div className="system-sheet-title-row">
+                          <h4>{item.label}</h4>
+                          <span className="readonly-chip">{item.code}</span>
+                          {item.isDefault && <span className="status status-info">Default</span>}
+                          {!item.active && <span className="status status-neutral">Disattivo</span>}
+                        </div>
+                        <p className="muted">
+                          {gameSystems.find((system) => system.code === item.gameSystemCode)?.label || item.gameSystemCode} · {item.entityType} · v{item.schemaVersion}
+                        </p>
+                      </div>
+                      <div className="system-row-actions">
+                        <span className={`status ${isDirty ? 'status-warning' : 'status-neutral'}`}>
+                          {isDirty ? 'Da salvare' : 'Salvato'}
+                        </span>
+                        <button
+                          type="button"
+                          className="refresh-btn"
+                          disabled={busy || !isDirty}
+                          onClick={() => void saveSheetType(item.code)}
+                        >
+                          <Icon name="fa-solid fa-floppy-disk" />
+                          <span>Salva</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="system-catalog-form-grid">
+                      <label>
+                        <FieldLabel icon="fa-solid fa-signature" label="Label" />
+                        <input
+                          value={draft.label}
+                          onChange={(event) =>
+                            setSheetTypeDrafts((prev) => ({
+                              ...prev,
+                              [item.code]: {
+                                ...draft,
+                                label: event.target.value,
+                              },
+                            }))
+                          }
+                        />
+                      </label>
+                      <label>
+                        <FieldLabel icon="fa-solid fa-gamepad" label="Sistema di gioco" />
+                        <select
+                          value={draft.gameSystemCode}
+                          onChange={(event) =>
+                            setSheetTypeDrafts((prev) => ({
+                              ...prev,
+                              [item.code]: {
+                                ...draft,
+                                gameSystemCode: event.target.value,
+                              },
+                            }))
+                          }
+                        >
+                          {gameSystems.map((system) => (
+                            <option key={system.code} value={system.code}>
+                              {system.label || system.code}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+
+                    <div className="system-catalog-form-grid">
+                      <label>
+                        <FieldLabel icon="fa-solid fa-layer-group" label="Entity type" />
+                        <select
+                          value={draft.entityType}
+                          onChange={(event) =>
+                            setSheetTypeDrafts((prev) => ({
+                              ...prev,
+                              [item.code]: {
+                                ...draft,
+                                entityType: event.target.value as SheetEntityType,
+                              },
+                            }))
+                          }
+                        >
+                          {entityTypeOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        <FieldLabel icon="fa-solid fa-code-branch" label="Schema version" />
+                        <input
+                          type="number"
+                          value={draft.schemaVersion}
+                          onChange={(event) =>
+                            setSheetTypeDrafts((prev) => ({
+                              ...prev,
+                              [item.code]: {
+                                ...draft,
+                                schemaVersion: event.target.value,
+                              },
+                            }))
+                          }
+                        />
+                      </label>
+                      <label>
+                        <FieldLabel icon="fa-solid fa-sort" label="Ordine" />
+                        <input
+                          type="number"
+                          value={draft.sortOrder}
+                          onChange={(event) =>
+                            setSheetTypeDrafts((prev) => ({
+                              ...prev,
+                              [item.code]: {
+                                ...draft,
+                                sortOrder: event.target.value,
+                              },
+                            }))
+                          }
+                        />
+                      </label>
+                    </div>
+
+                    <label>
+                      <FieldLabel icon="fa-solid fa-align-left" label="Descrizione" />
+                      <textarea
+                        rows={3}
+                        value={draft.description}
+                        onChange={(event) =>
+                          setSheetTypeDrafts((prev) => ({
+                            ...prev,
+                            [item.code]: {
+                              ...draft,
+                              description: event.target.value,
+                            },
+                          }))
+                        }
+                      />
+                    </label>
+
+                    <div className="system-toggle-row">
+                      <label className="system-status-option">
+                        <span className="system-status-label">
+                          <strong>Attivo</strong>
+                          <small>Disponibile per la selezione runtime.</small>
+                        </span>
+                        <span className="switch system-user-switch">
+                          <input
+                            type="checkbox"
+                            checked={draft.active}
+                            onChange={(event) =>
+                              setSheetTypeDrafts((prev) => ({
+                                ...prev,
+                                [item.code]: {
+                                  ...draft,
+                                  active: event.target.checked,
+                                },
+                              }))
+                            }
+                          />
+                          <span className="switch-track" aria-hidden="true">
+                            <span className="switch-thumb" />
+                          </span>
+                        </span>
+                      </label>
+                      <label className="system-status-option">
+                        <span className="system-status-label">
+                          <strong>Default</strong>
+                          <small>Template base per questo sistema/entity.</small>
+                        </span>
+                        <span className="switch system-user-switch">
+                          <input
+                            type="checkbox"
+                            checked={draft.isDefault}
+                            onChange={(event) =>
+                              setSheetTypeDrafts((prev) => ({
+                                ...prev,
+                                [item.code]: {
+                                  ...draft,
+                                  isDefault: event.target.checked,
+                                },
+                              }))
+                            }
+                          />
+                          <span className="switch-track" aria-hidden="true">
+                            <span className="switch-thumb" />
+                          </span>
+                        </span>
+                      </label>
+                    </div>
+
+                    <label>
+                      <FieldLabel icon="fa-solid fa-diagram-project" label="Schema JSON" />
+                      <textarea
+                        className="system-json-editor"
+                        rows={10}
+                        value={draft.schemaJsonText}
+                        onChange={(event) =>
+                          setSheetTypeDrafts((prev) => ({
+                            ...prev,
+                            [item.code]: {
+                              ...draft,
+                              schemaJsonText: event.target.value,
+                            },
+                          }))
+                        }
+                      />
+                    </label>
+                    <p className="muted">Edita il JSON senza reflection. Il backend lo salva versionato e il FE lo interpreta per blocchi.</p>
+                    {sheetTypeErrors[item.code] && <p className="system-inline-error">{sheetTypeErrors[item.code]}</p>}
+                  </article>
+                )
+              })
+            )}
+          </div>
+        </section>
+      </div>
+    </div>
   )
 }
 
@@ -5312,26 +6439,115 @@ function CharacterListPage({
   )
 }
 
+function getSheetBlocks(schemaJson: Record<string, unknown>): SheetSchemaBlock[] {
+  const schemaRecord = schemaJson as Record<string, unknown>
+  const rawBlocks = Array.isArray(schemaRecord.blocks) ? schemaRecord.blocks : []
+  const blocks: SheetSchemaBlock[] = []
+
+  for (const block of rawBlocks) {
+    if (!block || typeof block !== 'object') continue
+    const item = block as Record<string, unknown>
+    const rawFields = Array.isArray(item.fields) ? item.fields : []
+    const fields: SheetSchemaField[] = []
+
+    for (const field of rawFields) {
+      if (!field || typeof field !== 'object') continue
+      fields.push(field as SheetSchemaField)
+    }
+
+    blocks.push({
+      key: typeof item.key === 'string' ? item.key : undefined,
+      label: typeof item.label === 'string' ? item.label : undefined,
+      description: typeof item.description === 'string' ? item.description : null,
+      fields,
+    })
+  }
+
+  return blocks
+}
+
+function sheetFieldPath(blockKey: string, fieldKey: string) {
+  return `${blockKey}.${fieldKey}`
+}
+
+function getSheetOptionValue(option: unknown): string {
+  if (typeof option === 'string' || typeof option === 'number' || typeof option === 'boolean') {
+    return String(option)
+  }
+  if (!option || typeof option !== 'object') return ''
+  const record = option as Record<string, unknown>
+  return String(record.value ?? record.code ?? record.key ?? record.label ?? '')
+}
+
+function getSheetOptionLabel(option: unknown): string {
+  if (typeof option === 'string' || typeof option === 'number' || typeof option === 'boolean') {
+    return String(option)
+  }
+  if (!option || typeof option !== 'object') return ''
+  const record = option as Record<string, unknown>
+  return String(record.label ?? record.name ?? record.title ?? record.value ?? record.code ?? record.key ?? '')
+}
+
+function sheetValueAsText(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item)).join(', ')
+  }
+  if (value === null || value === undefined) return ''
+  return String(value)
+}
+
+function parseSheetValue(type: string | undefined, rawValue: string, checked?: boolean): unknown {
+  switch ((type || 'text').toLowerCase()) {
+    case 'number':
+      return rawValue.trim() === '' ? null : Number.parseInt(rawValue, 10)
+    case 'boolean':
+      return Boolean(checked)
+    case 'tags':
+      return rawValue
+        .split(',')
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0)
+    default:
+      return rawValue
+  }
+}
+
 function CharacterDetailPage({
   character,
   externalDetail,
+  sheet,
   ownerProfileLabel,
   canMarkCharacterDead,
   onRefresh,
   onUpdateStatus,
+  onSaveSheet,
 }: {
   character: Character | null
   externalDetail: Character | null
+  sheet: CharacterSheetResponse | null
   ownerProfileLabel: (userId: string | null, ownerProfileName?: string | null) => string
   canMarkCharacterDead: (character: Character | null) => boolean
   onRefresh: () => void
   onUpdateStatus: (status: CharacterStatus) => void
+  onSaveSheet: (dataJson: Record<string, unknown>) => Promise<void>
 }) {
   const value = externalDetail || character
   const [status, setStatus] = useState<CharacterStatus>('ACTIVE')
+  const [sheetDraft, setSheetDraft] = useState<Record<string, unknown>>({})
+  const [sheetDirty, setSheetDirty] = useState(false)
+  const [sheetSaving, setSheetSaving] = useState(false)
+  const sheetBlocks = useMemo(() => getSheetBlocks(sheet?.schemaJson || {}), [sheet?.schemaJson])
+
   useEffect(() => {
     if (value?.characterStatus) setStatus(value.characterStatus)
   }, [value?.id, value?.characterStatus])
+
+  useEffect(() => {
+    setSheetDraft(sheet?.dataJson || {})
+    setSheetDirty(false)
+    setSheetSaving(false)
+  }, [sheet?.characterId, sheet?.schemaVersion, sheet?.updatedAt, sheet?.sheetTypeCode])
+
   const deadAllowed = canMarkCharacterDead(value)
 
   useEffect(() => {
@@ -5339,6 +6555,110 @@ function CharacterDetailPage({
       setStatus('RETIRED')
     }
   }, [status, deadAllowed])
+
+  const updateSheetField = (fieldPath: string, nextValue: unknown) => {
+    setSheetDraft((prev) => ({ ...prev, [fieldPath]: nextValue }))
+    setSheetDirty(true)
+  }
+
+  const saveSheet = async () => {
+    if (!sheet?.editable || !sheetDirty || sheetSaving) return
+    setSheetSaving(true)
+    try {
+      await onSaveSheet(sheetDraft)
+      setSheetDirty(false)
+    } finally {
+      setSheetSaving(false)
+    }
+  }
+
+  const renderSheetField = (blockKey: string, field: SheetSchemaField) => {
+    const fieldKey = field.key?.trim()
+    if (!fieldKey) return null
+    const path = sheetFieldPath(blockKey, fieldKey)
+    const type = (field.type || 'text').toLowerCase()
+    const currentValue =
+      sheetDraft[path] !== undefined
+        ? sheetDraft[path]
+        : field.defaultValue !== undefined
+          ? field.defaultValue
+          : type === 'number'
+            ? 0
+            : type === 'boolean'
+              ? false
+              : type === 'tags'
+                ? []
+                : ''
+    const disabled = !sheet?.editable
+
+    return (
+      <div key={path} className="sheet-field">
+        <span className="sheet-field-label">
+          {field.label || fieldKey}
+          {field.required && <span className="sheet-field-required">*</span>}
+        </span>
+        {type === 'textarea' ? (
+          <textarea
+            rows={4}
+            value={sheetValueAsText(currentValue)}
+            placeholder={field.placeholder || undefined}
+            disabled={disabled}
+            onChange={(event) => updateSheetField(path, event.target.value)}
+          />
+        ) : type === 'number' ? (
+          <input
+            type="number"
+            value={currentValue === null || currentValue === undefined ? '' : String(currentValue)}
+            placeholder={field.placeholder || undefined}
+            disabled={disabled}
+            onChange={(event) => updateSheetField(path, parseSheetValue(type, event.target.value))}
+          />
+        ) : type === 'boolean' ? (
+          <label className="sheet-checkbox-row">
+            <input
+              type="checkbox"
+              checked={Boolean(currentValue)}
+              disabled={disabled}
+              onChange={(event) => updateSheetField(path, parseSheetValue(type, '', event.target.checked))}
+            />
+            <span>{field.placeholder || 'Valore booleano'}</span>
+          </label>
+        ) : type === 'select' && Array.isArray(field.options) && field.options.length > 0 ? (
+          <select
+            value={sheetValueAsText(currentValue)}
+            disabled={disabled}
+            onChange={(event) => updateSheetField(path, event.target.value)}
+          >
+            <option value="">Seleziona</option>
+            {field.options.map((option: unknown) => {
+              const optionValue = getSheetOptionValue(option)
+              const optionLabel = getSheetOptionLabel(option)
+              return (
+                <option key={optionValue || optionLabel} value={optionValue}>
+                  {optionLabel || optionValue}
+                </option>
+              )
+            })}
+          </select>
+        ) : type === 'tags' ? (
+          <input
+            value={sheetValueAsText(currentValue)}
+            placeholder={field.placeholder || 'tag1, tag2'}
+            disabled={disabled}
+            onChange={(event) => updateSheetField(path, parseSheetValue(type, event.target.value))}
+          />
+        ) : (
+          <input
+            value={sheetValueAsText(currentValue)}
+            placeholder={field.placeholder || undefined}
+            disabled={disabled}
+            onChange={(event) => updateSheetField(path, parseSheetValue(type, event.target.value))}
+          />
+        )}
+        {field.helpText && <span className="sheet-field-help">{field.helpText}</span>}
+      </div>
+    )
+  }
 
   return (
     <section className="panel">
@@ -5362,6 +6682,18 @@ function CharacterDetailPage({
           <p className="muted">tipo: {value.isNpc ? 'NPC' : 'Personaggio'}</p>
           <p className="muted">profilo: {ownerProfileLabel(value.userId, value.ownerProfileName)}</p>
           <p className="muted">status: {value.characterStatus || 'N/A'}</p>
+          {sheet && (
+            <div className="sheet-header">
+              <span className="status status-info">{sheet.gameSystemCode || 'Sistema non disponibile'}</span>
+              <span className="status status-neutral">{sheet.sheetTypeCode || 'Scheda non assegnata'}</span>
+              <span className={`status ${sheet.hasTemplate ? 'status-success' : 'status-warning'}`}>
+                {sheet.hasTemplate ? `v${sheet.schemaVersion}` : 'Template mancante'}
+              </span>
+              <span className={`status ${sheet.editable ? 'status-success' : 'status-neutral'}`}>
+                {sheet.editable ? 'Modificabile' : 'Sola lettura'}
+              </span>
+            </div>
+          )}
           <label>
             Nuovo status
             <select value={status} onChange={(event) => setStatus(event.target.value as CharacterStatus)}>
@@ -5374,6 +6706,56 @@ function CharacterDetailPage({
           <button type="button" className="primary-btn" onClick={() => onUpdateStatus(status)}>
             Aggiorna Status
           </button>
+          <div className="divider" />
+          <div className="row-between">
+            <h3 className="section-title">Scheda sistema</h3>
+            <button type="button" className="secondary-btn" onClick={onRefresh}>
+              Reload dettaglio
+            </button>
+          </div>
+          {!sheet && <p className="muted">Caricamento scheda sistema...</p>}
+          {sheet && !sheet.hasTemplate && (
+            <p className="muted">Nessun template configurato per il sistema di gioco di questa campagna.</p>
+          )}
+          {sheet && sheet.hasTemplate && (
+            <>
+              {sheetBlocks.length === 0 ? (
+                <p className="muted">La scheda non espone blocchi configurati.</p>
+              ) : (
+                <div className="sheet-grid">
+                  {sheetBlocks.map((block: SheetSchemaBlock) => {
+                    const blockKey = block.key?.trim()
+                    if (!blockKey) return null
+                    return (
+                      <section key={blockKey} className="sheet-block">
+                        <div className="sheet-block-head">
+                          <div>
+                            <h4>{block.label || blockKey}</h4>
+                            {block.description && <p className="muted">{block.description}</p>}
+                          </div>
+                        </div>
+                        <div className="sheet-fields-grid">
+                          {(block.fields || []).map((field: SheetSchemaField) => renderSheetField(blockKey, field))}
+                        </div>
+                      </section>
+                    )
+                  })}
+                </div>
+              )}
+              <div className="sheet-actions">
+                {sheet.updatedAt && <p className="muted">Ultimo salvataggio: {new Date(sheet.updatedAt).toLocaleString('it-IT')}</p>}
+                <button
+                  type="button"
+                  className="primary-btn"
+                  disabled={!sheet.editable || !sheetDirty || sheetSaving}
+                  onClick={() => void saveSheet()}
+                >
+                  <Icon name="fa-solid fa-floppy-disk" />
+                  <span>{sheetSaving ? 'Salvataggio...' : 'Salva scheda'}</span>
+                </button>
+              </div>
+            </>
+          )}
         </>
       )}
     </section>
@@ -5912,7 +7294,18 @@ function CreateCharacterPage({
       <h2>Crea Personaggio</h2>
       {!hasActiveCampaign && <p className="muted">Per creare un personaggio devi prima attivare una campagna.</p>}
       {hasActiveCampaign && !canCreatePlayerCharacter && (
-        <p className="muted">Hai già un PG in questa campagna: non puoi crearne un altro.</p>
+        <div className="character-create-warning" role="alert" aria-live="polite">
+          <Icon name="fa-solid fa-triangle-exclamation" className="character-create-warning-icon" />
+          <div>
+            <p className="character-create-warning-title">Limite raggiunto</p>
+            <p className="character-create-warning-text">
+              Hai già un PG attivo in questa campagna: non puoi crearne un altro.
+              {canCreateNpc
+                ? ' Se ti serve un personaggio aggiuntivo, puoi creare solo un NPC.'
+                : ' I PG morti o ritirati non bloccano la creazione di un nuovo PG.'}
+            </p>
+          </div>
+        </div>
       )}
       {hasActiveCampaign && !canCreateNpc && (
         <p className="muted">Con ruolo GIOCATORE non puoi creare NPC.</p>
