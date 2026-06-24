@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Dispatch, FormEvent, SetStateAction } from 'react'
+import type { Dispatch, FormEvent, ReactNode, SetStateAction } from 'react'
 import './App.css'
 import { ApiError, getAccessToken } from './services/apiClient'
 import {
@@ -135,9 +135,6 @@ const KNOWN_CAMPAIGNS_KEY = 'gate_known_campaign_ids'
 const KNOWN_CAMPAIGN_META_KEY = 'gate_known_campaign_meta'
 const THEME_KEY = 'gate_theme'
 const PENDING_APPLICATIONS_CACHE_KEY = 'gate_pending_applications_cache'
-const LEGACY_CAMPAIGN_ID_KEY = CAMPAIGN_ID_KEY
-const LEGACY_KNOWN_CAMPAIGNS_KEY = KNOWN_CAMPAIGNS_KEY
-const LEGACY_KNOWN_CAMPAIGN_META_KEY = KNOWN_CAMPAIGN_META_KEY
 
 function scopedStorageKey(baseKey: string, userId?: string | null) {
   return userId ? `${baseKey}:${userId}` : baseKey
@@ -267,6 +264,7 @@ type RealtimeActionMap = {
   loadDiscoverableCampaigns: () => Promise<void>
   loadCharactersForManagement: () => Promise<void>
   loadPendingForActiveCampaign: () => Promise<void>
+  refreshPendingApplicationsForCampaign: (campaignId: string) => Promise<void>
   loadAdminUsers: (page: number) => Promise<void>
   loadAdminCampaigns: (page: number) => Promise<void>
   loadAdminSheetCatalogs: () => Promise<void>
@@ -299,9 +297,7 @@ const NAVIGATION_SECTIONS: NavigationSection[] = [
       'Stanze',
       'Modifica Profilo',
       'Scheda PG',
-      'Seleziona PG',
       'Crea Personaggio',
-      'Profilo Membro Campagna',
     ],
   },
 ]
@@ -686,6 +682,9 @@ function App() {
   const [selectedCharacterId, setSelectedCharacterId] = useState('')
   const [characterDetail, setCharacterDetail] = useState<Character | null>(null)
   const [characterSheetDetail, setCharacterSheetDetail] = useState<CharacterSheetResponse | null>(null)
+  const [pendingApplicationsByCampaignId, setPendingApplicationsByCampaignId] = useState<
+    Record<string, CampaignApplicationResponse[]>
+  >({})
 
   const [missions, setMissions] = useState<MissionResponse[]>([])
   const [selectedMissionId, setSelectedMissionId] = useState('')
@@ -706,6 +705,7 @@ function App() {
   const isSystemRole = profile?.platformRole === 'SYSTEM'
   const isSystemSession = isSystemRole
   const effectiveTheme: EffectiveThemeMode = isSystemRole ? 'sysadmin' : theme
+  const welcomeProfileName = profile?.profileName?.trim() || profile?.username?.trim() || 'profilo'
 
   useEffect(() => {
     document.documentElement.dataset.theme = effectiveTheme
@@ -718,6 +718,12 @@ function App() {
     () => characters.find((character) => character.id === selectedCharacterId) || null,
     [characters, selectedCharacterId],
   )
+  const activeCampaignCharacterId = useMemo(() => {
+    const currentUserId = profile?.id
+    const activeCampaign = campaignId.trim()
+    if (!currentUserId || !activeCampaign) return ''
+    return members.find((item) => item.userId === currentUserId && item.campaignId === activeCampaign)?.characterId || ''
+  }, [campaignId, members, profile?.id])
 
   const selectedMission = useMemo(
     () => missions.find((mission) => mission.id === selectedMissionId) || null,
@@ -735,6 +741,12 @@ function App() {
     return map
   }, [approvedCampaignMemberships])
   const activeCampaignRole = campaignId ? approvedRoleByCampaignId[campaignId] || null : null
+  const campaignRoleRank: Record<CampaignRole, number> = {
+    GIOCATORE: 1,
+    CO_MASTER: 2,
+    MASTER: 3,
+    SUPER_MASTER: 4,
+  }
   const canCreateMissions = activeCampaignRole === 'CO_MASTER' || activeCampaignRole === 'MASTER' || activeCampaignRole === 'SUPER_MASTER'
   const canAccessCampaignManagement =
     activeCampaignRole === 'CO_MASTER' || activeCampaignRole === 'MASTER' || activeCampaignRole === 'SUPER_MASTER'
@@ -776,6 +788,14 @@ function App() {
 
     return Array.from(byId.values())
   }, [discoverableCampaigns, myCampaigns])
+  const missionAlertsByCampaign = useMemo(() => {
+    const map: Record<string, number> = {}
+    for (const mission of missions) {
+      if (mission.status !== 'OPEN' && mission.status !== 'REOPENED') continue
+      map[mission.campaignId] = (map[mission.campaignId] || 0) + 1
+    }
+    return map
+  }, [missions])
   const campaignIsActiveForCurrentUser = (campaignToCheck: string) => {
     if (isSystemRole) return true
     const visibleCampaign = campaignsForList.find((item) => item.id === campaignToCheck)
@@ -824,15 +844,15 @@ function App() {
 
   const requiresCampaignSelection = (value: Screen) => CAMPAIGN_ACTIVE_REQUIRED_SCREENS.includes(value)
 
-  const rememberCampaignId = (id: string) => {
+  const rememberCampaignId = (id: string, userId: string | null | undefined = activeUserId) => {
     const trimmed = id.trim()
     setCampaignId(trimmed)
-    const storageKey = scopedStorageKey(CAMPAIGN_ID_KEY, activeUserId)
+    const storageKey = scopedStorageKey(CAMPAIGN_ID_KEY, userId)
     if (trimmed) {
       localStorage.setItem(storageKey, trimmed)
       setKnownCampaignIds((prev) => {
         const next = Array.from(new Set([trimmed, ...prev]))
-        localStorage.setItem(scopedStorageKey(KNOWN_CAMPAIGNS_KEY, activeUserId), JSON.stringify(next))
+        localStorage.setItem(scopedStorageKey(KNOWN_CAMPAIGNS_KEY, userId), JSON.stringify(next))
         return next
       })
     } else {
@@ -840,10 +860,10 @@ function App() {
     }
   }
 
-  const rememberCampaignMeta = (id: string, name: string) => {
+  const rememberCampaignMeta = (id: string, name: string, userId: string | null | undefined = activeUserId) => {
     setKnownCampaignMeta((prev) => {
       const next = [{ id, name }, ...prev.filter((item) => item.id !== id)]
-      localStorage.setItem(scopedStorageKey(KNOWN_CAMPAIGN_META_KEY, activeUserId), JSON.stringify(next))
+      localStorage.setItem(scopedStorageKey(KNOWN_CAMPAIGN_META_KEY, userId), JSON.stringify(next))
       return next
     })
   }
@@ -881,7 +901,7 @@ function App() {
       setMyCampaigns(mine)
 
       if (mine.length === 0 && campaignId) {
-        rememberCampaignId('')
+        rememberCampaignId('', me.id)
         setCampaign(null)
         setMembers([])
         setCampaignMembersForManagement([])
@@ -893,7 +913,7 @@ function App() {
         setMissions([])
         setRooms([])
       } else if (campaignId && !mine.some((item) => item.campaignId === campaignId && item.memberStatus === 'APPROVED')) {
-        rememberCampaignId('')
+        rememberCampaignId('', me.id)
         setCampaign(null)
         setMembers([])
         setCampaignMembersForManagement([])
@@ -1303,6 +1323,29 @@ function App() {
     }
   }, [screen, campaignId, canAccessCampaignManagement])
 
+  useEffect(() => {
+    if (!getAccessToken()) return
+    if (!campaignId.trim()) return
+    if (!canAccessCampaignManagement) return
+
+    let cancelled = false
+    void (async () => {
+      try {
+        await loadPendingForActiveCampaign()
+      } catch (err) {
+        if (cancelled) return
+        const message = toMessage(err)
+        setError(message)
+        addEvent(`Accessi attivi: ${message}`, 'error')
+        if (isUnauthorized(err)) handleLogout()
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [campaignId, canAccessCampaignManagement])
+
   const refreshMissions = async () => {
     const approvedCampaignIds = approvedCampaignMemberships.map((membership) => membership.campaignId)
     if (approvedCampaignIds.length === 0) {
@@ -1409,26 +1452,117 @@ function App() {
   }, [screen, approvedCampaignMemberships, campaignId])
 
   const loadCharactersForManagement = async () => {
-    const activeCampaignId = campaignId.trim()
-    const canManageActiveCampaign = approvedCampaignMemberships.some((item) => item.campaignId === activeCampaignId)
-    if (!activeCampaignId || !canManageActiveCampaign) {
+    const approvedCampaignIds = approvedCampaignMemberships.map((item) => item.campaignId)
+    if (approvedCampaignIds.length === 0) {
       setCharacters([])
       setSelectedCharacterId('')
       setCharacterDetail(null)
       setCharacterSheetDetail(null)
       return
     }
-    const nextCharacters = await listCharacters(activeCampaignId)
+
+    const settled = await Promise.allSettled(
+      approvedCampaignIds.map(async (targetCampaignId) => {
+        const [memberRows, characterRows] = await Promise.all([
+          getCampaignMembers(targetCampaignId),
+          listCharacters(targetCampaignId),
+        ])
+        return { campaignId: targetCampaignId, members: memberRows, characters: characterRows }
+      }),
+    )
+
+    const resolved = settled.filter(
+      (item): item is PromiseFulfilledResult<{ campaignId: string; members: CampaignMembershipResponse[]; characters: Character[] }> =>
+        item.status === 'fulfilled',
+    )
+
+    const nextCharacters: Character[] = []
+    const userNamesToResolve = new Set<string>()
+
+    for (const item of resolved) {
+      const viewerRole = approvedRoleByCampaignId[item.value.campaignId] || null
+      const memberRoleByUserId = new Map<string, CampaignRole>()
+      for (const member of item.value.members) {
+        memberRoleByUserId.set(member.userId, member.role)
+        if (member.userId !== profile?.id) {
+          userNamesToResolve.add(member.userId)
+        }
+      }
+
+      for (const character of item.value.characters) {
+        if (character.userId === profile?.id) {
+          nextCharacters.push(character)
+          continue
+        }
+
+        if (character.isNpc) {
+          if (viewerRole === 'CO_MASTER' || viewerRole === 'MASTER' || viewerRole === 'SUPER_MASTER') {
+            nextCharacters.push(character)
+          }
+          continue
+        }
+
+        const ownerRole = character.userId ? memberRoleByUserId.get(character.userId) || null : null
+        if (!ownerRole || !viewerRole) continue
+
+        if (viewerRole === 'SUPER_MASTER') {
+          nextCharacters.push(character)
+          continue
+        }
+
+        if (campaignRoleRank[viewerRole] > campaignRoleRank[ownerRole]) {
+          nextCharacters.push(character)
+        }
+      }
+    }
+
     nextCharacters.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
     setCharacters(nextCharacters)
-    setSelectedCharacterId((prev) => (nextCharacters.some((item) => item.id === prev) ? prev : nextCharacters[0]?.id || ''))
+
+    const missingUserIds = Array.from(userNamesToResolve).filter((userId) => !memberNames[userId])
+    if (missingUserIds.length > 0) {
+      const settledProfiles = await Promise.allSettled(missingUserIds.map((userId) => getPublicProfile(userId)))
+      setMemberNames((prev) => {
+        const next = { ...prev }
+        for (let index = 0; index < settledProfiles.length; index += 1) {
+          const userId = missingUserIds[index]
+          const result = settledProfiles[index]
+          if (result.status === 'fulfilled') {
+            next[userId] = result.value.profileName || result.value.username || 'Profilo non disponibile'
+          } else if (!next[userId]) {
+            next[userId] = 'Profilo non disponibile'
+          }
+        }
+        return next
+      })
+    }
+
+    setSelectedCharacterId((prev) => {
+      if (activeCampaignCharacterId && nextCharacters.some((item) => item.id === activeCampaignCharacterId)) {
+        return activeCampaignCharacterId
+      }
+      if (nextCharacters.some((item) => item.id === prev)) return prev
+      return nextCharacters[0]?.id || ''
+    })
+  }
+
+  const loadPendingForCampaign = async (targetCampaignId: string) => {
+    if (!targetCampaignId.trim()) return
+    const list = await listPendingApplications(targetCampaignId)
+    setPendingApplicationsByCampaignId((prev) => ({
+      ...prev,
+      [targetCampaignId]: list,
+    }))
+    writePendingApplicationsForCampaign(activeUserId, targetCampaignId, list)
+    if (targetCampaignId === campaignId) {
+      setPendingApplications(list)
+    }
+    return list
   }
 
   const loadPendingForActiveCampaign = async () => {
     if (!campaignId.trim()) return
-    const list = await listPendingApplications(campaignId)
-    setPendingApplications(list)
-    writePendingApplicationsForCampaign(activeUserId, campaignId, list)
+    await loadPendingForCampaign(campaignId)
   }
 
   const approvePendingForActiveCampaign = async (userId: string) => {
@@ -1654,7 +1788,7 @@ function App() {
 
   useEffect(() => {
     if (!getAccessToken()) return
-    if (screen !== 'Crea Campagna' && screen !== 'Gestione Campagna') return
+    if (screen !== 'Crea Campagna' && screen !== 'Gestione Campagna' && screen !== 'Scheda Campagna') return
     if (campaignModules.length > 0) return
 
     let cancelled = false
@@ -1756,6 +1890,7 @@ function App() {
     loadDiscoverableCampaigns: async () => {},
     loadCharactersForManagement: async () => {},
     loadPendingForActiveCampaign: async () => {},
+    refreshPendingApplicationsForCampaign: async () => {},
     loadAdminUsers: async () => {},
     loadAdminCampaigns: async () => {},
     loadAdminSheetCatalogs: async () => {},
@@ -1780,6 +1915,16 @@ function App() {
       loadDiscoverableCampaigns,
       loadCharactersForManagement,
       loadPendingForActiveCampaign,
+      refreshPendingApplicationsForCampaign: async (targetCampaignId: string) => {
+        const membership = campaignsForList.find((item) => item.id === targetCampaignId)
+        const canManageTarget =
+          membership?.membershipStatus === 'APPROVED' &&
+          (membership.membershipRole === 'CO_MASTER' ||
+            membership.membershipRole === 'MASTER' ||
+            membership.membershipRole === 'SUPER_MASTER')
+        if (!canManageTarget) return
+        await loadPendingForCampaign(targetCampaignId)
+      },
       loadAdminUsers,
       loadAdminCampaigns,
       loadAdminSheetCatalogs,
@@ -1805,11 +1950,13 @@ function App() {
     loadCharactersForManagement,
     loadDiscoverableCampaigns,
     loadPendingForActiveCampaign,
+    loadPendingForCampaign,
     refreshCampaignBlock,
     refreshCharacterBlock,
     refreshMissionCharacters,
     refreshMissions,
     refreshProfile,
+    campaignsForList,
     screen,
     systemAdminView,
   ])
@@ -1823,6 +1970,9 @@ function App() {
       : false
     const missionKeyMatch = payload.keys.some((key) => key.startsWith('campaigns:') && key.endsWith(':missions'))
     const characterKeyMatch = payload.keys.some((key) => key.startsWith('campaigns:') && key.endsWith(':characters'))
+    const pendingApplicationsCampaignIds = payload.keys
+      .filter((key) => key.startsWith('campaigns:') && key.endsWith(':pending-applications'))
+      .map((key) => key.split(':')[1])
     const userProfileKey = snapshot.activeUserId ? `users:${snapshot.activeUserId}:profile` : ''
 
     if (keys.has('campaigns:discover') && snapshot.screen === 'Lista Campagne') {
@@ -1843,6 +1993,16 @@ function App() {
       if (snapshot.systemAdminView === 'sheets' && keys.has('admin:catalogs')) {
         void realtimeActionsRef.current.loadAdminSheetCatalogs()
       }
+    }
+
+    if (pendingApplicationsCampaignIds.length > 0) {
+      for (const targetCampaignId of pendingApplicationsCampaignIds) {
+        void realtimeActionsRef.current.refreshPendingApplicationsForCampaign(targetCampaignId)
+      }
+      if (snapshot.campaignId.trim() && pendingApplicationsCampaignIds.includes(snapshot.campaignId)) {
+        void realtimeActionsRef.current.loadPendingForActiveCampaign()
+      }
+      if (snapshot.screen === 'Approvazione Accessi') return
     }
 
     if (snapshot.screen === 'Missioni' && (campaignKeyMatch || missionKeyMatch || characterKeyMatch)) {
@@ -1945,38 +2105,22 @@ function App() {
     const scopedKnownCampaignMetaKey = scopedStorageKey(KNOWN_CAMPAIGN_META_KEY, activeUserId)
 
     const scopedCampaignId = localStorage.getItem(scopedCampaignKey)
-    const legacyCampaignId = localStorage.getItem(LEGACY_CAMPAIGN_ID_KEY) || ''
-    const nextCampaignId = scopedCampaignId || legacyCampaignId
+    const nextCampaignId = scopedCampaignId || ''
 
     const scopedKnownCampaignIds = readStoredJson<string[]>(localStorage, scopedKnownCampaignIdsKey, [])
-    const legacyKnownCampaignIds = readStoredJson<string[]>(localStorage, LEGACY_KNOWN_CAMPAIGNS_KEY, [])
-    const nextKnownCampaignIds = scopedKnownCampaignIds.length > 0 ? scopedKnownCampaignIds : legacyKnownCampaignIds
+    const nextKnownCampaignIds = scopedKnownCampaignIds
 
     const scopedKnownCampaignMeta = readStoredJson<KnownCampaignMeta[]>(localStorage, scopedKnownCampaignMetaKey, [])
-    const legacyKnownCampaignMeta = readStoredJson<KnownCampaignMeta[]>(localStorage, LEGACY_KNOWN_CAMPAIGN_META_KEY, [])
-    const nextKnownCampaignMeta = scopedKnownCampaignMeta.length > 0 ? scopedKnownCampaignMeta : legacyKnownCampaignMeta
+    const nextKnownCampaignMeta = scopedKnownCampaignMeta
 
     const scopedPendingApplications = readPendingApplicationsCache(activeUserId)
-    const legacyPendingApplications = readPendingApplicationsCache(null)
-    const nextPendingApplications = nextCampaignId ? scopedPendingApplications[nextCampaignId] || legacyPendingApplications[nextCampaignId] || [] : []
-
-    if (!scopedCampaignId && legacyCampaignId) {
-      localStorage.setItem(scopedCampaignKey, legacyCampaignId)
-    }
-    if (scopedKnownCampaignIds.length === 0 && legacyKnownCampaignIds.length > 0) {
-      localStorage.setItem(scopedKnownCampaignIdsKey, JSON.stringify(legacyKnownCampaignIds))
-    }
-    if (scopedKnownCampaignMeta.length === 0 && legacyKnownCampaignMeta.length > 0) {
-      localStorage.setItem(scopedKnownCampaignMetaKey, JSON.stringify(legacyKnownCampaignMeta))
-    }
-    if (nextCampaignId && !scopedPendingApplications[nextCampaignId] && legacyPendingApplications[nextCampaignId]) {
-      writePendingApplicationsForCampaign(activeUserId, nextCampaignId, legacyPendingApplications[nextCampaignId])
-    }
+    const nextPendingApplications = nextCampaignId ? scopedPendingApplications[nextCampaignId] || [] : []
 
     setCampaignId(nextCampaignId)
     setKnownCampaignIds(nextKnownCampaignIds)
     setKnownCampaignMeta(nextKnownCampaignMeta)
     setPendingApplications(nextPendingApplications)
+    setPendingApplicationsByCampaignId(scopedPendingApplications)
   }, [activeUserId, profile])
 
   if (!profile) {
@@ -1991,6 +2135,14 @@ function App() {
       return {
         enabled: false,
         title: 'Non hai permessi per gestire gli accessi',
+        showOverlayX: false,
+      }
+    }
+
+    if (value === 'Scheda Campagna' && !hasActiveCampaign) {
+      return {
+        enabled: false,
+        title: CAMPAIGN_REQUIRED_TOOLTIP,
         showOverlayX: false,
       }
     }
@@ -2051,8 +2203,6 @@ function App() {
         isFounder: false,
       }
     })()
-  const activeCampaignName = campaign?.name || activeCampaignMembership?.campaignName || campaignId.trim() || ''
-  const hasActiveCampaignName = activeCampaignName.trim().length > 0
   const campaignNameById: Record<string, string> = {}
   for (const item of knownCampaignMeta) {
     campaignNameById[item.id] = item.name
@@ -2068,14 +2218,14 @@ function App() {
     return campaignNameById[character.campaignId] || character.campaignId
   }
   const canOpenCharacterSheet = (character: Character) => {
-    if (character.userId === profile.id) return true
-    const role = character.campaignId ? approvedRoleByCampaignId[character.campaignId] : undefined
-    if (character.isNpc) {
-      return role === 'CO_MASTER' || role === 'MASTER' || role === 'SUPER_MASTER'
-    }
-    return role === 'MASTER' || role === 'SUPER_MASTER'
+    return characters.some((item) => item.id === character.id) || character.userId === profile?.id
   }
   const canMarkCharacterDead = (character: Character | null) => {
+    if (!character?.campaignId) return false
+    const role = approvedRoleByCampaignId[character.campaignId]
+    return role === 'MASTER' || role === 'SUPER_MASTER'
+  }
+  const canReactivateCharacter = (character: Character | null) => {
     if (!character?.campaignId) return false
     const role = approvedRoleByCampaignId[character.campaignId]
     return role === 'MASTER' || role === 'SUPER_MASTER'
@@ -2642,78 +2792,75 @@ function App() {
                               </td>
                               <td>
                                 <div className="system-campaign-statuses">
-                                  <label className="system-status-option" aria-label={`${item.name} aperta`}>
-                                    <span className="system-status-label">
+                                  <div className="system-status-option">
+                                    <span className="system-status-copy">
                                       <strong>Aperta</strong>
                                       <small>Può ricevere applicazioni e accessi.</small>
                                     </span>
-                                    <span className="switch system-user-switch">
-                                      <input
-                                        type="checkbox"
-                                        checked={draft.isOpen}
-                                        onChange={(event) =>
-                                          setAdminCampaignsDrafts((prev) => ({
-                                            ...prev,
-                                            [item.id]: {
-                                              ...draft,
-                                              isOpen: event.target.checked,
-                                            },
-                                          }))
-                                        }
-                                      />
-                                      <span className="switch-track" aria-hidden="true">
-                                        <span className="switch-thumb" />
-                                      </span>
-                                    </span>
-                                  </label>
-                                  <label className="system-status-option" aria-label={`${item.name} attiva`}>
-                                    <span className="system-status-label">
+                                    <button
+                                      type="button"
+                                      className={`segmented-btn system-status-toggle-btn ${draft.isOpen ? 'is-active' : ''}`}
+                                      aria-pressed={draft.isOpen}
+                                      onClick={() =>
+                                        setAdminCampaignsDrafts((prev) => ({
+                                          ...prev,
+                                          [item.id]: {
+                                            ...draft,
+                                            isOpen: !draft.isOpen,
+                                          },
+                                        }))
+                                      }
+                                    >
+                                      <Icon name={draft.isOpen ? 'fa-solid fa-toggle-on' : 'fa-solid fa-toggle-off'} />
+                                      <span>{draft.isOpen ? 'Aperta' : 'Chiusa'}</span>
+                                    </button>
+                                  </div>
+                                  <div className="system-status-option">
+                                    <span className="system-status-copy">
                                       <strong>Attiva</strong>
                                       <small>Campagna abilitata nel sistema.</small>
                                     </span>
-                                    <span className="switch system-user-switch">
-                                      <input
-                                        type="checkbox"
-                                        checked={draft.isActive}
-                                        onChange={(event) =>
-                                          setAdminCampaignsDrafts((prev) => ({
-                                            ...prev,
-                                            [item.id]: {
-                                              ...draft,
-                                              isActive: event.target.checked,
-                                            },
-                                          }))
-                                        }
-                                      />
-                                      <span className="switch-track" aria-hidden="true">
-                                        <span className="switch-thumb" />
-                                      </span>
-                                    </span>
-                                  </label>
-                                  <label className="system-status-option" aria-label={`${item.name} cercabile`}>
-                                    <span className="system-status-label">
+                                    <button
+                                      type="button"
+                                      className={`segmented-btn system-status-toggle-btn ${draft.isActive ? 'is-active' : ''}`}
+                                      aria-pressed={draft.isActive}
+                                      onClick={() =>
+                                        setAdminCampaignsDrafts((prev) => ({
+                                          ...prev,
+                                          [item.id]: {
+                                            ...draft,
+                                            isActive: !draft.isActive,
+                                          },
+                                        }))
+                                      }
+                                    >
+                                      <Icon name={draft.isActive ? 'fa-solid fa-toggle-on' : 'fa-solid fa-toggle-off'} />
+                                      <span>{draft.isActive ? 'Attiva' : 'Spenta'}</span>
+                                    </button>
+                                  </div>
+                                  <div className="system-status-option">
+                                    <span className="system-status-copy">
                                       <strong>Cercabile</strong>
                                       <small>Compare nei cataloghi e nelle ricerche.</small>
                                     </span>
-                                    <span className="switch system-user-switch">
-                                      <input
-                                        type="checkbox"
-                                        checked={draft.isSearchable}
-                                        onChange={(event) =>
-                                          setAdminCampaignsDrafts((prev) => ({
-                                            ...prev,
-                                            [item.id]: {
-                                              ...draft,
-                                              isSearchable: event.target.checked,
-                                            },
-                                          }))
-                                        }
-                                      />
-                                      <span className="switch-track" aria-hidden="true">
-                                        <span className="switch-thumb" />
-                                      </span>
-                                    </span>
-                                  </label>
+                                    <button
+                                      type="button"
+                                      className={`segmented-btn system-status-toggle-btn ${draft.isSearchable ? 'is-active' : ''}`}
+                                      aria-pressed={draft.isSearchable}
+                                      onClick={() =>
+                                        setAdminCampaignsDrafts((prev) => ({
+                                          ...prev,
+                                          [item.id]: {
+                                            ...draft,
+                                            isSearchable: !draft.isSearchable,
+                                          },
+                                        }))
+                                      }
+                                    >
+                                      <Icon name={draft.isSearchable ? 'fa-solid fa-toggle-on' : 'fa-solid fa-toggle-off'} />
+                                      <span>{draft.isSearchable ? 'Ricercabile' : 'Nascosta'}</span>
+                                    </button>
+                                  </div>
                                 </div>
                               </td>
                               <td>
@@ -2842,7 +2989,7 @@ function App() {
             </div>
             <div>
               <p className="brand-title">Taverna del Codice</p>
-              <p className="brand-subtitle">Interfaccia operativa</p>
+              <p className="brand-subtitle">Benvenuto {welcomeProfileName}</p>
             </div>
           </div>
           <button type="button" className="drawer-close-btn" onClick={() => setIsSidebarOpen(false)}>
@@ -2853,6 +3000,12 @@ function App() {
         <div className="sidebar-context">
           <p className="sidebar-user-kicker">Campagna attiva</p>
           <p className="sidebar-context-title">{hasActiveCampaign ? activeCampaignLabel : 'Nessuna campagna attiva'}</p>
+          {hasActiveCampaign && (
+            <button type="button" className="danger-btn sidebar-context-action" onClick={detachActiveCampaign}>
+              <Icon name="fa-solid fa-right-from-bracket" />
+              <span>Exit</span>
+            </button>
+          )}
         </div>
 
         <nav className="menu" aria-label="Navigazione principale">
@@ -2870,24 +3023,26 @@ function App() {
                     const itemState = getMenuScreenState(item)
                     const isDisabled = !itemState.enabled
                     return (
-                    <button
-                      key={item}
-                      type="button"
-                      className={`menu-item ${screen === item ? 'is-active' : ''} ${requiresCampaignSelection(item) && !hasActiveCampaign ? 'is-gated' : ''} ${isDisabled ? 'is-disabled' : ''} ${MODULE_REQUIRED_BY_SCREEN[item] && hasActiveCampaign && !(campaign?.allowedModules || []).includes(MODULE_REQUIRED_BY_SCREEN[item]!) ? 'is-module-disabled' : ''}`}
-                      onClick={() => {
-                        if (!itemState.enabled) return
-                      if (requiresCampaignSelection(item) && !hasActiveCampaign) {
-                        openCampaignPicker(item)
-                        return
-                      }
-                      goToScreen(item)
-                    }}
-                      disabled={isDisabled}
-                    title={
-                      itemState.title
-                    }
-                    aria-current={screen === item ? 'page' : undefined}
-                  >
+                      <button
+                        key={item}
+                        type="button"
+                        className={`menu-item ${screen === item ? 'is-active' : ''} ${requiresCampaignSelection(item) && !hasActiveCampaign ? 'is-gated' : ''} ${isDisabled ? 'is-disabled' : ''} ${MODULE_REQUIRED_BY_SCREEN[item] && hasActiveCampaign && !(campaign?.allowedModules || []).includes(MODULE_REQUIRED_BY_SCREEN[item]!) ? 'is-module-disabled' : ''}`}
+                        onClick={() => {
+                          if (!itemState.enabled) return
+                          if (item === 'Lista Campagne' && hasActiveCampaign) {
+                            goToScreen('Scheda Campagna')
+                            return
+                          }
+                          if (requiresCampaignSelection(item) && !hasActiveCampaign) {
+                            openCampaignPicker(item)
+                            return
+                          }
+                          goToScreen(item)
+                        }}
+                        disabled={isDisabled}
+                        title={itemState.title}
+                        aria-current={screen === item ? 'page' : undefined}
+                      >
                     <span className="menu-item-icon">
                       <Icon name={SCREEN_ICONS[item]} />
                       {itemState.showOverlayX && (
@@ -2902,7 +3057,7 @@ function App() {
                       )}
                     </span>
                     <span className="menu-item-text">{SCREEN_LABELS[item]}</span>
-                  </button>
+                      </button>
                     )
                   })()
                 ))}
@@ -2960,24 +3115,6 @@ function App() {
               </nav>
             </div>
           </div>
-          <div className="inline-actions topbar-actions">
-            <span
-              className={`campaign-context-pill ${hasActiveCampaignName ? '' : 'is-disabled'}`}
-              aria-label={hasActiveCampaignName ? `Campagna attiva: ${activeCampaignName}` : 'Nessuna campagna attiva'}
-            >
-              {hasActiveCampaignName ? (
-                <span className="campaign-context-name">{activeCampaignName}</span>
-              ) : (
-                <Icon name="fa-solid fa-triangle-exclamation" className="campaign-context-warning" />
-              )}
-            </span>
-            {hasActiveCampaign && (
-              <button type="button" className="danger-btn" onClick={detachActiveCampaign}>
-                <Icon name="fa-solid fa-right-from-bracket" />
-                <span>Exit</span>
-              </button>
-            )}
-          </div>
         </header>
 
         {error && <section className="panel error">{error}</section>}
@@ -2986,6 +3123,8 @@ function App() {
           <CampaignListPage
             campaigns={campaignsForList}
             founderNames={campaignFounderNames}
+            missionAlertsByCampaign={missionAlertsByCampaign}
+            pendingApplicationsByCampaignId={pendingApplicationsByCampaignId}
             onDiscover={() =>
               run('Campagne disponibili caricate', async () => {
                 const list = await discoverCampaigns(false)
@@ -3047,12 +3186,17 @@ function App() {
             availableModules={campaignModules}
             availableGameSystems={campaignGameSystems}
             onReload={() => void refreshCampaignBlock()}
-            onOpenMember={(userId) =>
+            onOpenMember={(member) =>
               run('Profilo membro caricato', async () => {
                 if (!campaignId.trim()) return
+                if (member.memberStatus === 'PENDING') {
+                  await loadPendingForActiveCampaign()
+                  setScreen('Approvazione Accessi')
+                  return
+                }
                 const [membership, profileValue] = await Promise.all([
-                  getCampaignMember(campaignId, userId),
-                  getPublicProfile(userId),
+                  getCampaignMember(campaignId, member.userId),
+                  getPublicProfile(member.userId),
                 ])
                 setSelectedCampaignMember(membership)
                 setSelectedCampaignMemberProfile(profileValue)
@@ -3061,9 +3205,6 @@ function App() {
             }
             onOpenManagement={() =>
               campaign?.id && void activateCampaignAndNavigate(campaign.id, 'Gestione Campagna')
-            }
-            onOpenSelectPg={() =>
-              campaign?.id && void activateCampaignAndNavigate(campaign.id, 'Seleziona PG')
             }
             onOpenCharacters={() =>
               campaign?.id && void activateCampaignAndNavigate(campaign.id, 'Gestione Personaggi')
@@ -3119,6 +3260,7 @@ function App() {
             activeCampaignId={campaignId.trim()}
             activeCampaignRole={activeCampaignRole}
             campaignNameById={campaignNameById}
+            preferredCharacterId={activeCampaignCharacterId}
             onCreate={(payload) =>
               run('Missione creata', async () => {
                 const created = await createMission(campaignId, payload)
@@ -3259,7 +3401,9 @@ function App() {
             }
             externalDetail={characterDetail}
             ownerProfileLabel={ownerProfileLabel}
+            campaignNameForCharacter={campaignNameForCharacter}
             canMarkCharacterDead={canMarkCharacterDead}
+            canReactivateCharacter={canReactivateCharacter}
             onUpdateStatus={(status) =>
               run('Stato personaggio aggiornato', async () => {
                 if (!selectedCharacter) return
@@ -3419,6 +3563,7 @@ function App() {
         {screen === 'Seleziona PG' && (
           <SelectCharacterPage
             characters={characters}
+            preferredCharacterId={activeCampaignCharacterId}
             onApply={(characterId) =>
               run('Apply con personaggio inviato', async () => {
                 await applyToCampaign(campaignId, characterId)
@@ -3700,6 +3845,8 @@ function AuthScreen({ onAuth }: { onAuth: (session: AuthSession) => Promise<void
 function CampaignListPage({
   campaigns,
   founderNames,
+  missionAlertsByCampaign,
+  pendingApplicationsByCampaignId,
   onDiscover,
   onOpenCampaign,
   onApplyCampaign,
@@ -3708,12 +3855,34 @@ function CampaignListPage({
 }: {
   campaigns: CampaignDiscoverResponse[]
   founderNames: Record<string, string>
+  missionAlertsByCampaign: Record<string, number>
+  pendingApplicationsByCampaignId: Record<string, CampaignApplicationResponse[]>
   onDiscover: () => void
   onOpenCampaign: (campaignId: string) => void
   onApplyCampaign: (campaignId: string) => void
   onCreateCampaign: () => void
   activeCampaignName: string
 }) {
+  const [membershipFilter, setMembershipFilter] = useState<'all' | 'inside' | 'outside' | 'pending' | 'blocked'>('all')
+  const [roleFilter, setRoleFilter] = useState<'all' | CampaignRole>('all')
+
+  const filteredCampaigns = useMemo(() => {
+    return campaigns.filter((item) => {
+      const isInside = item.membershipStatus === 'APPROVED'
+      const isPending = item.membershipStatus === 'PENDING'
+      const isBlocked = item.membershipStatus === 'BLOCKED' || item.membershipStatus === 'BANNED'
+      const isOutside = item.membershipStatus === null || item.membershipStatus === 'REJECTED'
+
+      if (membershipFilter === 'inside' && !isInside) return false
+      if (membershipFilter === 'outside' && !isOutside) return false
+      if (membershipFilter === 'pending' && !isPending) return false
+      if (membershipFilter === 'blocked' && !isBlocked) return false
+
+      if (roleFilter !== 'all' && item.membershipRole !== roleFilter) return false
+      return true
+    })
+  }, [campaigns, membershipFilter, roleFilter])
+
   return (
     <section className="panel">
       <div className="row-between">
@@ -3727,68 +3896,123 @@ function CampaignListPage({
           </button>
         </div>
       </div>
+      <div className="campaign-list-filters">
+        <label className="campaign-list-filter">
+          <FieldLabel icon="fa-solid fa-filter" label="Stato membership" />
+          <select value={membershipFilter} onChange={(event) => setMembershipFilter(event.target.value as typeof membershipFilter)}>
+            <option value="all">Tutte</option>
+            <option value="inside">Dentro</option>
+            <option value="outside">Fuori</option>
+            <option value="pending">In attesa</option>
+            <option value="blocked">Bloccate</option>
+          </select>
+        </label>
+        <label className="campaign-list-filter">
+          <FieldLabel icon="fa-solid fa-user-shield" label="Ruolo" />
+          <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as typeof roleFilter)}>
+            <option value="all">Tutti i ruoli</option>
+            <option value="GIOCATORE">Giocatore</option>
+            <option value="CO_MASTER">Co-master</option>
+            <option value="MASTER">Master</option>
+            <option value="SUPER_MASTER">Super master</option>
+          </select>
+        </label>
+      </div>
       {activeCampaignName && <p className="muted">Campagna attiva: <strong>{activeCampaignName}</strong></p>}
       {campaigns.length === 0 && <p className="muted">Nessuna campagna visibile. Premi "Cerca campagne".</p>}
       {campaigns.length > 0 && (
-        <ul className="list-reset">
-          {campaigns.map((item) => {
+        <DataTable
+          columns={[
+            { key: 'campaign', label: 'Campagna' },
+            { key: 'state', label: 'Stato' },
+            { key: 'access', label: 'Accesso' },
+            { key: 'alerts', label: 'Avvisi' },
+            { key: 'actions', label: 'Azioni' },
+          ]}
+          rows={filteredCampaigns}
+          getRowKey={(item) => item.id}
+          emptyMessage="Nessuna campagna corrisponde ai filtri selezionati."
+          renderRow={(item) => {
             const moderationTooltip =
               (item.membershipStatus === 'BLOCKED' || item.membershipStatus === 'BANNED') && item.moderationReason
                 ? item.moderationReason
                 : null
             const isDisabled = !item.isActive
+            const pendingCount = pendingApplicationsByCampaignId[item.id]?.length || 0
             return (
-              <li key={item.id} className={`line-item campaign-item ${isDisabled ? 'is-disabled' : ''}`}>
-                <div className="campaign-item-main">
-                  <div className="campaign-item-header">
-                    <div className="campaign-title-wrap">
-                      <p className="character-name">{item.name}</p>
-                      {isDisabled && <span className="campaign-state-badge">Disattivata</span>}
-                    </div>
-                    <CampaignAccessBadge item={item} />
+              <tr className={isDisabled ? 'is-disabled' : ''}>
+                <td>
+                  <div className="data-table-primary">
+                    <p className="data-table-title">{item.name}</p>
+                    <p className="data-table-secondary">{item.summary || item.description || 'Nessuna descrizione'}</p>
+                    {item.founderId && (
+                      <p className="data-table-meta">Creatore: {founderNames[item.founderId] || item.founderId}</p>
+                    )}
                   </div>
-                  <p className="campaign-status-line">
-                    Stato campagna: <CampaignStatusBadge isActive={item.isActive} />
-                  </p>
-                  <p className="muted">{item.summary || item.description || 'Nessuna descrizione'}</p>
-                  {item.founderId && (
-                    <p className="campaign-creator">
-                      Creatore: {founderNames[item.founderId] || item.founderId}
-                    </p>
-                  )}
-                </div>
-                <div className="inline-actions campaign-item-actions">
-                  {item.membershipStatus === 'APPROVED' && !isDisabled && (
-                    <button type="button" className="secondary-btn" onClick={() => onOpenCampaign(item.id)}>
-                      Apri e attiva
-                    </button>
-                  )}
-                  {item.membershipStatus === 'APPROVED' && isDisabled && (
-                    <button type="button" className="secondary-btn" disabled title="Campagna disattivata">
-                      Disattivata
-                    </button>
-                  )}
-                  {(item.membershipStatus === null || item.membershipStatus === 'REJECTED') && item.isOpen && !isDisabled && (
-                    <button type="button" className="primary-btn" onClick={() => onApplyCampaign(item.id)}>
-                      Richiedi accesso
-                    </button>
-                  )}
-                  {(item.membershipStatus === null || item.membershipStatus === 'REJECTED') && (!item.isOpen || isDisabled) && (
-                    <button type="button" className="secondary-btn" disabled>
-                      {isDisabled ? 'Disattivata' : 'Campagna chiusa'}
-                    </button>
-                  )}
-                  {item.membershipStatus === 'PENDING' && (
-                    <button type="button" className="secondary-btn" disabled>
-                      Richiesta inviata
-                    </button>
-                  )}
-                </div>
-                {moderationTooltip && <div className="campaign-item-tooltip">{moderationTooltip}</div>}
-              </li>
+                </td>
+                <td>
+                  <CampaignStatusBadge isActive={item.isActive} />
+                </td>
+                <td>
+                  <CampaignAccessBadge item={item} />
+                </td>
+                <td>
+                  <div className="campaign-alerts-cell">
+                    {missionAlertsByCampaign[item.id] > 0 && (
+                      <span className="campaign-mission-alert" title={`${missionAlertsByCampaign[item.id]} missioni aperte o riaperte`}>
+                        <Icon name="fa-solid fa-triangle-exclamation" />
+                        <span>{missionAlertsByCampaign[item.id]}</span>
+                      </span>
+                    )}
+                    {pendingCount > 0 && (
+                      <span
+                        className="campaign-access-alert"
+                        title={`${pendingCount} richieste di accesso in attesa`}
+                      >
+                        <Icon name="fa-solid fa-triangle-exclamation" />
+                        <span>{pendingCount}</span>
+                      </span>
+                    )}
+                    {missionAlertsByCampaign[item.id] === 0 &&
+                      pendingCount === 0 && (
+                        <span className="data-table-muted">-</span>
+                      )}
+                  </div>
+                </td>
+                <td>
+                  <div className="data-table-actions">
+                    {item.membershipStatus === 'APPROVED' && !isDisabled && (
+                      <button type="button" className="secondary-btn" onClick={() => onOpenCampaign(item.id)}>
+                        Apri e attiva
+                      </button>
+                    )}
+                    {item.membershipStatus === 'APPROVED' && isDisabled && (
+                      <button type="button" className="secondary-btn" disabled title="Campagna disattivata">
+                        Disattivata
+                      </button>
+                    )}
+                    {(item.membershipStatus === null || item.membershipStatus === 'REJECTED') && item.isOpen && !isDisabled && (
+                      <button type="button" className="primary-btn" onClick={() => onApplyCampaign(item.id)}>
+                        Richiedi accesso
+                      </button>
+                    )}
+                    {(item.membershipStatus === null || item.membershipStatus === 'REJECTED') && (!item.isOpen || isDisabled) && (
+                      <button type="button" className="secondary-btn" disabled>
+                        {isDisabled ? 'Disattivata' : 'Campagna chiusa'}
+                      </button>
+                    )}
+                    {item.membershipStatus === 'PENDING' && (
+                      <button type="button" className="secondary-btn" disabled>
+                        Richiesta inviata
+                      </button>
+                    )}
+                  </div>
+                  {moderationTooltip && <div className="campaign-item-tooltip">{moderationTooltip}</div>}
+                </td>
+              </tr>
             )
-          })}
-        </ul>
+          }}
+        />
       )}
     </section>
   )
@@ -3828,7 +4052,6 @@ function CreateCampaignPage({
   const [isSearchable, setIsSearchable] = useState(true)
   const [selectedGameSystem, setSelectedGameSystem] = useState('DND5E')
   const [selectedModules, setSelectedModules] = useState<string[]>([])
-  const [visibilityMenuOpen, setVisibilityMenuOpen] = useState(false)
 
   useEffect(() => {
     if (availableModules.length === 0) return
@@ -3855,9 +4078,26 @@ function CreateCampaignPage({
       prev.includes(moduleCode) ? prev.filter((item) => item !== moduleCode) : [...prev, moduleCode]
     )
   }
-  const selectedVisibilityLabel = [isOpen ? 'Aperta' : null, isSearchable ? 'Ricercabile' : null]
-    .filter(Boolean)
-    .join(', ') || 'Nessuna opzione selezionata'
+  const campaignVisibilityRows = [
+    {
+      key: 'open',
+      title: 'Campagna aperta',
+      description: 'Permette richiesta di accesso dall’elenco campagne.',
+      active: isOpen,
+      activeLabel: 'Aperta',
+      inactiveLabel: 'Privata',
+      onToggle: () => setIsOpen((prev) => !prev),
+    },
+    {
+      key: 'searchable',
+      title: 'Visibile nella ricerca',
+      description: 'La campagna può essere trovata nella ricerca pubblica.',
+      active: isSearchable,
+      activeLabel: 'Ricercabile',
+      inactiveLabel: 'Nascosta',
+      onToggle: () => setIsSearchable((prev) => !prev),
+    },
+  ]
 
   return (
     <section className="panel">
@@ -3882,10 +4122,10 @@ function CreateCampaignPage({
         <p className="muted">{catalogEntryDescription(availableGameSystems, selectedGameSystem)}</p>
         <p className="muted">Obbligatorio. Definisce il template della scheda e la logica base della campagna.</p>
       </label>
-        <label>
-          <FieldLabel icon="fa-solid fa-signature" label="Nome" />
-          <input value={name} placeholder="Nome della campagna" onChange={(event) => setName(event.target.value)} />
-        </label>
+      <label>
+        <FieldLabel icon="fa-solid fa-signature" label="Nome" />
+        <input value={name} placeholder="Nome della campagna" onChange={(event) => setName(event.target.value)} />
+      </label>
       <label>
         <FieldLabel icon="fa-solid fa-align-left" label="Descrizione" />
         <textarea rows={3} placeholder="Descrizione estesa della campagna" value={description} onChange={(event) => setDescription(event.target.value)} />
@@ -3923,34 +4163,12 @@ function CreateCampaignPage({
         <FieldLabel icon="fa-solid fa-image" label="URL immagine copertina" />
         <input value={coverImageUrl} placeholder="https://..." onChange={(event) => setCoverImageUrl(event.target.value)} />
       </label>
-      <div className="multicheck-field">
-        <p className="muted">Visibilità e accesso</p>
-        <button
-          type="button"
-          className="secondary-btn multicheck-trigger"
-          onClick={() => setVisibilityMenuOpen((prev) => !prev)}
-        >
-          <span className="multicheck-value">{selectedVisibilityLabel}</span>
-          <span aria-hidden="true">{visibilityMenuOpen ? '▴' : '▾'}</span>
-        </button>
-        {visibilityMenuOpen && (
-          <div className="multicheck-menu">
-            <label className="checkbox-row">
-              <input checked={isOpen} onChange={(event) => setIsOpen(event.target.checked)} type="checkbox" />
-              Campagna aperta
-            </label>
-            <label className="checkbox-row">
-              <input
-                checked={isSearchable}
-                onChange={(event) => setIsSearchable(event.target.checked)}
-                type="checkbox"
-              />
-              Ricercabile
-            </label>
-          </div>
-        )}
-      </div>
-      <CampaignAddonToggleList
+      <CampaignToggleSettingsTable
+        title="Visibilità e accesso"
+        description="Impostazioni base di pubblicazione della campagna."
+        rows={campaignVisibilityRows}
+      />
+      <CampaignToggleSettingsTable
         title="Addon campagna"
         description="I moduli sono sempre visibili e puoi attivarli o disattivarli senza passaggi aggiuntivi."
         availableModules={availableModules}
@@ -3959,7 +4177,7 @@ function CreateCampaignPage({
       />
       <button
         type="button"
-        className="primary-btn"
+        className="primary-btn campaign-submit-btn"
         onClick={() =>
           onCreate({
             name,
@@ -3994,6 +4212,134 @@ function InfoBlock({ title, value }: { title: string; value: string | null }) {
   )
 }
 
+type DataTableColumn = {
+  key: string
+  label: string
+  className?: string
+  sortKey?: string
+}
+
+function DataTable<T>({
+  columns,
+  rows,
+  getRowKey,
+  renderRow,
+  emptyMessage,
+  className,
+  sortBy,
+  sortDirection,
+  onSortChange,
+}: {
+  columns: DataTableColumn[]
+  rows: T[]
+  getRowKey: (row: T) => string
+  renderRow: (row: T) => ReactNode
+  emptyMessage: string
+  className?: string
+  sortBy?: string | null
+  sortDirection?: 'asc' | 'desc'
+  onSortChange?: (sortKey: string) => void
+}) {
+  return (
+    <div className={`data-table-shell ${className || ''}`.trim()}>
+      <div className="data-table-wrap">
+        <table className="data-table">
+          <thead>
+            <tr>
+              {columns.map((column) => (
+                <th
+                  key={column.key}
+                  className={column.className}
+                  aria-sort={
+                    column.sortKey && sortBy === column.sortKey
+                      ? sortDirection === 'asc'
+                        ? 'ascending'
+                        : 'descending'
+                      : 'none'
+                  }
+                >
+                  {column.sortKey && onSortChange ? (
+                    <button
+                      type="button"
+                      className={`data-table-sort-btn ${sortBy === column.sortKey ? 'is-active' : ''}`}
+                      onClick={() => onSortChange(column.sortKey as string)}
+                    >
+                      <span>{column.label}</span>
+                      <Icon
+                        name={
+                          sortBy === column.sortKey
+                            ? sortDirection === 'asc'
+                              ? 'fa-solid fa-arrow-up-wide-short'
+                              : 'fa-solid fa-arrow-down-wide-short'
+                            : 'fa-solid fa-sort'
+                        }
+                      />
+                    </button>
+                  ) : (
+                    column.label
+                  )}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td className="data-table-empty" colSpan={columns.length}>
+                  {emptyMessage}
+                </td>
+              </tr>
+            ) : (
+              rows.map((row) => <Fragment key={getRowKey(row)}>{renderRow(row)}</Fragment>)
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+type FilterChipOption<T extends string> = {
+  value: T
+  label: string
+  title?: string
+  className?: string
+}
+
+function FilterChipGroup<T extends string>({
+  label,
+  options,
+  selectedValues,
+  onToggle,
+}: {
+  label: string
+  options: Array<FilterChipOption<T>>
+  selectedValues: T[]
+  onToggle: (value: T) => void
+}) {
+  return (
+    <div className="filter-chip-group">
+      <p className="muted">{label}</p>
+      <div className="filter-chip-row">
+        {options.map((option) => {
+          const active = selectedValues.includes(option.value)
+          return (
+            <button
+              key={option.value}
+              type="button"
+              className={`filter-chip ${option.className || ''} ${active ? 'is-active' : ''}`.trim()}
+              onClick={() => onToggle(option.value)}
+              title={option.title || option.label}
+            >
+              {option.label}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 function campaignModuleIconName(module: CampaignCatalogEntry): string {
   const token = `${module.code} ${module.label}`.toLowerCase()
   if (token.includes('notif')) return 'fa-solid fa-bell'
@@ -4008,56 +4354,126 @@ function campaignModuleTitle(module: CampaignCatalogEntry): string {
   return module.label || module.code
 }
 
-function CampaignAddonToggleList({
+type CampaignToggleRow = {
+  key: string
+  title: string
+  description: string
+  active: boolean
+  activeLabel: string
+  inactiveLabel: string
+  onToggle: () => void
+}
+
+function CampaignToggleSettingsTable({
   title,
   description,
+  rows,
   availableModules,
   selectedModules,
   onToggle,
 }: {
   title: string
   description: string
-  availableModules: CampaignCatalogEntry[]
-  selectedModules: string[]
-  onToggle: (moduleCode: string) => void
+  rows?: CampaignToggleRow[]
+  availableModules?: CampaignCatalogEntry[]
+  selectedModules?: string[]
+  onToggle?: (moduleCode: string) => void
 }) {
+  const renderRowForSetting = (setting: CampaignToggleRow) => (
+    <tr key={setting.key}>
+      <td>
+        <div className="data-table-primary">
+          <p className="data-table-title">{setting.title}</p>
+        </div>
+      </td>
+      <td className="data-table-secondary">{setting.description}</td>
+      <td>
+        <span className={`status ${setting.active ? 'status-success' : 'status-neutral'}`}>
+          {setting.active ? setting.activeLabel : setting.inactiveLabel}
+        </span>
+      </td>
+      <td>
+        <label className="switch" aria-label={`${setting.title} ${setting.active ? 'attivo' : 'disattivo'}`}>
+          <input type="checkbox" checked={setting.active} onChange={setting.onToggle} />
+          <span className="switch-track" aria-hidden="true">
+            <span className="switch-thumb" />
+          </span>
+        </label>
+      </td>
+    </tr>
+  )
+
+  const renderRowForModule = (module: CampaignCatalogEntry) => {
+    const enabled = selectedModules?.includes(module.code) || false
+    return (
+      <tr key={module.code}>
+        <td>
+          <div className="data-table-primary">
+            <p className="data-table-title">{module.label || module.code}</p>
+            <p className="data-table-meta">{module.code}</p>
+          </div>
+        </td>
+        <td className="data-table-secondary">{module.description || 'Addon disponibile per la campagna.'}</td>
+        <td>
+          <span className={`status ${enabled ? 'status-success' : 'status-neutral'}`}>
+            {enabled ? 'Attivo' : 'Disattivo'}
+          </span>
+        </td>
+        <td>
+          <label className="switch" aria-label={`${module.label || module.code} ${enabled ? 'attivo' : 'disattivo'}`}>
+            <input type="checkbox" checked={enabled} onChange={() => onToggle?.(module.code)} />
+            <span className="switch-track" aria-hidden="true">
+              <span className="switch-thumb" />
+            </span>
+          </label>
+        </td>
+      </tr>
+    )
+  }
+
   return (
-    <section className="addon-panel">
+    <div className="campaign-toggle-table-block">
       <div className="row-between">
         <div>
           <h3 className="section-title">{title}</h3>
           <p className="muted">{description}</p>
         </div>
-        <span className="readonly-chip">{selectedModules.length}/{availableModules.length} attivi</span>
+        {availableModules && availableModules.length > 0 ? (
+          <span className="readonly-chip">{selectedModules?.length || 0}/{availableModules.length} attivi</span>
+        ) : (
+          <span className="readonly-chip">{rows?.filter((row) => row.active).length || 0}/{rows?.length || 0} attivi</span>
+        )}
       </div>
-      {availableModules.length > 0 ? (
-        <div className="addon-list">
-          {availableModules.map((module) => {
-            const enabled = selectedModules.includes(module.code)
-            return (
-              <div key={module.code} className="addon-row">
-                <div className="addon-copy">
-                  <p className="addon-title">{module.label || module.code}</p>
-                  <p className="addon-description">{module.description || 'Addon disponibile per la campagna.'}</p>
-                </div>
-                <label className="switch" aria-label={`${module.label || module.code} ${enabled ? 'attivo' : 'disattivo'}`}>
-                  <input
-                    type="checkbox"
-                    checked={enabled}
-                    onChange={() => onToggle(module.code)}
-                  />
-                  <span className="switch-track" aria-hidden="true">
-                    <span className="switch-thumb" />
-                  </span>
-                </label>
-              </div>
-            )
-          })}
-        </div>
+      {rows && rows.length > 0 ? (
+        <DataTable
+          columns={[
+            { key: 'setting', label: 'Impostazione' },
+            { key: 'description', label: 'Descrizione' },
+            { key: 'state', label: 'Stato' },
+            { key: 'toggle', label: 'Attivo' },
+          ]}
+          rows={rows}
+          getRowKey={(row) => row.key}
+          emptyMessage="Nessuna impostazione disponibile."
+          renderRow={renderRowForSetting}
+        />
+      ) : availableModules && availableModules.length > 0 ? (
+        <DataTable
+          columns={[
+            { key: 'module', label: 'Modulo' },
+            { key: 'description', label: 'Descrizione' },
+            { key: 'state', label: 'Stato' },
+            { key: 'toggle', label: 'Attivo' },
+          ]}
+          rows={availableModules}
+          getRowKey={(module) => module.code}
+          emptyMessage="Lista addon non ancora disponibile."
+          renderRow={renderRowForModule}
+        />
       ) : (
         <p className="muted">Lista addon non ancora disponibile.</p>
       )}
-    </section>
+    </div>
   )
 }
 
@@ -4072,7 +4488,6 @@ function CampaignDetailPage({
   onReload,
   onOpenMember,
   onOpenManagement,
-  onOpenSelectPg,
   onOpenCharacters,
   canManageMembers,
   onApply,
@@ -4089,9 +4504,8 @@ function CampaignDetailPage({
   availableModules: CampaignCatalogEntry[]
   availableGameSystems: CampaignCatalogEntry[]
   onReload: () => void
-  onOpenMember: (userId: string) => void
+  onOpenMember: (member: CampaignMembershipResponse) => void
   onOpenManagement: () => void
-  onOpenSelectPg: () => void
   onOpenCharacters: () => void
   canManageMembers: boolean
   onApply: () => void
@@ -4126,14 +4540,14 @@ function CampaignDetailPage({
   })
 
   const memberActivityBadge = (member: CampaignMembershipResponse) => {
-    if (member.memberStatus === 'BLOCKED') return { label: 'BLOCKED', className: 'status-danger' }
-    if (member.memberStatus === 'BANNED') return { label: 'BANNED', className: 'status-danger' }
-    if (member.memberStatus === 'PENDING') return { label: 'PENDING', className: 'status-warning' }
-    if (member.memberStatus !== 'APPROVED') return { label: member.memberStatus, className: 'status-neutral' }
+    if (member.memberStatus === 'BLOCKED') return { label: 'BLOCKED', className: 'is-blocked' }
+    if (member.memberStatus === 'BANNED') return { label: 'BANNED', className: 'is-banned' }
+    if (member.memberStatus === 'PENDING') return { label: 'PENDING', className: 'is-pending' }
+    if (member.memberStatus !== 'APPROVED') return { label: member.memberStatus, className: 'is-neutral' }
     if (member.characterStatus === 'DEAD' || member.characterStatus === 'RETIRED') {
-      return { label: 'INACTIVE', className: 'status-neutral' }
+      return { label: 'INACTIVE', className: 'is-neutral' }
     }
-    return { label: 'ACTIVE', className: 'status-success' }
+    return { label: 'ACTIVE', className: 'is-active' }
   }
 
   const toggleStatusFilter = (status: CampaignMemberStatus) => {
@@ -4146,6 +4560,24 @@ function CampaignDetailPage({
 
   const statusFilterLabel = statusFilters.length > 0 ? statusFilters.join(', ') : 'Nessuno stato selezionato'
   const roleFilterLabel = roleFilters.length > 0 ? roleFilters.join(', ') : 'Nessun grado selezionato'
+  const campaignVisibilityMeta = [
+    {
+      key: 'open',
+      active: campaign?.isOpen ?? false,
+      label: campaign?.isOpen ? 'Campagna aperta' : 'Campagna privata',
+      icon: campaign?.isOpen ? 'fa-solid fa-door-open' : 'fa-solid fa-lock',
+    },
+    {
+      key: 'searchable',
+      active: campaign?.isSearchable ?? false,
+      label: campaign?.isSearchable ? 'Visibile nella ricerca' : 'Nascosta nella ricerca',
+      icon: campaign?.isSearchable ? 'fa-solid fa-magnifying-glass' : 'fa-solid fa-eye-slash',
+    },
+  ]
+  const campaignDetailButtonClass =
+    membershipStatus === 'APPROVED' && (membershipRole === 'MASTER' || membershipRole === 'SUPER_MASTER')
+      ? 'primary-btn'
+      : 'secondary-btn'
 
   return (
     <section className="panel">
@@ -4178,11 +4610,21 @@ function CampaignDetailPage({
               </p>
             </div>
           </div>
-          <p className="campaign-status-line">
-            open: {String(campaign.isOpen)} | searchable: {String(campaign.isSearchable)}
-          </p>
+          <div className="campaign-visibility-meta" aria-label="Stato visibilità campagna">
+            {campaignVisibilityMeta.map((item) => (
+              <span
+                key={item.key}
+                className={`campaign-meta-pill ${item.active ? 'is-active' : 'is-inactive'}`}
+                title={item.label}
+                aria-label={item.label}
+              >
+                <Icon name={item.icon} />
+                <span>{item.label}</span>
+              </span>
+            ))}
+          </div>
           {campaign.summary && <p className="campaign-summary">{campaign.summary}</p>}
-          <p className="muted">{campaign.description || 'Nessuna descrizione'}</p>
+          <p className="campaign-description-muted">{campaign.description || 'Nessuna descrizione'}</p>
           <div className="campaign-profile-grid">
             <InfoBlock title="Ambientazione" value={campaign.setting} />
             <InfoBlock title="Tono" value={campaignToneLabel(campaign.tone)} />
@@ -4235,13 +4677,8 @@ function CampaignDetailPage({
               </button>
             )}
             {(membershipRole === 'MASTER' || membershipRole === 'SUPER_MASTER') && (
-              <button type="button" className="secondary-btn" onClick={onOpenManagement}>
+              <button type="button" className={campaignDetailButtonClass} onClick={onOpenManagement}>
                 Gestione Campagna
-              </button>
-            )}
-            {membershipStatus === 'APPROVED' && (
-              <button type="button" className="secondary-btn" onClick={onOpenSelectPg}>
-                Seleziona PG
               </button>
             )}
             {membershipStatus === 'APPROVED' && (
@@ -4250,7 +4687,7 @@ function CampaignDetailPage({
               </button>
             )}
             {membershipStatus === 'APPROVED' && campaign?.founderId !== currentUserId && (
-              <button type="button" className="danger-btn" onClick={onLeaveCampaign}>
+              <button type="button" className="danger-btn campaign-leave-btn" onClick={onLeaveCampaign}>
                 Esci dalla campagna
               </button>
             )}
@@ -4286,7 +4723,9 @@ function CampaignDetailPage({
                         <button
                           key={status}
                           type="button"
-                          className={`filter-chip ${statusFilters.includes(status) ? 'is-active' : ''}`}
+                          className={`filter-chip filter-chip--status-${status.toLowerCase()} ${
+                            statusFilters.includes(status) ? 'is-active' : ''
+                          }`}
                           onClick={() => toggleStatusFilter(status)}
                           title={`Mostra i membri con stato ${status}`}
                         >
@@ -4302,7 +4741,7 @@ function CampaignDetailPage({
                         <button
                           key={role}
                           type="button"
-                          className={`filter-chip ${roleFilters.includes(role) ? 'is-active' : ''}`}
+                          className={`filter-chip filter-chip--role-${role.toLowerCase()} ${roleFilters.includes(role) ? 'is-active' : ''}`}
                           onClick={() => toggleRoleFilter(role)}
                           title={`Mostra i membri con grado ${role}`}
                         >
@@ -4314,24 +4753,41 @@ function CampaignDetailPage({
                 </div>
               </div>
               {members.length === 0 && <p className="muted">Nessun membro</p>}
-              <ul className="list-reset">
-                {filteredMembers.map((member) => {
-                  const activity = memberActivityBadge(member)
-                  return (
-                    <li key={`${member.userId}-${member.role}-${member.memberStatus}`} className="line-item line-item-clickable">
-                      <button type="button" className="member-card-btn" onClick={() => onOpenMember(member.userId)}>
-                        <div>
-                          <p className="character-name">{memberNames[member.userId] || member.userId}</p>
-                        </div>
-                        <div className="inline-actions">
-                          <span className="status status-info">{member.role}</span>
-                          <span className={`status ${activity.className}`}>{activity.label}</span>
-                        </div>
-                      </button>
-                    </li>
-                  )
-                })}
-              </ul>
+              {members.length > 0 && filteredMembers.length > 0 && (
+                <div className="member-table-shell">
+                  <div className="member-table-wrap">
+                    <table className="member-table">
+                      <thead>
+                        <tr>
+                          <th scope="col">Membro</th>
+                          <th scope="col">Ruolo</th>
+                          <th scope="col">Stato</th>
+                          <th scope="col">PG</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredMembers.map((member) => {
+                          const activity = memberActivityBadge(member)
+                          return (
+                            <tr key={`${member.userId}-${member.role}-${member.memberStatus}`}>
+                              <td>
+                                <button type="button" className="member-table-link" onClick={() => onOpenMember(member)}>
+                                  {memberNames[member.userId] || member.userId}
+                                </button>
+                              </td>
+                              <td>{member.role}</td>
+                              <td>
+                                <span className={`member-state-badge ${activity.className}`}>{activity.label}</span>
+                              </td>
+                              <td className="member-table-muted">{member.characterStatus || 'N/A'}</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
               {members.length > 0 && filteredMembers.length === 0 && (
                 <p className="muted">Nessun membro trovato con questo filtro.</p>
               )}
@@ -5268,16 +5724,29 @@ function ApprovalPage({
           Aggiorna elenco
         </button>
       </div>
-      {pendingApplications.length === 0 && <p className="muted">Nessuna richiesta pending.</p>}
-      {pendingApplications.length > 0 && (
-        <ul className="list-reset">
-          {pendingApplications.map((item) => (
-            <li key={item.userId} className="line-item">
-              <div>
-                <p className="character-name">{item.profileName}</p>
-                <p className="muted">@{item.username}</p>
+      <DataTable
+        columns={[
+          { key: 'profile', label: 'Profilo' },
+          { key: 'username', label: 'Username' },
+          { key: 'status', label: 'Stato' },
+          { key: 'actions', label: 'Azioni' },
+        ]}
+        rows={pendingApplications}
+        getRowKey={(item) => item.userId}
+        emptyMessage="Nessuna richiesta pending."
+        renderRow={(item) => (
+          <tr>
+            <td>
+              <div className="data-table-primary">
+                <p className="data-table-title">{item.profileName}</p>
               </div>
-              <div className="inline-actions">
+            </td>
+            <td className="data-table-muted">@{item.username}</td>
+            <td>
+              <span className="status status-warning">PENDING</span>
+            </td>
+            <td>
+              <div className="data-table-actions">
                 <button type="button" className="primary-btn" onClick={() => onApprove(item.userId)}>
                   Approva
                 </button>
@@ -5285,10 +5754,10 @@ function ApprovalPage({
                   Rifiuta
                 </button>
               </div>
-            </li>
-          ))}
-        </ul>
-      )}
+            </td>
+          </tr>
+        )}
+      />
     </section>
   )
 }
@@ -5303,6 +5772,7 @@ function MissionsPage({
   activeCampaignId,
   activeCampaignRole,
   campaignNameById,
+  preferredCharacterId,
   onCreate,
   onSelectMission,
   onReopen,
@@ -5322,6 +5792,7 @@ function MissionsPage({
   activeCampaignId: string
   activeCampaignRole: CampaignRole | null
   campaignNameById: Record<string, string>
+  preferredCharacterId: string
   onCreate: (payload: {
     title: string
     description: string
@@ -5529,10 +6000,14 @@ function MissionsPage({
       if (characterId) setCharacterId('')
       return
     }
+    if (preferredCharacterId && activeCharacters.some((character) => character.id === preferredCharacterId)) {
+      setCharacterId(preferredCharacterId)
+      return
+    }
     if (!activeCharacters.some((character) => character.id === characterId)) {
       setCharacterId(activeCharacters[0]?.id || '')
     }
-  }, [activeCharacters, characterId])
+  }, [activeCharacters, characterId, preferredCharacterId])
 
   const submitCreate = () => {
     const sessionIso = toIsoTimestamp(createDraft.sessionAt)
@@ -6035,18 +6510,29 @@ function RoomsPage({
 
       <div className="divider" />
       <h3 className="section-title">Elenco Stanze</h3>
-      <ul className="list-reset">
-        {rooms.map((room) => (
-          <li key={room.id} className="line-item">
-            <span>
-              {room.name} ({room.type})
-            </span>
-            <span className="muted">
-              ttl {room.ttlHours}h / slow {room.slowmodeSeconds}s
-            </span>
-          </li>
-        ))}
-      </ul>
+      <DataTable
+        columns={[
+          { key: 'room', label: 'Stanza' },
+          { key: 'type', label: 'Tipo' },
+          { key: 'ttl', label: 'TTL' },
+          { key: 'slowmode', label: 'Slowmode' },
+        ]}
+        rows={rooms}
+        getRowKey={(room) => room.id}
+        emptyMessage="Nessuna stanza disponibile."
+        renderRow={(room) => (
+          <tr>
+            <td>
+              <div className="data-table-primary">
+                <p className="data-table-title">{room.name}</p>
+              </div>
+            </td>
+            <td>{room.type}</td>
+            <td className="data-table-muted">{room.ttlHours}h</td>
+            <td className="data-table-muted">{room.slowmodeSeconds}s</td>
+          </tr>
+        )}
+      />
     </section>
   )
 }
@@ -6056,16 +6542,27 @@ function NotificationsPage({ events }: { events: UiEvent[] }) {
     <section className="panel">
       <h2>Notifiche</h2>
       <p className="muted">Feed locale basato su azioni API client.</p>
-      <ul className="list-reset">
-        {events.map((event) => (
-          <li key={event.id} className="line-item">
-            <span>{event.text}</span>
-            <span className={`status ${event.level === 'error' ? 'status-danger' : event.level === 'ok' ? 'status-success' : 'status-neutral'}`}>
-              {new Date(event.ts).toLocaleTimeString()}
-            </span>
-          </li>
-        ))}
-      </ul>
+      <DataTable
+        columns={[
+          { key: 'time', label: 'Ora' },
+          { key: 'level', label: 'Livello' },
+          { key: 'message', label: 'Messaggio' },
+        ]}
+        rows={events}
+        getRowKey={(event) => event.id}
+        emptyMessage="Nessuna notifica disponibile."
+        renderRow={(event) => (
+          <tr>
+            <td className="data-table-muted">{new Date(event.ts).toLocaleTimeString()}</td>
+            <td>
+              <span className={`status ${event.level === 'error' ? 'status-danger' : event.level === 'ok' ? 'status-success' : 'status-neutral'}`}>
+                {event.level}
+              </span>
+            </td>
+            <td>{event.text}</td>
+          </tr>
+        )}
+      />
     </section>
   )
 }
@@ -6434,8 +6931,8 @@ function CharacterListPage({
   const [typeFilters, setTypeFilters] = useState<Array<'NPC' | 'PG'>>(['NPC', 'PG'])
   const [statusFilters, setStatusFilters] = useState<CharacterStatus[]>(['ACTIVE', 'RETIRED', 'DEAD'])
   const [searchText, setSearchText] = useState('')
-  const [campaignFilters, setCampaignFilters] = useState<string[]>([])
-  const [campaignMenuOpen, setCampaignMenuOpen] = useState(false)
+  const [sortBy, setSortBy] = useState<'character' | 'profile' | 'campaign' | 'type' | 'status' | 'access'>('character')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
 
   const toggleTypeFilter = (type: 'NPC' | 'PG') => {
     setTypeFilters((prev) => {
@@ -6457,51 +6954,62 @@ function CharacterListPage({
     })
   }
   const normalizedSearchText = searchText.trim().toLowerCase()
-  const campaignOptions = useMemo(
-    () =>
-      Array.from(
-        new Map(
-          characters
-            .filter((character) => !!character.campaignId)
-            .map((character) => [character.campaignId as string, campaignNameForCharacter(character)]),
-        ).entries(),
-      ).map(([id, name]) => ({ id, name })),
-    [characters, campaignNameForCharacter],
-  )
+  const filteredCharacters = useMemo(() => {
+    const list = characters.filter((character) => {
+      if (!character.characterStatus || !statusFilters.includes(character.characterStatus)) return false
+      const type = character.isNpc ? 'NPC' : 'PG'
+      if (!typeFilters.includes(type)) return false
+      if (!normalizedSearchText) return true
+      const owner = ownerProfileLabel(character.userId, character.ownerProfileName).toLowerCase()
+      const name = character.name.toLowerCase()
+      const campaignName = campaignNameForCharacter(character).toLowerCase()
+      return owner.includes(normalizedSearchText) || name.includes(normalizedSearchText) || campaignName.includes(normalizedSearchText)
+    })
 
-  useEffect(() => {
-    setCampaignFilters((prev) => {
-      const next = prev.filter((campaignValue) => campaignOptions.some((option) => option.id === campaignValue))
-      if (next.length === prev.length && next.every((value, index) => value === prev[index])) {
+    const directionMultiplier = sortDirection === 'asc' ? 1 : -1
+    const sortString = (left: string, right: string) => left.localeCompare(right, 'it', { sensitivity: 'base' }) * directionMultiplier
+    const sortBoolean = (left: boolean, right: boolean) => (Number(left) - Number(right)) * directionMultiplier
+
+    return [...list].sort((left, right) => {
+      switch (sortBy) {
+        case 'profile':
+          return sortString(ownerProfileLabel(left.userId, left.ownerProfileName), ownerProfileLabel(right.userId, right.ownerProfileName))
+        case 'campaign':
+          return sortString(campaignNameForCharacter(left), campaignNameForCharacter(right))
+        case 'type':
+          return sortString(left.isNpc ? 'NPC' : 'PG', right.isNpc ? 'NPC' : 'PG')
+        case 'status':
+          return sortString(left.characterStatus || '', right.characterStatus || '')
+        case 'access':
+          return sortBoolean(canOpenCharacterSheet(left), canOpenCharacterSheet(right))
+        case 'character':
+        default:
+          return sortString(left.name, right.name)
+      }
+    })
+  }, [
+    characters,
+    statusFilters,
+    typeFilters,
+    normalizedSearchText,
+    sortBy,
+    sortDirection,
+    ownerProfileLabel,
+    campaignNameForCharacter,
+    canOpenCharacterSheet,
+  ])
+
+  const handleSortChange = (nextSortBy: string) => {
+    setSortBy((prev) => {
+      const nextKey = nextSortBy as typeof sortBy
+      if (prev === nextKey) {
+        setSortDirection((direction) => (direction === 'asc' ? 'desc' : 'asc'))
         return prev
       }
-      return next
+      setSortDirection('asc')
+      return nextKey
     })
-  }, [campaignOptions])
-
-  const toggleCampaignFilter = (campaignValue: string) => {
-    setCampaignFilters((prev) =>
-      prev.includes(campaignValue) ? prev.filter((item) => item !== campaignValue) : [...prev, campaignValue],
-    )
   }
-
-  const selectedCampaignLabel =
-    campaignFilters.length > 0
-      ? campaignFilters
-          .map((campaignValue) => campaignOptions.find((option) => option.id === campaignValue)?.name || campaignValue)
-          .join(', ')
-      : 'Tutte le campagne'
-  const filteredCharacters = characters.filter((character) => {
-    if (!character.characterStatus || !statusFilters.includes(character.characterStatus)) return false
-    const type = character.isNpc ? 'NPC' : 'PG'
-    if (!typeFilters.includes(type)) return false
-    if (campaignFilters.length > 0 && (!character.campaignId || !campaignFilters.includes(character.campaignId))) return false
-    if (!normalizedSearchText) return true
-    const owner = ownerProfileLabel(character.userId, character.ownerProfileName).toLowerCase()
-    const name = character.name.toLowerCase()
-    const campaignName = campaignNameForCharacter(character).toLowerCase()
-    return owner.includes(normalizedSearchText) || name.includes(normalizedSearchText) || campaignName.includes(normalizedSearchText)
-  })
 
   return (
     <section className="panel">
@@ -6516,106 +7024,83 @@ function CharacterListPage({
           </button>
         </div>
       </div>
-      <div className="chips">
-        {(['PG', 'NPC'] as Array<'PG' | 'NPC'>).map((type) => (
-          <button
-            key={type}
-            type="button"
-            className={`chip ${typeFilters.includes(type) ? 'is-active' : ''}`}
-            onClick={() => toggleTypeFilter(type)}
-          >
-            {type === 'PG' ? 'Personaggio' : 'NPC'}
-          </button>
-        ))}
-      </div>
-      <div className="chips">
-        {(['ACTIVE', 'RETIRED', 'DEAD'] as CharacterStatus[]).map((status) => (
-          <button
-            key={status}
-            type="button"
-            className={`chip ${statusFilters.includes(status) ? 'is-active' : ''}`}
-            onClick={() => toggleStatusFilter(status)}
-          >
-            {status}
-          </button>
-        ))}
-      </div>
-      <label>
-        Ricerca (nome PG o campagna)
-        <input
-          value={searchText}
-          onChange={(event) => setSearchText(event.target.value)}
-          placeholder="es. diego"
+      <div className="character-filter-toolbar">
+        <FilterChipGroup
+          label="Tipo"
+          options={[
+            { value: 'PG', label: 'Personaggio', title: 'Mostra i personaggi giocanti' },
+            { value: 'NPC', label: 'NPC', title: 'Mostra i personaggi non giocanti' },
+          ]}
+          selectedValues={typeFilters}
+          onToggle={toggleTypeFilter}
         />
-      </label>
-      <p className="muted">La ricerca confronta nome personaggio, campagna e profilo di appartenenza.</p>
-      <div className="multicheck-field">
-        <p className="muted">Filtro campagna</p>
-        <button
-          type="button"
-          className="secondary-btn multicheck-trigger"
-          onClick={() => setCampaignMenuOpen((prev) => !prev)}
-          disabled={campaignOptions.length === 0}
-        >
-          <span className="multicheck-value">{selectedCampaignLabel}</span>
-          <span aria-hidden="true">{campaignMenuOpen ? '▴' : '▾'}</span>
-        </button>
-        {campaignMenuOpen && campaignOptions.length > 0 && (
-          <div className="multicheck-menu">
-            {campaignOptions.map((option) => (
-              <label key={option.id} className="checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={campaignFilters.includes(option.id)}
-                  onChange={() => toggleCampaignFilter(option.id)}
-                />
-                {option.name}
-              </label>
-            ))}
-          </div>
-        )}
+        <FilterChipGroup
+          label="Stato"
+          options={[
+            { value: 'ACTIVE', label: 'ACTIVE', className: 'filter-chip--status-approved', title: 'Stato attivo' },
+            { value: 'RETIRED', label: 'RETIRED', className: 'filter-chip--status-rejected', title: 'Stato ritirato' },
+            { value: 'DEAD', label: 'DEAD', className: 'filter-chip--status-blocked', title: 'Stato morto' },
+          ]}
+          selectedValues={statusFilters}
+          onToggle={toggleStatusFilter}
+        />
+        <label className="character-filter-field">
+          <span className="muted">Ricerca</span>
+          <input value={searchText} onChange={(event) => setSearchText(event.target.value)} placeholder="Nome, profilo o campagna" />
+        </label>
       </div>
-      {filteredCharacters.length === 0 && <p className="muted">Nessun personaggio per i filtri selezionati.</p>}
-      <ul className="list-reset">
-        {filteredCharacters.map((character) => (
-          <li key={character.id}>
-            {(() => {
-              const canOpen = canOpenCharacterSheet(character)
-              return (
-            <button
-              type="button"
-              className={`character-item ${selectedCharacterId === character.id ? 'is-selected' : ''}`}
-              onClick={() => onSelectCharacter(character)}
-              disabled={!canOpen}
-            >
-              <div>
-                <p className="character-name">
+      <DataTable
+        columns={[
+          { key: 'character', label: 'Personaggio', sortKey: 'character' },
+          { key: 'profile', label: 'Profilo', sortKey: 'profile' },
+          { key: 'campaign', label: 'Campagna', sortKey: 'campaign' },
+          { key: 'type', label: 'Tipo', sortKey: 'type' },
+          { key: 'status', label: 'Stato', sortKey: 'status' },
+          { key: 'access', label: 'Accesso', sortKey: 'access' },
+        ]}
+        rows={filteredCharacters}
+        getRowKey={(character) => character.id}
+        emptyMessage="Nessun personaggio per i filtri selezionati."
+        sortBy={sortBy}
+        sortDirection={sortDirection}
+        onSortChange={handleSortChange}
+        renderRow={(character) => {
+          const canOpen = canOpenCharacterSheet(character)
+          return (
+            <tr className={selectedCharacterId === character.id ? 'is-selected' : ''}>
+              <td>
+                <button
+                  type="button"
+                  className="data-table-link"
+                  onClick={() => onSelectCharacter(character)}
+                  disabled={!canOpen}
+                >
                   <span className="char-kind-icon" aria-hidden="true">
                     <Icon name={character.isNpc ? 'fa-solid fa-mask' : 'fa-solid fa-user'} />
                   </span>{' '}
                   {character.name}
-                </p>
-                <p className="muted">
-                  {character.nickname || 'no nickname'} · {ownerProfileLabel(character.userId, character.ownerProfileName)}
-                </p>
-                <p className="muted">Campagna: {campaignNameForCharacter(character)}</p>
-              </div>
-              <span
-                className={`editability-icon ${canOpen ? 'is-editable' : 'is-readonly'}`}
-                aria-label={canOpen ? 'Modificabile' : 'Non modificabile'}
-                title={canOpen ? 'Modificabile' : 'Non modificabile'}
-              >
-                <Icon name={canOpen ? 'fa-solid fa-pen' : 'fa-solid fa-lock'} />
-              </span>
-              <span className={`status status-${statusTone(character.characterStatus)}`}>
-                {character.characterStatus || 'N/A'}
-              </span>
-            </button>
-              )
-            })()}
-          </li>
-        ))}
-      </ul>
+                </button>
+                <p className="data-table-secondary">{character.nickname || 'no nickname'}</p>
+              </td>
+              <td className="data-table-secondary">{ownerProfileLabel(character.userId, character.ownerProfileName)}</td>
+              <td className="data-table-secondary">{campaignNameForCharacter(character)}</td>
+              <td>{character.isNpc ? 'NPC' : 'PG'}</td>
+              <td>
+                <span className={`status status-${statusTone(character.characterStatus)}`}>{character.characterStatus || 'N/A'}</span>
+              </td>
+              <td>
+                <span
+                  className={`editability-icon ${canOpen ? 'is-editable' : 'is-readonly'}`}
+                  aria-label={canOpen ? 'Modificabile' : 'Non modificabile'}
+                  title={canOpen ? 'Modificabile' : 'Non modificabile'}
+                >
+                  <Icon name={canOpen ? 'fa-solid fa-pen' : 'fa-solid fa-lock'} />
+                </span>
+              </td>
+            </tr>
+          )
+        }}
+      />
     </section>
   )
 }
@@ -6698,7 +7183,9 @@ function CharacterDetailPage({
   externalDetail,
   sheet,
   ownerProfileLabel,
+  campaignNameForCharacter,
   canMarkCharacterDead,
+  canReactivateCharacter,
   onRefresh,
   onUpdateStatus,
   onSaveSheet,
@@ -6707,7 +7194,9 @@ function CharacterDetailPage({
   externalDetail: Character | null
   sheet: CharacterSheetResponse | null
   ownerProfileLabel: (userId: string | null, ownerProfileName?: string | null) => string
+  campaignNameForCharacter: (character: Character) => string
   canMarkCharacterDead: (character: Character | null) => boolean
+  canReactivateCharacter: (character: Character | null) => boolean
   onRefresh: () => void
   onUpdateStatus: (status: CharacterStatus) => void
   onSaveSheet: (dataJson: Record<string, unknown>) => Promise<void>
@@ -6730,6 +7219,9 @@ function CharacterDetailPage({
   }, [sheet?.characterId, sheet?.schemaVersion, sheet?.updatedAt, sheet?.sheetTypeCode])
 
   const deadAllowed = canMarkCharacterDead(value)
+  const canReactivate = canReactivateCharacter(value)
+  const sheetLockedBecauseInactive = value?.characterStatus !== 'ACTIVE'
+  const canEditSheet = Boolean(sheet?.editable && !sheetLockedBecauseInactive)
 
   useEffect(() => {
     if (status === 'DEAD' && !deadAllowed) {
@@ -6743,7 +7235,7 @@ function CharacterDetailPage({
   }
 
   const saveSheet = async () => {
-    if (!sheet?.editable || !sheetDirty || sheetSaving) return
+    if (!canEditSheet || !sheetDirty || sheetSaving) return
     setSheetSaving(true)
     try {
       await onSaveSheet(sheetDraft)
@@ -6770,7 +7262,7 @@ function CharacterDetailPage({
               : type === 'tags'
                 ? []
                 : ''
-    const disabled = !sheet?.editable
+    const disabled = !canEditSheet
 
     return (
       <div key={path} className="sheet-field">
@@ -6859,19 +7351,26 @@ function CharacterDetailPage({
               </span>{' '}
               {value.name}
             </strong>
+            {value.nickname && <em className="character-alias">({value.nickname})</em>}
           </p>
-          <p className="muted">tipo: {value.isNpc ? 'NPC' : 'Personaggio'}</p>
+          <div className="sheet-meta-row">
+            <span className="status status-info">{value.isNpc ? 'NPC' : 'Personaggio'}</span>
+            <span className={`status ${statusTone(value.characterStatus)}`}>{value.characterStatus || 'N/A'}</span>
+            <span className="status status-neutral">{campaignNameForCharacter(value)}</span>
+          </div>
           <p className="muted">profilo: {ownerProfileLabel(value.userId, value.ownerProfileName)}</p>
-          <p className="muted">status: {value.characterStatus || 'N/A'}</p>
+          {value.characterStatus !== 'ACTIVE' && (
+            <p className="form-error">Scheda bloccata: il personaggio non e' attivo.</p>
+          )}
           {sheet && (
             <div className="sheet-header">
-              <span className="status status-info">{sheet.gameSystemCode || 'Sistema non disponibile'}</span>
               <span className="status status-neutral">{sheet.sheetTypeCode || 'Scheda non assegnata'}</span>
               <span className={`status ${sheet.hasTemplate ? 'status-success' : 'status-warning'}`}>
-                {sheet.hasTemplate ? `v${sheet.schemaVersion}` : 'Template mancante'}
+                {sheet.hasTemplate ? 'Template configurato' : 'Template mancante'}
               </span>
-              <span className={`status ${sheet.editable ? 'status-success' : 'status-neutral'}`}>
-                {sheet.editable ? 'Modificabile' : 'Sola lettura'}
+              <span className="status status-info">Version {sheet.schemaVersion}</span>
+              <span className={`status ${canEditSheet ? 'status-success' : 'status-neutral'}`}>
+                {canEditSheet ? 'Modificabile' : 'Sola lettura'}
               </span>
             </div>
           )}
@@ -6884,7 +7383,22 @@ function CharacterDetailPage({
             </select>
           </label>
           {!deadAllowed && <p className="muted">Non hai permessi per impostare lo stato DEAD.</p>}
-          <button type="button" className="primary-btn" onClick={() => onUpdateStatus(status)}>
+          {status === 'ACTIVE' && value.characterStatus !== 'ACTIVE' && !canReactivate && (
+            <p className="muted">Non hai permessi per riportare il personaggio ad ACTIVE.</p>
+          )}
+          <button
+            type="button"
+            className="primary-btn"
+            disabled={(status === 'DEAD' && !deadAllowed) || (status === 'ACTIVE' && value.characterStatus !== 'ACTIVE' && !canReactivate)}
+            title={
+              status === 'DEAD' && !deadAllowed
+                ? 'Non hai permessi per impostare DEAD.'
+                : status === 'ACTIVE' && value.characterStatus !== 'ACTIVE' && !canReactivate
+                  ? 'Non hai permessi per riportare il personaggio ad ACTIVE.'
+                  : undefined
+            }
+            onClick={() => onUpdateStatus(status)}
+          >
             Aggiorna Status
           </button>
           <div className="divider" />
@@ -6928,7 +7442,8 @@ function CharacterDetailPage({
                 <button
                   type="button"
                   className="primary-btn"
-                  disabled={!sheet.editable || !sheetDirty || sheetSaving}
+                  disabled={!canEditSheet || !sheetDirty || sheetSaving}
+                  title={!canEditSheet ? 'La scheda non e modificabile quando il personaggio non e attivo.' : undefined}
                   onClick={() => void saveSheet()}
                 >
                   <Icon name="fa-solid fa-floppy-disk" />
@@ -7287,7 +7802,7 @@ function CampaignManagementPage({
               Ricercabile
             </label>
           </div>
-          <CampaignAddonToggleList
+          <CampaignToggleSettingsTable
             title="Addon campagna"
             description="I moduli sono sempre disponibili e puoi accenderli o spegnerli senza ricaricare la lista."
             availableModules={availableModules}
@@ -7411,19 +7926,33 @@ function CampaignManagementPage({
 
 function SelectCharacterPage({
   characters,
+  preferredCharacterId,
   onApply,
 }: {
   characters: Character[]
+  preferredCharacterId: string
   onApply: (characterId: string) => void
 }) {
   const [characterId, setCharacterId] = useState('')
+  useEffect(() => {
+    if (characters.length === 0) {
+      if (characterId) setCharacterId('')
+      return
+    }
+    if (preferredCharacterId && characters.some((character) => character.id === preferredCharacterId)) {
+      setCharacterId(preferredCharacterId)
+      return
+    }
+    if (!characters.some((character) => character.id === characterId)) {
+      setCharacterId(characters[0]?.id || '')
+    }
+  }, [characters, characterId, preferredCharacterId])
   return (
     <section className="panel">
       <h2>Seleziona PG</h2>
       <label>
         <FieldLabel icon="fa-solid fa-user" label="Personaggio" />
         <select value={characterId} onChange={(event) => setCharacterId(event.target.value)}>
-          <option value="">scegli</option>
           {characters.map((character) => (
             <option key={character.id} value={character.id}>
               {character.name} ({character.characterStatus || 'N/A'})
