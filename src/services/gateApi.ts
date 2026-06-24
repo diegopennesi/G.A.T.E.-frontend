@@ -8,6 +8,9 @@ import type {
   CampaignApplicationResponse,
   CampaignCatalogEntry,
   CampaignDiscoverResponse,
+  CampaignInviteCodeResponse,
+  CampaignInvitePreviewResponse,
+  CreateInviteTokenRequest,
   AuthSession,
   CampaignMembershipResponse,
   CampaignPermissionResponse,
@@ -24,6 +27,8 @@ import type {
   AdminSheetTypeUpsertRequest,
   UpdateCharacterSheetRequest,
   UserProfile,
+  InviteTokenPreviewResponse,
+  InviteTokenResponse,
 } from '../types/domain'
 
 type AuthResponse = {
@@ -252,6 +257,28 @@ export async function getCampaign(campaignId: string): Promise<CampaignResponse>
   return apiRequest<CampaignResponse>(`/campaigns/${campaignId}`)
 }
 
+export async function getCampaignInviteCode(campaignId: string): Promise<CampaignInviteCodeResponse> {
+  return apiRequest<CampaignInviteCodeResponse>(`/campaigns/${campaignId}/invite-code`)
+}
+
+export async function getCampaignByInviteCode(inviteCode: string): Promise<CampaignInvitePreviewResponse> {
+  return apiRequest<CampaignInvitePreviewResponse>(`/campaigns/invite/${encodeURIComponent(inviteCode)}`)
+}
+
+export async function createInviteToken(
+  campaignId: string,
+  payload: CreateInviteTokenRequest,
+): Promise<InviteTokenResponse> {
+  return apiRequest<InviteTokenResponse>(`/campaigns/${campaignId}/invite-tokens`, {
+    method: 'POST',
+    body: payload,
+  })
+}
+
+export async function previewInviteToken(token: string): Promise<InviteTokenPreviewResponse> {
+  return apiRequest<InviteTokenPreviewResponse>(`/campaigns/tokens/${encodeURIComponent(token)}`)
+}
+
 export async function updateCampaign(
   campaignId: string,
   payload: {
@@ -303,6 +330,26 @@ export async function applyToCampaign(
   characterId?: string,
 ): Promise<CampaignMembershipResponse> {
   return apiRequest<CampaignMembershipResponse>(`/campaigns/${campaignId}/apply`, {
+    method: 'POST',
+    body: { characterId: characterId || null },
+  })
+}
+
+export async function applyToCampaignViaInviteCode(
+  inviteCode: string,
+  characterId?: string,
+): Promise<CampaignMembershipResponse> {
+  return apiRequest<CampaignMembershipResponse>(`/campaigns/invite/${encodeURIComponent(inviteCode)}/apply`, {
+    method: 'POST',
+    body: { characterId: characterId || null },
+  })
+}
+
+export async function applyToCampaignViaInviteToken(
+  token: string,
+  characterId?: string,
+): Promise<CampaignMembershipResponse> {
+  return apiRequest<CampaignMembershipResponse>(`/campaigns/tokens/${encodeURIComponent(token)}/apply`, {
     method: 'POST',
     body: { characterId: characterId || null },
   })

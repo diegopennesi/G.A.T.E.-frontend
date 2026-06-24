@@ -778,6 +778,56 @@ textarea {
   color: #ffbeb6;
 }
 
+.campaign-title-badges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.campaign-open-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: fit-content;
+  border: 1px solid;
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.campaign-open-badge-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+}
+
+.campaign-open-badge.is-open {
+  border-color: rgba(39, 174, 96, 0.35);
+  background: rgba(39, 174, 96, 0.08);
+  color: #27ae60;
+}
+
+.campaign-open-badge.is-open .campaign-open-badge-icon {
+  color: #27ae60;
+  background: rgba(39, 174, 96, 0.1);
+}
+
+.campaign-open-badge.is-closed {
+  border-color: rgba(239, 143, 132, 0.35);
+  background: rgba(239, 143, 132, 0.08);
+  color: #ef8f84;
+}
+
+.campaign-open-badge.is-closed .campaign-open-badge-icon {
+  color: #ef8f84;
+  background: rgba(239, 143, 132, 0.1);
+}
+
 .campaign-state-badge {
   display: inline-flex;
   align-items: center;
@@ -1536,6 +1586,15 @@ textarea {
   background: rgba(76, 69, 99, 0.14);
 }
 
+.data-table tbody tr[role='button'] {
+  cursor: pointer;
+}
+
+.data-table tbody tr[role='button']:focus-visible {
+  outline: 2px solid rgba(201, 168, 76, 0.45);
+  outline-offset: -2px;
+}
+
 .data-table tbody tr.is-disabled {
   opacity: 0.78;
 }
@@ -1619,6 +1678,12 @@ textarea {
   padding: 18px 12px;
   text-align: center;
   color: #a6a1bd;
+}
+
+.mission-detail-empty {
+  display: grid;
+  gap: 6px;
+  padding: 8px 0 0;
 }
 
 .modal-backdrop {
@@ -1948,6 +2013,272 @@ textarea {
 .campaign-list-actions {
   flex-wrap: nowrap;
   margin-left: auto;
+}
+
+.campaign-invite-panel {
+  display: grid;
+  gap: 12px;
+  margin: 14px 0 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.campaign-invite-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.campaign-invite-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.campaign-invite-input {
+  margin-bottom: 0;
+}
+
+.invite-code-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.invite-code-input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  letter-spacing: 0.01em;
+}
+
+.campaign-invite-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.campaign-invite-feedback {
+  margin-top: -2px;
+}
+
+.campaign-invite-preview {
+  display: grid;
+  gap: 8px;
+  padding: 12px 13px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.campaign-invite-preview-head {
+  align-items: flex-start;
+}
+
+.campaign-invite-preview-badges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.campaign-token-panel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.campaign-token-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.campaign-token-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+
+.campaign-token-switch {
+  display: grid;
+  gap: 8px;
+}
+
+.campaign-token-switch .switch {
+  align-self: start;
+  margin-top: 4px;
+}
+
+.campaign-token-actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.campaign-token-result {
+  display: grid;
+  gap: 10px;
+  padding: 12px 13px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.invite-token-copy-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.mission-settings-table {
+  display: grid;
+  gap: 12px;
+}
+
+.mission-settings-section {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.mission-settings-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.mission-settings-row {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.9fr) minmax(0, 1.4fr);
+  gap: 12px;
+  align-items: end;
+}
+
+.mission-settings-row--compact {
+  align-items: center;
+}
+
+.mission-settings-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.mission-settings-copy .field-label {
+  margin-bottom: 0;
+}
+
+.mission-settings-copy .muted {
+  margin: 0;
+}
+
+.mission-time-inline,
+.mission-capacity-inline {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(86px, 0.52fr) minmax(86px, 0.52fr);
+  gap: 8px;
+  align-items: end;
+}
+
+.mission-capacity-inline {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mission-inline-field {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 0;
+}
+
+.mission-inline-caption {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.mission-inline-field input {
+  min-height: 44px;
+}
+
+.mission-time-field {
+  min-width: 0;
+}
+
+.mission-time-stepper,
+.mission-count-stepper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  width: 100%;
+}
+
+.mission-time-step-btn {
+  min-width: 32px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  justify-content: center;
+  align-items: center;
+  display: inline-flex;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.mission-time-step-btn i,
+.mission-time-step-btn svg {
+  margin-right: 0;
+  line-height: 1;
+  display: block;
+}
+
+.mission-time-step-value,
+.mission-time-step-label {
+  min-height: 44px;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--text);
+  display: grid;
+  place-items: center;
+  padding: 0 8px;
+  font-weight: 600;
+}
+
+.mission-time-step-value {
+  min-width: 52px;
+  flex: 1 1 auto;
+}
+
+.mission-time-step-label {
+  min-width: 44px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+}
+
+.mission-form-hint {
+  margin: -2px 0 0;
+}
+
+.mission-form-hint {
+  margin: -4px 0 0;
 }
 
 .subpanel {
@@ -2613,6 +2944,14 @@ textarea {
   gap: 10px;
 }
 
+.mission-title-badges {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .mission-pill-row {
   display: flex;
   flex-wrap: wrap;
@@ -2701,6 +3040,52 @@ textarea {
   border: 1px solid #2e2a45;
   color: #b3afc8;
   flex: none;
+}
+
+.mission-access-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #2e2a45;
+  background: #12101b;
+  color: #e8e6f0;
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.mission-access-state-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid #2e2a45;
+  flex: none;
+}
+
+.mission-access-state.is-open {
+  color: #27ae60;
+  border-color: rgba(39, 174, 96, 0.35);
+  background: rgba(39, 174, 96, 0.08);
+}
+
+.mission-access-state.is-open .mission-access-state-icon {
+  color: #27ae60;
+}
+
+.mission-access-state.is-closed {
+  color: #ef8f84;
+  border-color: rgba(239, 143, 132, 0.35);
+  background: rgba(239, 143, 132, 0.08);
+}
+
+.mission-access-state.is-closed .mission-access-state-icon {
+  color: #ef8f84;
 }
 
 .mission-status-open .mission-status-icon,
@@ -4802,6 +5187,49 @@ textarea::placeholder {
   }
 
   .campaign-list-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .campaign-invite-panel-head,
+  .campaign-invite-form {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .campaign-token-panel-head,
+  .campaign-token-form {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .campaign-invite-actions {
+    justify-content: flex-start;
+  }
+
+  .campaign-token-actions {
+    justify-content: flex-start;
+  }
+
+  .invite-code-row {
+    grid-template-columns: 1fr;
+  }
+
+  .invite-token-copy-row {
+    grid-template-columns: 1fr;
+  }
+
+  .mission-inline-grid--session,
+  .mission-inline-grid--closing {
+    grid-template-columns: 1fr;
+  }
+
+  .mission-time-stepper {
+    width: 100%;
+  }
+
+  .mission-settings-row,
+  .mission-time-inline,
+  .mission-capacity-inline {
     grid-template-columns: 1fr;
   }
 }

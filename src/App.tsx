@@ -1,5 +1,5 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Dispatch, FormEvent, ReactNode, SetStateAction } from 'react'
+import { Fragment, cloneElement, isValidElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { Dispatch, FormEvent, KeyboardEvent, ReactElement, ReactNode, SetStateAction } from 'react'
 import './App.css'
 import { ApiError, getAccessToken } from './services/apiClient'
 import {
@@ -11,18 +11,20 @@ import {
   listAdminSheetTypes,
   approveCampaignMember,
   applyToCampaign,
+  applyToCampaignViaInviteToken,
   approveApplication,
   changePassword,
   checkPermission,
   banCampaignMember,
   createCampaign,
+  createInviteToken,
   createCharacter,
   discoverCampaigns,
   createMission,
-  closeMission,
-  cancelMission,
   createRoom,
+  applyToCampaignViaInviteCode,
   getCampaign,
+  getCampaignByInviteCode,
   getCampaignMember,
   getCampaignMembers,
   listCampaignGameSystems,
@@ -30,11 +32,10 @@ import {
   listCampaignMembersForManagement,
   getCharacter,
   getCharacterSheet,
+  previewInviteToken,
   getMe,
   getPublicProfile,
-  joinMission,
   leaveCampaign,
-  leaveMission,
   listCharacters,
   listMyCampaignMemberships,
   listPendingApplications,
@@ -44,15 +45,12 @@ import {
   logout,
   register,
   rejectApplication,
-  reopenMission,
   requestPasswordReset,
   confirmPasswordReset,
   updateAdminCampaign,
   updateAdminGameSystem,
   updateAdminSheetType,
   updateAdminUser,
-  updateMission,
-  updateMissionParticipationType,
   suspendCampaignMember,
   transferOwnership,
   unbanCampaignMember,
@@ -82,8 +80,6 @@ import type {
   CharacterSheetResponse,
   CharacterStatus,
   MyCampaignMembershipResponse,
-  MissionParticipantResponse,
-  MissionParticipationType,
   MissionResponse,
   MissionStatus,
   RoomResponse,
@@ -95,6 +91,11 @@ import type {
   UserProfile,
   AdminGameSystemUpsertRequest,
   AdminSheetTypeUpsertRequest,
+  CampaignInvitePreviewResponse,
+  CreateInviteTokenRequest,
+  InviteCapability,
+  InviteTokenPreviewResponse,
+  InviteTokenResponse,
 } from './types/domain'
 import type { ResourceInvalidationPayload } from './types/realtime'
 
@@ -226,6 +227,12 @@ const catalogEntryDescription = (entries: CampaignCatalogEntry[], code: string |
   return catalogEntryByCode(entries, code)?.description || null
 }
 
+const LEGACY_INVITE_CODE_REGEX = /^[0-9a-fA-F-]{36}$/
+
+function isLegacyInviteCode(value: string) {
+  return LEGACY_INVITE_CODE_REGEX.test(value.trim())
+}
+
 const platformRoleLabel = (role: PlatformRole) => {
   switch (role) {
     case 'ADMIN':
@@ -241,6 +248,18 @@ const ADMIN_PLATFORM_ROLES: PlatformRole[] = ['USER', 'ADMIN', 'SYSTEM']
 type SystemAdminView = 'users' | 'campaigns' | 'sheets'
 
 type CampaignAccessBadgeKind = 'edit' | 'player' | 'outside' | 'pending' | 'blocked' | 'banned'
+type InviteAccessPreview = {
+  campaignId: string
+  campaignName: string
+  campaignSummary: string | null
+  coverImageUrl: string | null
+  founderId: string
+  isOpen: boolean
+  gameSystem: string | null
+  capabilities: InviteCapability[]
+  modeLabel: string
+  modeTone: 'success' | 'warning'
+}
 type BreadcrumbItem = {
   label: string
   target?: Screen
@@ -260,7 +279,6 @@ type RealtimeActionMap = {
   refreshCampaignBlock: () => Promise<void>
   refreshCharacterBlock: () => Promise<void>
   refreshMissions: () => Promise<void>
-  refreshMissionCharacters: () => Promise<void>
   loadDiscoverableCampaigns: () => Promise<void>
   loadCharactersForManagement: () => Promise<void>
   loadPendingForActiveCampaign: () => Promise<void>
@@ -464,183 +482,13 @@ function CampaignStatusBadge({ isActive }: { isActive: boolean }) {
   )
 }
 
-function MissionTinyIcon({ kind }: { kind: 'clock' | 'calendar' | 'group' | 'target' | 'repeat' | 'edit' | 'person' }) {
-  const props = {
-    width: 14,
-    height: 14,
-    viewBox: '0 0 24 24',
-    fill: 'none',
-    stroke: 'currentColor',
-    strokeWidth: 1.9,
-    strokeLinecap: 'round' as const,
-    strokeLinejoin: 'round' as const,
-    'aria-hidden': true,
-    focusable: false,
-  }
-
-  switch (kind) {
-    case 'calendar':
-      return (
-        <svg {...props}>
-          <rect x="4.5" y="6" width="15" height="13" rx="2" />
-          <path d="M8 3.5v4" />
-          <path d="M16 3.5v4" />
-          <path d="M4.5 9h15" />
-        </svg>
-      )
-    case 'group':
-      return (
-        <svg {...props}>
-          <circle cx="8" cy="9" r="2.2" />
-          <circle cx="16" cy="9" r="2.2" />
-          <path d="M4.8 18c.8-2.7 2.9-4.1 5.2-4.1" />
-          <path d="M19.2 18c-.8-2.7-2.9-4.1-5.2-4.1" />
-        </svg>
-      )
-    case 'target':
-      return (
-        <svg {...props}>
-          <circle cx="12" cy="12" r="7.5" />
-          <circle cx="12" cy="12" r="3" />
-        </svg>
-      )
-    case 'repeat':
-      return (
-        <svg {...props}>
-          <path d="M6.5 8.5A7 7 0 0 1 19 11" />
-          <path d="M18 6v5h-5" />
-          <path d="M17.5 15.5A7 7 0 0 1 5 13" />
-          <path d="M6 19v-5h5" />
-        </svg>
-      )
-    case 'edit':
-      return (
-        <svg {...props}>
-          <path d="M4.5 19.5h4l10-10a2.8 2.8 0 0 0-4-4l-10 10z" />
-          <path d="M13.5 7.5l3 3" />
-        </svg>
-      )
-    case 'person':
-      return (
-        <svg {...props}>
-          <circle cx="12" cy="8" r="3" />
-          <path d="M5.5 19c1.2-3.1 3.4-4.7 6.5-4.7s5.3 1.6 6.5 4.7" />
-        </svg>
-      )
-    case 'clock':
-    default:
-      return (
-        <svg {...props}>
-          <circle cx="12" cy="12" r="8" />
-          <path d="M12 8v4l3 2" />
-        </svg>
-      )
-  }
-}
-
-function MissionStatusIcon({ status }: { status: MissionStatus }) {
-  const commonProps = {
-    width: 16,
-    height: 16,
-    viewBox: '0 0 24 24',
-    fill: 'none',
-    stroke: 'currentColor',
-    strokeWidth: 1.9,
-    strokeLinecap: 'round' as const,
-    strokeLinejoin: 'round' as const,
-    'aria-hidden': true,
-    focusable: false,
-  }
-
-  switch (status) {
-    case 'OPEN':
-      return (
-        <svg {...commonProps}>
-          <path d="M7 12h10" />
-          <path d="M12 7l5 5-5 5" />
-          <path d="M5.5 19h13" />
-        </svg>
-      )
-    case 'REOPENED':
-      return (
-        <svg {...commonProps}>
-          <path d="M6.5 8.5A8 8 0 1 1 6 15" />
-          <path d="M6 4.5v4h4" />
-        </svg>
-      )
-    case 'CONFIRMED':
-      return (
-        <svg {...commonProps}>
-          <path d="M5.5 12.5 10 17l8.5-10" />
-          <path d="M4.5 6h15" />
-        </svg>
-      )
-    case 'CANCELLED':
-      return (
-        <svg {...commonProps}>
-          <circle cx="12" cy="12" r="8" />
-          <path d="m8.5 8.5 7 7" />
-        </svg>
-      )
-    case 'CLOSED':
-    default:
-      return (
-        <svg {...commonProps}>
-          <rect x="5" y="10" width="14" height="9" rx="2" />
-          <path d="M8.5 10V8a3.5 3.5 0 0 1 7 0v2" />
-        </svg>
-      )
-  }
-}
-
-function MissionStatusBadge({ status, sessionAt }: { status: MissionStatus; sessionAt?: string | null }) {
-  const label = (() => {
-    switch (status) {
-      case 'OPEN':
-        return 'ATTIVA'
-      case 'REOPENED':
-        return 'ATTIVA'
-      case 'CONFIRMED':
-        return sessionAt && new Date(sessionAt).getTime() <= Date.now() ? 'COMPLETATA' : 'CONFERMATA'
-      case 'CLOSED':
-        return 'CHIUSA'
-      case 'CANCELLED':
-        return 'ANNULLATA'
-      default:
-        return status
-    }
-  })()
-
+function CampaignOpenBadge({ isOpen }: { isOpen: boolean }) {
   return (
-    <span className={`mission-status mission-status-${status.toLowerCase()}`}>
-      <span className="mission-status-icon" aria-hidden="true">
-        <MissionStatusIcon status={status} />
+    <span className={`campaign-open-badge ${isOpen ? 'is-open' : 'is-closed'}`} title={isOpen ? 'Campagna aperta' : 'Campagna chiusa'}>
+      <span className="campaign-open-badge-icon" aria-hidden="true">
+        <Icon name={isOpen ? 'fa-solid fa-circle-check' : 'fa-solid fa-circle-xmark'} />
       </span>
-      <span>{label}</span>
-    </span>
-  )
-}
-
-function MissionParticipationBadge({ participationType }: { participationType: MissionParticipationType }) {
-  const isTitolare = participationType === 'TITOLARE'
-  return (
-    <span className={`mission-participation ${isTitolare ? 'is-titolare' : 'is-backup'}`}>
-      <span className="mission-status-icon" aria-hidden="true">
-        {isTitolare ? (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="8" r="3.2" />
-            <path d="M5.5 19c1.1-3.1 3.5-4.7 6.5-4.7s5.4 1.6 6.5 4.7" />
-          </svg>
-        ) : (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M8 7.5h8" />
-            <path d="M8 12h8" />
-            <path d="M8 16.5h8" />
-            <rect x="5" y="5" width="14" height="14" rx="3" />
-          </svg>
-        )}
-      </span>
-      <span>{isTitolare ? 'TITOLARE' : 'PANCHINA'}</span>
+      <span>{isOpen ? 'APERTA' : 'CHIUSA'}</span>
     </span>
   )
 }
@@ -688,8 +536,6 @@ function App() {
 
   const [missions, setMissions] = useState<MissionResponse[]>([])
   const [selectedMissionId, setSelectedMissionId] = useState('')
-  const [lastMissionAction, setLastMissionAction] = useState<MissionParticipantResponse | null>(null)
-  const [missionCharacters, setMissionCharacters] = useState<Character[]>([])
 
   const [rooms, setRooms] = useState<RoomResponse[]>([])
   const [selectedCampaignMember, setSelectedCampaignMember] = useState<CampaignMembershipResponse | null>(null)
@@ -748,8 +594,7 @@ function App() {
     SUPER_MASTER: 4,
   }
   const canCreateMissions = activeCampaignRole === 'CO_MASTER' || activeCampaignRole === 'MASTER' || activeCampaignRole === 'SUPER_MASTER'
-  const canAccessCampaignManagement =
-    activeCampaignRole === 'CO_MASTER' || activeCampaignRole === 'MASTER' || activeCampaignRole === 'SUPER_MASTER'
+  const canAccessCampaignManagement = activeCampaignRole === 'MASTER' || activeCampaignRole === 'SUPER_MASTER'
   const missionWindowSince = () => new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
   const campaignsForList = useMemo(() => {
     const byId = new Map<string, CampaignDiscoverResponse>()
@@ -778,6 +623,7 @@ function App() {
           isOpen: true,
           isActive: true,
           isSearchable: false,
+          inviteCode: '',
           createdAt: '',
           membershipStatus: membership.memberStatus,
           membershipRole: membership.role,
@@ -886,6 +732,26 @@ function App() {
     }
   }
 
+  const runResult = async <T,>(label: string, task: () => Promise<T>): Promise<T> => {
+    setBusy(true)
+    setError('')
+    try {
+      const result = await task()
+      addEvent(label, 'ok')
+      return result
+    } catch (err) {
+      const message = toMessage(err)
+      setError(message)
+      addEvent(`${label}: ${message}`, 'error')
+      if (isUnauthorized(err)) {
+        handleLogout()
+      }
+      throw err
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const refreshProfile = async () => {
     await run('Profilo caricato', async () => {
       const me = await getMe()
@@ -968,6 +834,63 @@ function App() {
     setRooms(roomValue)
     setSelectedCharacterId((prev) => prev || characterValue[0]?.id || '')
     setSelectedMissionId((prev) => prev || missionValue[0]?.id || '')
+  }
+
+  const normalizeLegacyInvitePreview = (preview: CampaignInvitePreviewResponse): InviteAccessPreview => ({
+    campaignId: preview.id,
+    campaignName: preview.name,
+    campaignSummary: preview.summary || preview.description || null,
+    coverImageUrl: preview.coverImageUrl,
+    founderId: preview.founderId,
+    isOpen: preview.isOpen,
+    gameSystem: preview.gameSystem || null,
+    capabilities: [],
+    modeLabel: 'Richiesta manuale',
+    modeTone: 'warning',
+  })
+
+  const normalizeTokenInvitePreview = (preview: InviteTokenPreviewResponse): InviteAccessPreview => {
+    const autoJoin = preview.capabilities.includes('AUTOJOIN')
+    return {
+      campaignId: preview.campaignId,
+      campaignName: preview.campaignName,
+      campaignSummary: preview.campaignSummary,
+      coverImageUrl: preview.coverImageUrl,
+      founderId: preview.founderId,
+      isOpen: preview.isOpen,
+      gameSystem: preview.gameSystem,
+      capabilities: preview.capabilities,
+      modeLabel: autoJoin ? 'AUTOJOIN attivo' : 'Richiesta manuale',
+      modeTone: autoJoin ? 'success' : 'warning',
+    }
+  }
+
+  const previewInviteAccess = async (inviteValue: string): Promise<InviteAccessPreview> => {
+    const trimmed = inviteValue.trim()
+    if (!trimmed) {
+      throw new Error('Inserisci un codice o token invito.')
+    }
+    if (isLegacyInviteCode(trimmed)) {
+      const preview = await getCampaignByInviteCode(trimmed)
+      return normalizeLegacyInvitePreview(preview)
+    }
+    const preview = await previewInviteToken(trimmed)
+    return normalizeTokenInvitePreview(preview)
+  }
+
+  const applyInviteAccess = async (inviteValue: string) => {
+    const trimmed = inviteValue.trim()
+    if (!trimmed) {
+      throw new Error('Inserisci un codice o token invito.')
+    }
+    if (isLegacyInviteCode(trimmed)) {
+      await applyToCampaignViaInviteCode(trimmed)
+    } else {
+      await applyToCampaignViaInviteToken(trimmed)
+    }
+    const [discover, mine] = await Promise.all([discoverCampaigns(false), listMyCampaignMemberships()])
+    setDiscoverableCampaigns(discover)
+    setMyCampaigns(mine)
   }
 
   const refreshCampaignBlock = async () => {
@@ -1245,7 +1168,6 @@ function App() {
     setCharacterSheetDetail(null)
     setMissions([])
     setSelectedMissionId('')
-    setLastMissionAction(null)
     setRooms([])
     setSelectedCampaignMember(null)
     setSelectedCampaignMemberProfile(null)
@@ -1270,7 +1192,6 @@ function App() {
       setSelectedCampaignMemberProfile(null)
       setCharacterDetail(null)
       setCharacterSheetDetail(null)
-      setLastMissionAction(null)
       setSelectedCharacterId('')
       setSelectedMissionId('')
       await loadCampaignBlockFor(targetCampaignId)
@@ -1389,19 +1310,6 @@ function App() {
     setSelectedMissionId((prev) => (nextMissions.some((item) => item.id === prev) ? prev : nextMissions[0]?.id || ''))
   }
 
-  const refreshMissionCharacters = async () => {
-    const approvedCampaignIds = approvedCampaignMemberships.map((membership) => membership.campaignId)
-    if (approvedCampaignIds.length === 0) {
-      setMissionCharacters([])
-      return
-    }
-
-    const settled = await Promise.allSettled(approvedCampaignIds.map((targetCampaignId) => listCharacters(targetCampaignId)))
-    const combined = settled.flatMap((result) => (result.status === 'fulfilled' ? result.value : []))
-    const nextCharacters = combined.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-    setMissionCharacters(nextCharacters)
-  }
-
   const loadDiscoverableCampaigns = async () => {
     const list = await discoverCampaigns(false)
     setDiscoverableCampaigns(list)
@@ -1420,28 +1328,6 @@ function App() {
         const message = toMessage(err)
         setError(message)
         addEvent(`Missioni caricate: ${message}`, 'error')
-        if (isUnauthorized(err)) handleLogout()
-      }
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [screen, approvedCampaignMemberships, campaignId])
-
-  useEffect(() => {
-    if (!getAccessToken()) return
-    if (screen !== 'Missioni') return
-
-    let cancelled = false
-    void (async () => {
-      try {
-        await refreshMissionCharacters()
-      } catch (err) {
-        if (cancelled) return
-        const message = toMessage(err)
-        setError(message)
-        addEvent(`Personaggi missioni caricati: ${message}`, 'error')
         if (isUnauthorized(err)) handleLogout()
       }
     })()
@@ -1709,6 +1595,12 @@ function App() {
   }, [screen, canAccessCampaignManagement])
 
   useEffect(() => {
+    if (screen !== 'Gestione Campagna') return
+    if (canAccessCampaignManagement) return
+    setScreen('Scheda Campagna')
+  }, [screen, canAccessCampaignManagement])
+
+  useEffect(() => {
     if (!getAccessToken()) return
     if (screen !== 'Scheda Campagna') return
     if (!campaignId.trim()) return
@@ -1866,12 +1758,10 @@ function App() {
     setAdminSheetTypes([])
     setAdminSheetCatalogsLoaded(false)
     setMissions([])
-    setMissionCharacters([])
     setRooms([])
     setPermissions([])
     setCharacterDetail(null)
     setCharacterSheetDetail(null)
-    setLastMissionAction(null)
     setSelectedCharacterId('')
     setSelectedMissionId('')
     setError('')
@@ -1886,7 +1776,6 @@ function App() {
     refreshCampaignBlock: async () => {},
     refreshCharacterBlock: async () => {},
     refreshMissions: async () => {},
-    refreshMissionCharacters: async () => {},
     loadDiscoverableCampaigns: async () => {},
     loadCharactersForManagement: async () => {},
     loadPendingForActiveCampaign: async () => {},
@@ -1911,7 +1800,6 @@ function App() {
       refreshCampaignBlock,
       refreshCharacterBlock,
       refreshMissions,
-      refreshMissionCharacters,
       loadDiscoverableCampaigns,
       loadCharactersForManagement,
       loadPendingForActiveCampaign,
@@ -1953,7 +1841,6 @@ function App() {
     loadPendingForCampaign,
     refreshCampaignBlock,
     refreshCharacterBlock,
-    refreshMissionCharacters,
     refreshMissions,
     refreshProfile,
     campaignsForList,
@@ -2007,7 +1894,6 @@ function App() {
 
     if (snapshot.screen === 'Missioni' && (campaignKeyMatch || missionKeyMatch || characterKeyMatch)) {
       void realtimeActionsRef.current.refreshMissions()
-      void realtimeActionsRef.current.refreshMissionCharacters()
       return
     }
 
@@ -2135,6 +2021,14 @@ function App() {
       return {
         enabled: false,
         title: 'Non hai permessi per gestire gli accessi',
+        showOverlayX: false,
+      }
+    }
+
+    if (value === 'Gestione Campagna' && !canAccessCampaignManagement) {
+      return {
+        enabled: false,
+        title: 'Non hai permessi per gestire la campagna',
         showOverlayX: false,
       }
     }
@@ -3142,6 +3036,10 @@ function App() {
                 setMyCampaigns(mine)
               })
             }
+            onPreviewInviteAccess={(inviteValue) => previewInviteAccess(inviteValue)}
+            onApplyInviteAccess={(inviteValue) => run('Richiesta accesso invito inviata', async () => {
+              await applyInviteAccess(inviteValue)
+            })}
             onCreateCampaign={() => setScreen('Crea Campagna')}
             activeCampaignName={campaign?.name || activeCampaignMembership?.campaignName || campaignId || ''}
           />
@@ -3252,15 +3150,10 @@ function App() {
         {screen === 'Missioni' && (
           <MissionsPage
             missions={missions}
-            missionCharacters={missionCharacters}
             selectedMission={selectedMission}
-            lastMissionAction={lastMissionAction}
             canCreateMissions={canCreateMissions}
-            currentUserId={profile?.id || ''}
             activeCampaignId={campaignId.trim()}
-            activeCampaignRole={activeCampaignRole}
             campaignNameById={campaignNameById}
-            preferredCharacterId={activeCampaignCharacterId}
             onCreate={(payload) =>
               run('Missione creata', async () => {
                 const created = await createMission(campaignId, payload)
@@ -3269,51 +3162,6 @@ function App() {
               })
             }
             onSelectMission={setSelectedMissionId}
-            onReopen={(mission) =>
-              run('Missione riaperta', async () => {
-                await reopenMission(mission.campaignId, mission.id)
-                await refreshMissions()
-              })
-            }
-            onClose={(mission) =>
-              run('Missione chiusa', async () => {
-                await closeMission(mission.campaignId, mission.id)
-                await refreshMissions()
-              })
-            }
-            onUpdate={(mission, payload) =>
-              run('Missione aggiornata', async () => {
-                await updateMission(mission.campaignId, mission.id, payload)
-                await refreshMissions()
-              })
-            }
-            onCancel={(mission) =>
-              run('Missione cancellata', async () => {
-                await cancelMission(mission.campaignId, mission.id)
-                await refreshMissions()
-              })
-            }
-            onJoin={(mission, characterId, participationType) =>
-              run('Join missione completato', async () => {
-                const result = await joinMission(mission.campaignId, mission.id, { characterId, participationType })
-                setLastMissionAction(result)
-                await refreshMissions()
-              })
-            }
-            onLeave={(mission) =>
-              run('Leave missione completato', async () => {
-                const result = await leaveMission(mission.campaignId, mission.id)
-                setLastMissionAction(result)
-                await refreshMissions()
-              })
-            }
-            onUpdateParticipationType={(mission, participationType) =>
-              run('Ruolo missione aggiornato', async () => {
-                const result = await updateMissionParticipationType(mission.campaignId, mission.id, { participationType })
-                setLastMissionAction(result)
-                await refreshMissions()
-              })
-            }
           />
         )}
 
@@ -3457,6 +3305,14 @@ function App() {
               run('Ownership trasferita', async () => {
                 const updated = await transferOwnership(campaignId, newOwnerId)
                 setCampaign(updated)
+              })
+            }
+            onCreateInviteToken={(payload) =>
+              runResult('Token invito creato', async () => {
+                if (!campaignId.trim()) {
+                  throw new Error('Campagna non attiva.')
+                }
+                return createInviteToken(campaignId, payload)
               })
             }
             currentUserId={profile.id}
@@ -3850,6 +3706,8 @@ function CampaignListPage({
   onDiscover,
   onOpenCampaign,
   onApplyCampaign,
+  onApplyInviteAccess,
+  onPreviewInviteAccess,
   onCreateCampaign,
   activeCampaignName,
 }: {
@@ -3860,11 +3718,17 @@ function CampaignListPage({
   onDiscover: () => void
   onOpenCampaign: (campaignId: string) => void
   onApplyCampaign: (campaignId: string) => void
+  onApplyInviteAccess: (inviteValue: string) => Promise<void>
+  onPreviewInviteAccess: (inviteValue: string) => Promise<InviteAccessPreview>
   onCreateCampaign: () => void
   activeCampaignName: string
 }) {
   const [membershipFilter, setMembershipFilter] = useState<'all' | 'inside' | 'outside' | 'pending' | 'blocked'>('all')
   const [roleFilter, setRoleFilter] = useState<'all' | CampaignRole>('all')
+  const [inviteValue, setInviteValue] = useState('')
+  const [invitePreview, setInvitePreview] = useState<InviteAccessPreview | null>(null)
+  const [inviteFeedback, setInviteFeedback] = useState('')
+  const [inviteBusy, setInviteBusy] = useState(false)
 
   const filteredCampaigns = useMemo(() => {
     return campaigns.filter((item) => {
@@ -3883,6 +3747,47 @@ function CampaignListPage({
     })
   }, [campaigns, membershipFilter, roleFilter])
 
+  const previewCampaignByCode = async () => {
+    const trimmed = inviteValue.trim()
+    if (!trimmed) {
+      setInvitePreview(null)
+      setInviteFeedback('Inserisci un codice o token invito.')
+      return
+    }
+
+    setInviteBusy(true)
+    setInviteFeedback('')
+    try {
+      const preview = await onPreviewInviteAccess(trimmed)
+      setInvitePreview(preview)
+      setInviteFeedback(preview.modeLabel)
+    } catch (err) {
+      setInvitePreview(null)
+      setInviteFeedback(toMessage(err))
+    } finally {
+      setInviteBusy(false)
+    }
+  }
+
+  const applyCampaignByCode = async () => {
+    const trimmed = inviteValue.trim()
+    if (!trimmed) {
+      setInviteFeedback('Inserisci un codice o token invito.')
+      return
+    }
+
+    setInviteBusy(true)
+    setInviteFeedback('')
+    try {
+      await onApplyInviteAccess(trimmed)
+      setInviteFeedback('Richiesta inviata.')
+    } catch (err) {
+      setInviteFeedback(toMessage(err))
+    } finally {
+      setInviteBusy(false)
+    }
+  }
+
   return (
     <section className="panel">
       <div className="row-between">
@@ -3895,6 +3800,65 @@ function CampaignListPage({
             Crea campagna
           </button>
         </div>
+      </div>
+      <div className="campaign-invite-panel">
+        <div className="campaign-invite-panel-head">
+          <div>
+            <p className="section-title">Accedi con invito</p>
+            <p className="muted">
+              Usa un codice legacy o un token opaco. Il backend decide se l'accesso è manuale o automatico.
+            </p>
+          </div>
+          <span className="readonly-chip">Accesso diretto</span>
+        </div>
+        <div className="campaign-invite-form">
+          <label className="campaign-invite-input">
+            <FieldLabel icon="fa-solid fa-key" label="Codice o token" />
+            <input
+              className="invite-code-input"
+              value={inviteValue}
+              placeholder="Incolla un UUID o un token invito"
+              onChange={(event) => {
+                setInviteValue(event.target.value)
+                if (inviteFeedback) setInviteFeedback('')
+                if (invitePreview) setInvitePreview(null)
+              }}
+            />
+          </label>
+          <div className="campaign-invite-actions">
+            <button type="button" className="secondary-btn" onClick={previewCampaignByCode} disabled={inviteBusy}>
+              <Icon name="fa-solid fa-magnifying-glass" />
+              Verifica
+            </button>
+            <button type="button" className="primary-btn" onClick={applyCampaignByCode} disabled={inviteBusy}>
+              <Icon name="fa-solid fa-paper-plane" />
+              Richiedi accesso
+            </button>
+          </div>
+        </div>
+        {inviteFeedback && <p className="muted campaign-invite-feedback">{inviteFeedback}</p>}
+        {invitePreview && (
+          <div className="campaign-invite-preview">
+            <div className="row-between campaign-invite-preview-head">
+              <div className="data-table-primary">
+                <p className="data-table-title">{invitePreview.campaignName}</p>
+                <p className="data-table-secondary">{invitePreview.campaignSummary || 'Nessuna descrizione'}</p>
+              </div>
+              <div className="campaign-invite-preview-badges">
+                <span className={`status ${invitePreview.modeTone === 'success' ? 'status-success' : 'status-warning'}`}>
+                  {invitePreview.modeLabel}
+                </span>
+                <span className={`status ${invitePreview.isOpen ? 'status-success' : 'status-neutral'}`}>
+                  {invitePreview.isOpen ? 'Aperta' : 'Chiusa'}
+                </span>
+              </div>
+            </div>
+            <p className="data-table-meta">
+              {invitePreview.gameSystem}
+              {invitePreview.capabilities.length > 0 ? ` • ${invitePreview.capabilities.join(', ')}` : ' • Richiesta manuale'}
+            </p>
+          </div>
+        )}
       </div>
       <div className="campaign-list-filters">
         <label className="campaign-list-filter">
@@ -3944,6 +3908,9 @@ function CampaignListPage({
                 <td>
                   <div className="data-table-primary">
                     <p className="data-table-title">{item.name}</p>
+                    <div className="campaign-title-badges">
+                      <CampaignOpenBadge isOpen={item.isOpen} />
+                    </div>
                     <p className="data-table-secondary">{item.summary || item.description || 'Nessuna descrizione'}</p>
                     {item.founderId && (
                       <p className="data-table-meta">Creatore: {founderNames[item.founderId] || item.founderId}</p>
@@ -4229,6 +4196,8 @@ function DataTable<T>({
   sortBy,
   sortDirection,
   onSortChange,
+  onRowClick,
+  selectedRowKey,
 }: {
   columns: DataTableColumn[]
   rows: T[]
@@ -4239,6 +4208,8 @@ function DataTable<T>({
   sortBy?: string | null
   sortDirection?: 'asc' | 'desc'
   onSortChange?: (sortKey: string) => void
+  onRowClick?: (row: T) => void
+  selectedRowKey?: string | null
 }) {
   return (
     <div className={`data-table-shell ${className || ''}`.trim()}>
@@ -4290,7 +4261,31 @@ function DataTable<T>({
                 </td>
               </tr>
             ) : (
-              rows.map((row) => <Fragment key={getRowKey(row)}>{renderRow(row)}</Fragment>)
+              rows.map((row) => {
+                const rowKey = getRowKey(row)
+                const renderedRow = renderRow(row)
+                const rowClassName = rowKey === selectedRowKey ? 'is-selected' : undefined
+                if (isValidElement(renderedRow)) {
+                  const rowElement = renderedRow as ReactElement<any>
+                  return cloneElement(rowElement, {
+                    key: rowKey,
+                    className: [rowElement.props.className, rowClassName].filter(Boolean).join(' ') || undefined,
+                    onClick: onRowClick ? () => onRowClick(row) : rowElement.props.onClick,
+                    onKeyDown: onRowClick
+                      ? (event: KeyboardEvent<HTMLTableRowElement>) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault()
+                            onRowClick(row)
+                          }
+                        }
+                      : rowElement.props.onKeyDown,
+                    tabIndex: onRowClick ? 0 : rowElement.props.tabIndex,
+                    role: onRowClick ? 'button' : rowElement.props.role,
+                    'aria-selected': rowClassName ? true : rowElement.props['aria-selected'],
+                  })
+                }
+                return <Fragment key={rowKey}>{renderedRow}</Fragment>
+              })
             )}
           </tbody>
         </table>
@@ -5764,35 +5759,18 @@ function ApprovalPage({
 
 function MissionsPage({
   missions,
-  missionCharacters,
   selectedMission,
-  lastMissionAction,
   canCreateMissions,
-  currentUserId,
   activeCampaignId,
-  activeCampaignRole,
   campaignNameById,
-  preferredCharacterId,
   onCreate,
   onSelectMission,
-  onReopen,
-  onClose,
-  onUpdate,
-  onCancel,
-  onJoin,
-  onLeave,
-  onUpdateParticipationType,
 }: {
   missions: MissionResponse[]
-  missionCharacters: Character[]
   selectedMission: MissionResponse | null
-  lastMissionAction: MissionParticipantResponse | null
   canCreateMissions: boolean
-  currentUserId: string
   activeCampaignId: string
-  activeCampaignRole: CampaignRole | null
   campaignNameById: Record<string, string>
-  preferredCharacterId: string
   onCreate: (payload: {
     title: string
     description: string
@@ -5804,93 +5782,123 @@ function MissionsPage({
     autoReopenOnDrop: boolean
   }) => void
   onSelectMission: (id: string) => void
-  onReopen: (mission: MissionResponse) => void
-  onClose: (mission: MissionResponse) => void
-  onUpdate: (
-    mission: MissionResponse,
-    payload: {
-      title: string
-      description: string
-      isMultiSession: boolean
-      sessionAt: string
-      closesAt: string
-      quorum: number | null
-      maxParticipants: number | null
-      autoReopenOnDrop: boolean
-    },
-  ) => void
-  onCancel: (mission: MissionResponse) => void
-  onJoin: (mission: MissionResponse, characterId: string, participationType: 'TITOLARE' | 'NON_TITOLARE') => void
-  onLeave: (mission: MissionResponse) => void
-  onUpdateParticipationType: (mission: MissionResponse, participationType: 'TITOLARE' | 'NON_TITOLARE') => void
 }) {
+  const missionTimeConfig = {
+    hourMin: 0,
+    hourMax: 23,
+    minuteStep: 15,
+    defaultTime: '15:30',
+  } as const
+
   type MissionDraft = {
     title: string
     description: string
     isMultiSession: boolean
-    sessionAt: string
-    closesAt: string
+    sessionDate: string
+    sessionTime: string
+    closesDate: string
+    closesTime: string
     quorum: string
     maxParticipants: string
     autoReopenOnDrop: boolean
   }
 
-  const defaultDraft = (): MissionDraft => ({
-    title: 'Nuova sessione',
-    description: '',
-    isMultiSession: false,
-    sessionAt: '',
-    closesAt: '',
-    quorum: '3',
-    maxParticipants: '5',
-    autoReopenOnDrop: true,
-  })
+  const pad2 = (value: number) => value.toString().padStart(2, '0')
 
-  const draftFromMission = (mission: MissionResponse): MissionDraft => ({
-    title: mission.title,
-    description: mission.description || '',
-    isMultiSession: mission.isMultiSession,
-    sessionAt: mission.sessionAt ? mission.sessionAt.slice(0, 16) : '',
-    closesAt: mission.closesAt ? mission.closesAt.slice(0, 16) : '',
-    quorum: mission.quorum?.toString() || '',
-    maxParticipants: mission.maxParticipants?.toString() || '',
-    autoReopenOnDrop: mission.autoReopenOnDrop,
-  })
+  const formatDateInputValue = (value: string | Date): string => {
+    const date = value instanceof Date ? value : new Date(value)
+    if (Number.isNaN(date.getTime())) return ''
+    return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`
+  }
 
-  const [mode, setMode] = useState<'browse' | 'create' | 'edit'>('browse')
-  const [now, setNow] = useState(() => Date.now())
+  const addDaysToDate = (base: Date, days: number) => {
+    const next = new Date(base)
+    next.setDate(next.getDate() + days)
+    return next
+  }
+
+  const combineDateAndTime = (dateValue: string, timeValue: string): string | null => {
+    const trimmedDate = dateValue.trim()
+    const trimmedTime = timeValue.trim()
+    if (!trimmedDate || !trimmedTime) return null
+    const date = new Date(`${trimmedDate}T${trimmedTime}:00`)
+    if (Number.isNaN(date.getTime())) return null
+    return date.toISOString()
+  }
+
+  const missionMinutes = Array.from({ length: 60 / missionTimeConfig.minuteStep }, (_, index) => index * missionTimeConfig.minuteStep)
+
+  const parseTimeParts = (value: string) => {
+    const [hourText = '0', minuteText = '0'] = value.split(':')
+    const hour = Number.parseInt(hourText, 10)
+    const minute = Number.parseInt(minuteText, 10)
+    return {
+      hour: Number.isFinite(hour) ? Math.min(Math.max(hour, missionTimeConfig.hourMin), missionTimeConfig.hourMax) : missionTimeConfig.hourMin,
+      minute: missionMinutes.includes(minute) ? minute : 0,
+    }
+  }
+
+  const formatTimeParts = (hour: number, minute: number) => `${pad2(hour)}:${pad2(minute)}`
+
+  const clampHour = (hour: number) => Math.min(Math.max(hour, missionTimeConfig.hourMin), missionTimeConfig.hourMax)
+
+  const shiftHour = (value: string, direction: 1 | -1) => {
+    const { hour, minute } = parseTimeParts(value)
+    return formatTimeParts(clampHour(hour + direction), minute)
+  }
+
+  const shiftMinute = (value: string, direction: 1 | -1) => {
+    const { hour, minute } = parseTimeParts(value)
+    const currentIndex = missionMinutes.indexOf(minute)
+    const nextIndex = currentIndex + direction
+    if (nextIndex < 0) {
+      if (hour === missionTimeConfig.hourMin) return formatTimeParts(hour, missionMinutes[0])
+      return formatTimeParts(hour - 1, missionMinutes[missionMinutes.length - 1])
+    }
+    if (nextIndex >= missionMinutes.length) {
+      if (hour === missionTimeConfig.hourMax) return formatTimeParts(hour, missionMinutes[missionMinutes.length - 1])
+      return formatTimeParts(hour + 1, missionMinutes[0])
+    }
+    return formatTimeParts(hour, missionMinutes[nextIndex])
+  }
+
+  const shiftCount = (value: string, direction: 1 | -1, minValue = 1, maxValue = 999) => {
+    const parsed = Number.parseInt(value, 10)
+    const current = Number.isFinite(parsed) ? parsed : minValue
+    return String(Math.min(Math.max(current + direction, minValue), maxValue))
+  }
+
+  const defaultDraft = (): MissionDraft => {
+    const sessionDate = addDaysToDate(new Date(), 3)
+    const sessionTime = missionTimeConfig.defaultTime
+    const closeDate = addDaysToDate(sessionDate, -2)
+      return {
+      title: '',
+      description: '',
+      isMultiSession: false,
+      sessionDate: formatDateInputValue(sessionDate),
+      sessionTime,
+      closesDate: formatDateInputValue(closeDate),
+      closesTime: sessionTime,
+      quorum: '3',
+      maxParticipants: '5',
+      autoReopenOnDrop: true,
+    }
+  }
+
+  const [mode, setMode] = useState<'browse' | 'create'>('browse')
   const [createDraft, setCreateDraft] = useState<MissionDraft>(defaultDraft)
   const [createError, setCreateError] = useState('')
-  const [editDraft, setEditDraft] = useState<MissionDraft>(defaultDraft)
-  const [editError, setEditError] = useState('')
-  const [characterId, setCharacterId] = useState('')
-  const [participationType, setParticipationType] = useState<'TITOLARE' | 'NON_TITOLARE'>('TITOLARE')
   const [searchText, setSearchText] = useState('')
   const [campaignFilter, setCampaignFilter] = useState<'all' | string>('all')
   const [statusView, setStatusView] = useState<'joinable' | 'all'>('joinable')
 
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 1000)
-    return () => window.clearInterval(timer)
-  }, [])
-
-  useEffect(() => {
-    if (mode === 'edit' && selectedMission) {
-      setEditDraft(draftFromMission(selectedMission))
-      setEditError('')
-    }
     if (mode === 'create') {
       setCreateDraft(defaultDraft())
       setCreateError('')
     }
-  }, [mode, selectedMission])
-
-  useEffect(() => {
-    if (!selectedMission) return
-    if (mode !== 'browse' && selectedMission.status === 'CANCELLED') {
-      setMode('browse')
-    }
-  }, [mode, selectedMission])
+  }, [mode])
 
   useEffect(() => {
     if (mode !== 'create') return
@@ -5905,10 +5913,10 @@ function MissionsPage({
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null
   }
 
-  const toIsoTimestamp = (value: string): string | null => {
-    const trimmed = value.trim()
-    if (!trimmed) return null
-    const date = new Date(trimmed)
+  const toIsoTimestamp = (dateValue: string, timeValue: string): string | null => {
+    const combined = combineDateAndTime(dateValue, timeValue)
+    if (!combined) return null
+    const date = new Date(combined)
     if (Number.isNaN(date.getTime())) return null
     return date.toISOString()
   }
@@ -5927,50 +5935,12 @@ function MissionsPage({
     return new Intl.DateTimeFormat('it-IT', { hour: '2-digit', minute: '2-digit' }).format(date)
   }
 
-  const formatCountdown = (value: string | null | undefined): string => {
-    if (!value) return 'Chiusura manuale'
-    const target = new Date(value).getTime()
-    if (Number.isNaN(target)) return value
-    const diff = target - now
-    if (diff <= 0) return 'Tempo scaduto'
-    const totalMinutes = Math.floor(diff / 60000)
-    const days = Math.floor(totalMinutes / 1440)
-    const hours = Math.floor((totalMinutes % 1440) / 60)
-    const minutes = totalMinutes % 60
-    const parts = [
-      days > 0 ? `${days}g` : null,
-      hours > 0 || days > 0 ? `${hours}h` : null,
-      `${minutes}m`,
-    ].filter(Boolean)
-    return parts.join(' ')
+  const formatMissionParticipants = (mission: MissionResponse) => {
+    const current = Number.isFinite(mission.participantCount) ? mission.participantCount : 0
+    const total = mission.maxParticipants ?? '∞'
+    return `${current}/${total}`
   }
 
-  const selectedMissionIsJoinable = selectedMission?.status === 'OPEN' || selectedMission?.status === 'REOPENED'
-  const selectedMissionCanBeClosed =
-    selectedMission && selectedMission.campaignId === activeCampaignId
-      ? selectedMission.status !== 'CLOSED' && selectedMission.status !== 'CANCELLED'
-      : false
-  const selectedMissionCanBeReopened = selectedMission
-    ? selectedMission.campaignId === activeCampaignId && (selectedMission.status === 'CLOSED' || selectedMission.status === 'CONFIRMED')
-    : false
-  const selectedMissionCanBeEdited =
-    !!selectedMission &&
-    selectedMission.campaignId === activeCampaignId &&
-    selectedMission.status !== 'CANCELLED' &&
-    !!currentUserId &&
-    (selectedMission.createdBy === currentUserId
-      ? activeCampaignRole === 'CO_MASTER' || activeCampaignRole === 'MASTER' || activeCampaignRole === 'SUPER_MASTER'
-      : activeCampaignRole === 'SUPER_MASTER')
-  const selectedMissionCanBeCancelled =
-    !!selectedMission && selectedMission.campaignId === activeCampaignId && activeCampaignRole === 'SUPER_MASTER' && selectedMission.status !== 'CANCELLED'
-
-  const activeCharacters = useMemo(
-    () =>
-      missionCharacters.filter(
-        (character) => !character.isNpc && character.characterStatus === 'ACTIVE' && character.campaignId === selectedMission?.campaignId,
-      ),
-    [missionCharacters, selectedMission?.campaignId],
-  )
   const campaignOptions = useMemo(
     () =>
       Array.from(
@@ -5995,23 +5965,9 @@ function MissionsPage({
     )
   })
 
-  useEffect(() => {
-    if (activeCharacters.length === 0) {
-      if (characterId) setCharacterId('')
-      return
-    }
-    if (preferredCharacterId && activeCharacters.some((character) => character.id === preferredCharacterId)) {
-      setCharacterId(preferredCharacterId)
-      return
-    }
-    if (!activeCharacters.some((character) => character.id === characterId)) {
-      setCharacterId(activeCharacters[0]?.id || '')
-    }
-  }, [activeCharacters, characterId, preferredCharacterId])
-
   const submitCreate = () => {
-    const sessionIso = toIsoTimestamp(createDraft.sessionAt)
-    const closesIso = toIsoTimestamp(createDraft.closesAt)
+    const sessionIso = toIsoTimestamp(createDraft.sessionDate, createDraft.sessionTime)
+    const closesIso = toIsoTimestamp(createDraft.closesDate, createDraft.closesTime)
     if (sessionIso && closesIso && new Date(closesIso).getTime() >= new Date(sessionIso).getTime()) {
       setCreateError('La chiusura iscrizioni deve precedere la data della sessione.')
       return
@@ -6027,29 +5983,6 @@ function MissionsPage({
       quorum: parseOptionalInt(createDraft.quorum),
       maxParticipants: parseOptionalInt(createDraft.maxParticipants),
       autoReopenOnDrop: createDraft.autoReopenOnDrop,
-    })
-    setMode('browse')
-  }
-
-  const submitEdit = () => {
-    if (!selectedMission) return
-    const sessionIso = toIsoTimestamp(editDraft.sessionAt)
-    const closesIso = toIsoTimestamp(editDraft.closesAt)
-    if (sessionIso && closesIso && new Date(closesIso).getTime() >= new Date(sessionIso).getTime()) {
-      setEditError('La chiusura iscrizioni deve precedere la data della sessione.')
-      return
-    }
-
-    setEditError('')
-    onUpdate(selectedMission, {
-      title: editDraft.title,
-      description: editDraft.description,
-      isMultiSession: editDraft.isMultiSession,
-      sessionAt: sessionIso || '',
-      closesAt: closesIso || '',
-      quorum: parseOptionalInt(editDraft.quorum),
-      maxParticipants: parseOptionalInt(editDraft.maxParticipants),
-      autoReopenOnDrop: editDraft.autoReopenOnDrop,
     })
     setMode('browse')
   }
@@ -6074,17 +6007,8 @@ function MissionsPage({
           <FieldLabel icon="fa-solid fa-pen-to-square" label="Titolo sessione" />
           <input
             value={draft.title}
-            placeholder="Titolo breve della sessione"
+            placeholder="Suggerimento titolo"
             onChange={(event) => setDraft((prev) => ({ ...prev, title: event.target.value }))}
-          />
-        </label>
-        <label>
-          <FieldLabel icon="fa-solid fa-calendar-day" label="Giorno della sessione" />
-          <input
-            type="datetime-local"
-            step={900}
-            value={draft.sessionAt}
-            onChange={(event) => setDraft((prev) => ({ ...prev, sessionAt: event.target.value }))}
           />
         </label>
       </div>
@@ -6097,53 +6021,204 @@ function MissionsPage({
           onChange={(event) => setDraft((prev) => ({ ...prev, description: event.target.value }))}
         />
       </label>
-      <div className="form-grid">
-        <label>
-          <FieldLabel icon="fa-solid fa-hourglass-end" label="Tempo prima della chiusura" />
-          <input
-            type="datetime-local"
-            step={900}
-            value={draft.closesAt}
-            onChange={(event) => setDraft((prev) => ({ ...prev, closesAt: event.target.value }))}
-          />
-        </label>
-        <label>
-          <FieldLabel icon="fa-solid fa-users" label="Quorum titolari" />
-          <input
-            value={draft.quorum}
-            inputMode="numeric"
-            placeholder="3"
-            onChange={(event) => setDraft((prev) => ({ ...prev, quorum: event.target.value }))}
-          />
-        </label>
+      <div className="mission-settings-table">
+        <div className="mission-settings-section">
+          <div className="mission-settings-section-head">
+            <div>
+              <h4 className="section-title">Programmazione</h4>
+              <p className="muted">Data, ora di sessione e chiusura iscrizioni.</p>
+            </div>
+          </div>
+          <div className="mission-settings-row">
+            <div className="mission-settings-copy">
+              <FieldLabel icon="fa-solid fa-calendar-day" label="Giorno della sessione" />
+              <p className="muted">Tre giorni avanti di default.</p>
+            </div>
+            <div className="mission-time-inline">
+              <label className="mission-inline-field">
+                <span className="mission-inline-caption">Data</span>
+                <input
+                  type="date"
+                  value={draft.sessionDate}
+                  onChange={(event) => setDraft((prev) => ({ ...prev, sessionDate: event.target.value }))}
+                />
+              </label>
+              <label className="mission-inline-field mission-time-field">
+                <span className="mission-inline-caption">Ora</span>
+                <div className="mission-time-stepper">
+                  <button
+                    type="button"
+                    className="secondary-btn mission-time-step-btn"
+                    onClick={() => setDraft((prev) => ({ ...prev, sessionTime: shiftHour(prev.sessionTime, -1) }))}
+                  >
+                    <Icon name="fa-solid fa-minus" />
+                  </button>
+                  <span className="mission-time-step-value">{pad2(parseTimeParts(draft.sessionTime || missionTimeConfig.defaultTime).hour)}</span>
+                  <button
+                    type="button"
+                    className="secondary-btn mission-time-step-btn"
+                    onClick={() => setDraft((prev) => ({ ...prev, sessionTime: shiftHour(prev.sessionTime, 1) }))}
+                  >
+                    <Icon name="fa-solid fa-plus" />
+                  </button>
+                </div>
+              </label>
+              <label className="mission-inline-field mission-time-field">
+                <span className="mission-inline-caption">Minuti</span>
+                <div className="mission-time-stepper">
+                  <button
+                    type="button"
+                    className="secondary-btn mission-time-step-btn"
+                    onClick={() => setDraft((prev) => ({ ...prev, sessionTime: shiftMinute(prev.sessionTime, -1) }))}
+                  >
+                    <Icon name="fa-solid fa-minus" />
+                  </button>
+                  <span className="mission-time-step-value">
+                    {pad2(parseTimeParts(draft.sessionTime || missionTimeConfig.defaultTime).minute)}
+                  </span>
+                  <button
+                    type="button"
+                    className="secondary-btn mission-time-step-btn"
+                    onClick={() => setDraft((prev) => ({ ...prev, sessionTime: shiftMinute(prev.sessionTime, 1) }))}
+                  >
+                    <Icon name="fa-solid fa-plus" />
+                  </button>
+                </div>
+              </label>
+            </div>
+          </div>
+          <div className="mission-settings-row">
+            <div className="mission-settings-copy">
+              <FieldLabel icon="fa-solid fa-hourglass-end" label="Chiusura iscrizioni" />
+              <p className="muted">Di default chiude 48 ore prima della sessione.</p>
+            </div>
+            <div className="mission-time-inline">
+              <label className="mission-inline-field">
+                <span className="mission-inline-caption">Data</span>
+                <input
+                  type="date"
+                  value={draft.closesDate}
+                  onChange={(event) => setDraft((prev) => ({ ...prev, closesDate: event.target.value }))}
+                />
+              </label>
+              <label className="mission-inline-field mission-time-field">
+                <span className="mission-inline-caption">Ora</span>
+                <div className="mission-time-stepper">
+                  <button
+                    type="button"
+                    className="secondary-btn mission-time-step-btn"
+                    onClick={() => setDraft((prev) => ({ ...prev, closesTime: shiftHour(prev.closesTime, -1) }))}
+                  >
+                    <Icon name="fa-solid fa-minus" />
+                  </button>
+                  <span className="mission-time-step-value">{pad2(parseTimeParts(draft.closesTime || missionTimeConfig.defaultTime).hour)}</span>
+                  <button
+                    type="button"
+                    className="secondary-btn mission-time-step-btn"
+                    onClick={() => setDraft((prev) => ({ ...prev, closesTime: shiftHour(prev.closesTime, 1) }))}
+                  >
+                    <Icon name="fa-solid fa-plus" />
+                  </button>
+                </div>
+              </label>
+              <label className="mission-inline-field mission-time-field">
+                <span className="mission-inline-caption">Minuti</span>
+                <div className="mission-time-stepper">
+                  <button
+                    type="button"
+                    className="secondary-btn mission-time-step-btn"
+                    onClick={() => setDraft((prev) => ({ ...prev, closesTime: shiftMinute(prev.closesTime, -1) }))}
+                  >
+                    <Icon name="fa-solid fa-minus" />
+                  </button>
+                  <span className="mission-time-step-value">
+                    {pad2(parseTimeParts(draft.closesTime || missionTimeConfig.defaultTime).minute)}
+                  </span>
+                  <button
+                    type="button"
+                    className="secondary-btn mission-time-step-btn"
+                    onClick={() => setDraft((prev) => ({ ...prev, closesTime: shiftMinute(prev.closesTime, 1) }))}
+                  >
+                    <Icon name="fa-solid fa-plus" />
+                  </button>
+                </div>
+              </label>
+            </div>
+          </div>
+          <div className="mission-settings-row mission-settings-row--compact">
+            <div className="mission-settings-copy">
+              <FieldLabel icon="fa-solid fa-users" label="Capienza" />
+              <p className="muted">Quorum titolari e massimo partecipanti.</p>
+            </div>
+            <div className="mission-capacity-inline">
+              <label className="mission-inline-field mission-count-field">
+                <span className="mission-inline-caption">Quorum</span>
+                <div className="mission-count-stepper">
+                  <button
+                    type="button"
+                    className="secondary-btn mission-time-step-btn"
+                    onClick={() => setDraft((prev) => ({ ...prev, quorum: shiftCount(prev.quorum, -1, 1, 99) }))}
+                  >
+                    <Icon name="fa-solid fa-minus" />
+                  </button>
+                  <span className="mission-time-step-value">{draft.quorum || '3'}</span>
+                  <button
+                    type="button"
+                    className="secondary-btn mission-time-step-btn"
+                    onClick={() => setDraft((prev) => ({ ...prev, quorum: shiftCount(prev.quorum, 1, 1, 99) }))}
+                  >
+                    <Icon name="fa-solid fa-plus" />
+                  </button>
+                </div>
+              </label>
+              <label className="mission-inline-field mission-count-field">
+                <span className="mission-inline-caption">Max partecipanti</span>
+                <div className="mission-count-stepper">
+                  <button
+                    type="button"
+                    className="secondary-btn mission-time-step-btn"
+                    onClick={() => setDraft((prev) => ({ ...prev, maxParticipants: shiftCount(prev.maxParticipants, -1, 1, 999) }))}
+                  >
+                    <Icon name="fa-solid fa-minus" />
+                  </button>
+                  <span className="mission-time-step-value">{draft.maxParticipants || '5'}</span>
+                  <button
+                    type="button"
+                    className="secondary-btn mission-time-step-btn"
+                    onClick={() => setDraft((prev) => ({ ...prev, maxParticipants: shiftCount(prev.maxParticipants, 1, 1, 999) }))}
+                  >
+                    <Icon name="fa-solid fa-plus" />
+                  </button>
+                </div>
+              </label>
+            </div>
+          </div>
+        </div>
       </div>
-      <div className="form-grid">
-        <label>
-          <FieldLabel icon="fa-solid fa-users-between-lines" label="Max partecipanti" />
-          <input
-            value={draft.maxParticipants}
-            inputMode="numeric"
-            placeholder="5"
-            onChange={(event) => setDraft((prev) => ({ ...prev, maxParticipants: event.target.value }))}
-          />
-        </label>
-        <label className="checkbox-row mission-checkbox">
-          <input
-            checked={draft.isMultiSession}
-            type="checkbox"
-            onChange={(event) => setDraft((prev) => ({ ...prev, isMultiSession: event.target.checked }))}
-          />
-          Sessione multipla
-        </label>
-      </div>
-      <label className="checkbox-row mission-checkbox">
-        <input
-          checked={draft.autoReopenOnDrop}
-          type="checkbox"
-          onChange={(event) => setDraft((prev) => ({ ...prev, autoReopenOnDrop: event.target.checked }))}
-        />
-        Riapri automaticamente se si scende sotto quorum
-      </label>
+      <CampaignToggleSettingsTable
+        title="Opzioni sessione"
+        description="Impostazioni rapide della missione."
+        rows={[
+          {
+            key: 'multi-session',
+            title: 'Sessione multipla',
+            description: 'Consente più sessioni collegate alla stessa missione.',
+            active: draft.isMultiSession,
+            activeLabel: 'ON',
+            inactiveLabel: 'OFF',
+            onToggle: () => setDraft((prev) => ({ ...prev, isMultiSession: !prev.isMultiSession })),
+          },
+          {
+            key: 'auto-reopen',
+            title: 'Riapri automaticamente',
+            description: 'Riapre la missione se si scende sotto quorum.',
+            active: draft.autoReopenOnDrop,
+            activeLabel: 'ON',
+            inactiveLabel: 'OFF',
+            onToggle: () => setDraft((prev) => ({ ...prev, autoReopenOnDrop: !prev.autoReopenOnDrop })),
+          },
+        ]}
+      />
       {error && <p className="form-error">{error}</p>}
       <div className="inline-actions mission-actions">
         <button type="button" className="primary-btn" onClick={onSubmit}>
@@ -6212,223 +6287,50 @@ function MissionsPage({
         </div>
       </div>
 
-      <div className="mission-grid">
-        <div className="subpanel mission-block mission-list-block">
-          <div className="row-between">
-            <div>
-              <h3 className="section-title">Risultati</h3>
-              <p className="muted">Le missioni sono aggregate per tutte le campagne approvate.</p>
-            </div>
-            <span className="mission-count">{filteredMissions.length}</span>
+      <div className="subpanel mission-block mission-list-block">
+        <div className="row-between">
+          <div>
+            <h3 className="section-title">Risultati</h3>
+            <p className="muted">Le missioni sono aggregate per tutte le campagne approvate.</p>
           </div>
-          <ul className="list-reset mission-list">
-            {filteredMissions.length === 0 && <li className="muted">Nessuna missione corrisponde ai filtri.</li>}
-            {filteredMissions.map((mission) => (
-              <li key={`${mission.campaignId}-${mission.id}`}>
-                <button
-                  type="button"
-                  className={`character-item mission-item ${selectedMission?.id === mission.id ? 'is-selected' : ''}`}
-                  onClick={() => {
-                    onSelectMission(mission.id)
-                    setMode('browse')
-                  }}
-                >
-                  <div className="mission-item-main">
-                    <div className="mission-item-title-row">
-                      <div>
-                        <p className="character-name">{mission.title}</p>
-                        <p className="muted">{mission.description || 'Nessuna descrizione'}</p>
-                      </div>
-                      <MissionStatusBadge status={mission.status} sessionAt={mission.sessionAt} />
-                    </div>
-
-                    <div className="mission-pill-row">
-                      <span className="mission-meta-pill">
-                        <span className="mission-mini-icon" aria-hidden="true">
-                          <Icon name="fa-solid fa-folder-open" />
-                        </span>
-                        <span>
-                          <strong>Campagna</strong>
-                          <span>{campaignNameById[mission.campaignId] || mission.campaignId}</span>
-                        </span>
-                      </span>
-                      <span className="mission-meta-pill">
-                        <span className="mission-mini-icon" aria-hidden="true">
-                          <MissionTinyIcon kind="clock" />
-                        </span>
-                        <span>
-                          <strong>Chiusura</strong>
-                          <span>{formatCountdown(mission.closesAt)}</span>
-                        </span>
-                      </span>
-                    </div>
-                  </div>
-                </button>
-              </li>
-            ))}
-          </ul>
+          <span className="mission-count">{filteredMissions.length}</span>
         </div>
-
-        <div className="subpanel mission-block mission-detail-block">
-          {selectedMission ? (
-            mode === 'edit' && selectedMissionCanBeEdited ? (
-              renderMissionForm(editDraft, setEditDraft, editError, setEditError, 'Modifica missione', submitEdit)
-            ) : (
-              <>
-                <div className="row-between mission-detail-head">
-                  <div>
-                    <h3 className="section-title">{selectedMission.title}</h3>
-                    <p className="muted">{selectedMission.description || 'Nessuna descrizione'}</p>
-                    <p className="muted">Campagna: {campaignNameById[selectedMission.campaignId] || selectedMission.campaignId}</p>
-                  </div>
-                  <MissionStatusBadge status={selectedMission.status} sessionAt={selectedMission.sessionAt} />
+        <DataTable
+          className="mission-data-table"
+          columns={[
+            { key: 'title', label: 'Titolo missione' },
+            { key: 'participants', label: 'Partecipanti' },
+            { key: 'session', label: 'Data sessione' },
+            { key: 'campaign', label: 'Campagna' },
+          ]}
+          rows={filteredMissions}
+          getRowKey={(mission) => `${mission.campaignId}-${mission.id}`}
+          emptyMessage="Nessuna missione corrisponde ai filtri."
+          selectedRowKey={selectedMission?.id || null}
+          onRowClick={(mission) => {
+            onSelectMission(mission.id)
+            setMode('browse')
+          }}
+          renderRow={(mission) => (
+            <tr className={selectedMission?.id === mission.id ? 'is-selected' : ''}>
+              <td>
+                <div className="data-table-primary">
+                  <p className="data-table-title">{mission.title}</p>
                 </div>
-
-                <div className="mission-summary-grid">
-                  <div className="info-block">
-                    <p className="field-label">Stato sessione</p>
-                    <p>{selectedMission.status === 'CONFIRMED' && selectedMission.sessionAt && new Date(selectedMission.sessionAt).getTime() <= now ? 'COMPLETATA' : selectedMission.status === 'CLOSED' ? 'CHIUSA' : selectedMission.status === 'CANCELLED' ? 'ANNULLATA' : 'ATTIVA'}</p>
-                  </div>
-                  <div className="info-block">
-                    <p className="field-label">Campagna</p>
-                    <p>{campaignNameById[selectedMission.campaignId] || selectedMission.campaignId}</p>
-                  </div>
-                  <div className="info-block">
-                    <p className="field-label">Tempo prima della chiusura</p>
-                    <p>{formatCountdown(selectedMission.closesAt)}</p>
-                  </div>
-                  <div className="info-block">
-                    <p className="field-label">Giorno della sessione</p>
-                    <p>{formatMissionDay(selectedMission.sessionAt)}</p>
-                    <p className="muted">{formatMissionTime(selectedMission.sessionAt)}</p>
-                  </div>
-                  <div className="info-block">
-                    <p className="field-label">Parametri</p>
-                    <p>
-                      Quorum {selectedMission.quorum ?? 'manuale'} · Cap {selectedMission.maxParticipants ?? '∞'} ·{' '}
-                      {selectedMission.autoReopenOnDrop ? 'Riapertura automatica' : 'Riapertura bloccata'}
-                    </p>
-                  </div>
+              </td>
+              <td>
+                <span className="status status-info">{formatMissionParticipants(mission)}</span>
+              </td>
+              <td>
+                <div className="data-table-primary">
+                  <p className="data-table-title">{formatMissionDay(mission.sessionAt)}</p>
+                  <p className="data-table-meta">{formatMissionTime(mission.sessionAt)}</p>
                 </div>
-
-                <div className="card-section-header">
-                  <div>
-                    <h4 className="section-title">Azioni sessione</h4>
-                    <p className="muted">Le azioni di gestione restano vincolate alla campagna attiva della sessione selezionata.</p>
-                  </div>
-                </div>
-
-                <div className="inline-actions mission-actions">
-                  {selectedMissionCanBeEdited && (
-                    <button
-                      type="button"
-                      className="secondary-btn"
-                      onClick={() => {
-                        setEditDraft(draftFromMission(selectedMission))
-                        setMode('edit')
-                      }}
-                    >
-                      Modifica missione
-                    </button>
-                  )}
-                  {selectedMissionCanBeClosed && (
-                    <button type="button" className="secondary-btn" onClick={() => onClose(selectedMission)}>
-                      Chiudi missione
-                    </button>
-                  )}
-                  {selectedMissionCanBeReopened && (
-                    <button type="button" className="secondary-btn" onClick={() => onReopen(selectedMission)}>
-                      Riapri missione
-                    </button>
-                  )}
-                  {selectedMissionCanBeCancelled && (
-                    <button type="button" className="danger-btn" onClick={() => onCancel(selectedMission)}>
-                      Cancella missione
-                    </button>
-                  )}
-                  <button type="button" className="secondary-btn" onClick={() => onLeave(selectedMission)}>
-                    Esci dalla missione
-                  </button>
-                </div>
-
-                <div className="card-section-header">
-                  <div>
-                    <h4 className="section-title">Iscrizione PG</h4>
-                    <p className="muted">Scegli un personaggio attivo della campagna della missione e poi conferma il ruolo.</p>
-                  </div>
-                </div>
-
-                <div className="form-grid mission-join-grid">
-                  <label>
-                    <FieldLabel icon="fa-solid fa-user" label="Personaggio attivo" />
-                    <select value={characterId} onChange={(event) => setCharacterId(event.target.value)}>
-                      <option value="">seleziona</option>
-                      {activeCharacters.map((character) => (
-                        <option key={character.id} value={character.id}>
-                          {character.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    <FieldLabel icon="fa-solid fa-tag" label="Ruolo" />
-                    <select
-                      value={participationType}
-                      onChange={(event) => setParticipationType(event.target.value as 'TITOLARE' | 'NON_TITOLARE')}
-                    >
-                      <option value="TITOLARE">TITOLARE</option>
-                      <option value="NON_TITOLARE">PANCHINA</option>
-                    </select>
-                  </label>
-                </div>
-
-                {!selectedMissionIsJoinable && <p className="muted mission-last-action">La missione non è al momento aperta al join.</p>}
-                {selectedMissionIsJoinable && activeCharacters.length === 0 && (
-                  <p className="muted mission-last-action">Nessun personaggio attivo disponibile nella campagna di questa missione.</p>
-                )}
-
-                <div className="inline-actions mission-actions">
-                  <button
-                    type="button"
-                    className="primary-btn"
-                    disabled={!characterId || !selectedMissionIsJoinable}
-                    onClick={() => characterId && onJoin(selectedMission, characterId, 'TITOLARE')}
-                  >
-                    Segnati titolare
-                  </button>
-                  <button
-                    type="button"
-                    className="secondary-btn"
-                    disabled={!characterId || !selectedMissionIsJoinable}
-                    onClick={() => characterId && onJoin(selectedMission, characterId, 'NON_TITOLARE')}
-                  >
-                    Segnati panchina
-                  </button>
-                  <button
-                    type="button"
-                    className="secondary-btn"
-                    onClick={() => onUpdateParticipationType(selectedMission, participationType)}
-                  >
-                    Aggiorna solo ruolo
-                  </button>
-                </div>
-
-                {lastMissionAction && (
-                  <p className="muted mission-last-action">
-                    Ultima azione: {lastMissionAction.characterId} ·{' '}
-                    <MissionParticipationBadge participationType={lastMissionAction.participationType} /> · score{' '}
-                    {lastMissionAction.priorityScore}
-                  </p>
-                )}
-              </>
-            )
-          ) : (
-            <>
-              <h3 className="section-title">Dettaglio missione</h3>
-              <p className="muted">Seleziona una missione dalla lista per vedere i dettagli, il countdown e le azioni disponibili.</p>
-            </>
+              </td>
+              <td className="data-table-muted">{campaignNameById[mission.campaignId] || mission.campaignId}</td>
+            </tr>
           )}
-        </div>
+        />
       </div>
     </section>
   )
@@ -7631,6 +7533,7 @@ function CampaignManagementPage({
   onSave,
   onRefreshPermissions,
   onTransfer,
+  onCreateInviteToken,
   currentUserId,
   onLeave,
 }: {
@@ -7653,10 +7556,17 @@ function CampaignManagementPage({
   }) => void
   onRefreshPermissions: () => void
   onTransfer: (newOwnerUserId: string) => void
+  onCreateInviteToken: (payload: CreateInviteTokenRequest) => Promise<InviteTokenResponse>
   currentUserId: string
   onLeave: () => void
 }) {
   const [newOwnerUserId, setNewOwnerUserId] = useState('')
+  const [inviteCopyFeedback, setInviteCopyFeedback] = useState('')
+  const [inviteTokenAutoJoin, setInviteTokenAutoJoin] = useState(false)
+  const [inviteTokenExpiresAt, setInviteTokenExpiresAt] = useState('')
+  const [inviteTokenMaxUses, setInviteTokenMaxUses] = useState('')
+  const [inviteTokenResult, setInviteTokenResult] = useState<InviteTokenResponse | null>(null)
+  const [inviteTokenFeedback, setInviteTokenFeedback] = useState('')
   const [name, setName] = useState(campaign?.name || '')
   const [description, setDescription] = useState(campaign?.description || '')
   const [summary, setSummary] = useState(campaign?.summary || '')
@@ -7712,6 +7622,26 @@ function CampaignManagementPage({
       items: ['Tutto quanto sopra', 'Eliminare stanze', 'Gestire moduli', 'Trasferire ownership', 'Chiudere o cancellare la campagna'],
     },
   ]
+  const campaignVisibilityRows = [
+    {
+      key: 'open',
+      title: 'Campagna aperta',
+      description: 'Permette richiesta di accesso dall’elenco campagne.',
+      active: isOpen,
+      activeLabel: 'Aperta',
+      inactiveLabel: 'Privata',
+      onToggle: () => setIsOpen((prev) => !prev),
+    },
+    {
+      key: 'searchable',
+      title: 'Visibile nella ricerca',
+      description: 'La campagna può essere trovata nella ricerca pubblica.',
+      active: isSearchable,
+      activeLabel: 'Ricercabile',
+      inactiveLabel: 'Nascosta',
+      onToggle: () => setIsSearchable((prev) => !prev),
+    },
+  ]
 
   useEffect(() => {
     if (!campaign) return
@@ -7726,6 +7656,11 @@ function CampaignManagementPage({
     setIsOpen(campaign.isOpen)
     setIsSearchable(campaign.isSearchable)
     setSelectedModules(campaign.allowedModules)
+    setInviteTokenResult(null)
+    setInviteTokenFeedback('')
+    setInviteTokenAutoJoin(false)
+    setInviteTokenExpiresAt('')
+    setInviteTokenMaxUses('')
   }, [campaign])
 
   useEffect(() => {
@@ -7739,6 +7674,43 @@ function CampaignManagementPage({
     )
   }
 
+  const copyInviteCode = async () => {
+    const value = campaign?.inviteCode?.trim()
+    if (!value) {
+      setInviteCopyFeedback('Codice non disponibile.')
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(value)
+      setInviteCopyFeedback('Codice copiato.')
+    } catch {
+      setInviteCopyFeedback('Copia non disponibile.')
+    }
+  }
+
+  const createInviteToken = async () => {
+    const expiresAt = inviteTokenExpiresAt.trim()
+    const maxUsesValue = inviteTokenMaxUses.trim()
+    const maxUses =
+      maxUsesValue.length === 0 ? null : Number.isFinite(Number(maxUsesValue)) && Number(maxUsesValue) > 0 ? Number(maxUsesValue) : NaN
+    if (Number.isNaN(maxUses)) {
+      setInviteTokenFeedback('Max utilizzi non valido.')
+      return
+    }
+
+    setInviteTokenFeedback('')
+    const payload: CreateInviteTokenRequest = {
+      capabilities: inviteTokenAutoJoin ? ['AUTOJOIN'] : [],
+      expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
+      maxUses: maxUses === null ? null : maxUses,
+    }
+    const created = await onCreateInviteToken(payload)
+    setInviteTokenResult(created)
+    setInviteTokenFeedback('Token creato.')
+  }
+
+  const inviteTokenModeLabel = inviteTokenAutoJoin ? 'AUTOJOIN attivo' : 'Richiesta manuale'
+
   return (
     <section className="panel">
       <h2>Gestione Campagna</h2>
@@ -7746,10 +7718,10 @@ function CampaignManagementPage({
       {campaign && (
         <>
           <div className="form-grid">
-        <label>
-          <FieldLabel icon="fa-solid fa-signature" label="Nome" />
-          <input value={name} placeholder="Nome della campagna" onChange={(event) => setName(event.target.value)} />
-        </label>
+            <label>
+              <FieldLabel icon="fa-solid fa-signature" label="Nome" />
+              <input value={name} placeholder="Nome della campagna" onChange={(event) => setName(event.target.value)} />
+            </label>
             <label>
               <FieldLabel icon="fa-solid fa-wand-magic-sparkles" label="Tono" />
               <select value={tone} onChange={(event) => setTone(event.target.value)}>
@@ -7792,16 +7764,116 @@ function CampaignManagementPage({
             <p className="muted">{catalogEntryDescription(availableGameSystems, campaign.gameSystem)}</p>
             <p className="muted">Definito in creazione. Per cambiare sistema va creata una nuova campagna.</p>
           </label>
-          <div className="inline-actions">
-            <label className="checkbox-row">
-              <input checked={isOpen} onChange={(event) => setIsOpen(event.target.checked)} type="checkbox" />
-              Aperta
-            </label>
-            <label className="checkbox-row">
-              <input checked={isSearchable} onChange={(event) => setIsSearchable(event.target.checked)} type="checkbox" />
-              Ricercabile
-            </label>
+          <label>
+            <FieldLabel icon="fa-solid fa-key" label="Codice invito" />
+            <div className="invite-code-row">
+              <input className="invite-code-input" value={campaign.inviteCode} readOnly />
+              <button type="button" className="secondary-btn" onClick={copyInviteCode}>
+                <Icon name="fa-solid fa-copy" />
+                Copia
+              </button>
+            </div>
+            <p className="muted">
+              Condividilo per accedere anche quando la campagna non è ricercabile. La chiusura della campagna resta attiva.
+            </p>
+            {inviteCopyFeedback && <p className="muted invite-copy-feedback">{inviteCopyFeedback}</p>}
+          </label>
+          <div className="campaign-token-panel">
+            <div className="campaign-token-panel-head">
+              <div>
+                <p className="section-title">Token invito</p>
+                <p className="muted">Crea un link opaco con approvazione automatica o manuale.</p>
+              </div>
+              <span className="readonly-chip">{inviteTokenModeLabel}</span>
+            </div>
+            <div className="campaign-token-form">
+              <label className="campaign-token-switch">
+                <FieldLabel icon="fa-solid fa-wand-magic-sparkles" label="Auto join" />
+                <label className="switch" aria-label="Auto join token">
+                  <input
+                    type="checkbox"
+                    checked={inviteTokenAutoJoin}
+                    onChange={(event) => setInviteTokenAutoJoin(event.target.checked)}
+                  />
+                  <span className="switch-track" aria-hidden="true">
+                    <span className="switch-thumb" />
+                  </span>
+                </label>
+              </label>
+              <label>
+                <FieldLabel icon="fa-solid fa-calendar-day" label="Scadenza" />
+                <input
+                  type="datetime-local"
+                  value={inviteTokenExpiresAt}
+                  onChange={(event) => setInviteTokenExpiresAt(event.target.value)}
+                />
+              </label>
+              <label>
+                <FieldLabel icon="fa-solid fa-hashtag" label="Max utilizzi" />
+                <input
+                  type="number"
+                  min={1}
+                  placeholder="Illimitato"
+                  value={inviteTokenMaxUses}
+                  onChange={(event) => setInviteTokenMaxUses(event.target.value)}
+                />
+              </label>
+            </div>
+            <div className="campaign-token-actions">
+              <button type="button" className="primary-btn" onClick={createInviteToken}>
+                <Icon name="fa-solid fa-circle-plus" />
+                Crea token
+              </button>
+            </div>
+            {inviteTokenFeedback && <p className="muted invite-copy-feedback">{inviteTokenFeedback}</p>}
+            {inviteTokenResult && (
+              <div className="campaign-token-result">
+                <div className="row-between campaign-invite-preview-head">
+                  <div className="data-table-primary">
+                    <p className="data-table-title">{inviteTokenResult.token}</p>
+                    <p className="data-table-secondary">
+                      {inviteTokenResult.capabilities.includes('AUTOJOIN') ? 'Approvazione automatica' : 'Richiesta manuale'}
+                    </p>
+                  </div>
+                  <div className="campaign-invite-preview-badges">
+                    <span className={`status ${inviteTokenResult.isActive ? 'status-success' : 'status-neutral'}`}>
+                      {inviteTokenResult.isActive ? 'Attivo' : 'Disattivo'}
+                    </span>
+                    <span className={`status ${inviteTokenResult.capabilities.includes('AUTOJOIN') ? 'status-success' : 'status-warning'}`}>
+                      {inviteTokenResult.capabilities.includes('AUTOJOIN') ? 'AUTOJOIN' : 'MANUALE'}
+                    </span>
+                  </div>
+                </div>
+                <div className="invite-token-copy-row">
+                  <input className="invite-code-input" value={inviteTokenResult.token} readOnly />
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(inviteTokenResult.token)
+                        setInviteTokenFeedback('Token copiato.')
+                      } catch {
+                        setInviteTokenFeedback('Copia non disponibile.')
+                      }
+                    }}
+                  >
+                    <Icon name="fa-solid fa-copy" />
+                    Copia
+                  </button>
+                </div>
+                <p className="data-table-meta">
+                  {inviteTokenResult.expiresAt ? `Scade il ${inviteTokenResult.expiresAt}` : 'Nessuna scadenza'}
+                  {inviteTokenResult.maxUses ? ` • max ${inviteTokenResult.maxUses} utilizzi` : ' • utilizzi illimitati'}
+                </p>
+              </div>
+            )}
           </div>
+          <CampaignToggleSettingsTable
+            title="Visibilità e accesso"
+            description="Impostazioni di pubblicazione della campagna, con la stessa logica usata in creazione."
+            rows={campaignVisibilityRows}
+          />
           <CampaignToggleSettingsTable
             title="Addon campagna"
             description="I moduli sono sempre disponibili e puoi accenderli o spegnerli senza ricaricare la lista."

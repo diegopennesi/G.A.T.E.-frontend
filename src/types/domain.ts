@@ -7,6 +7,8 @@ export type MissionParticipationType = 'TITOLARE' | 'NON_TITOLARE'
 export type RoomType = 'ROLEPLAY' | 'SPAM'
 export type PlatformRole = 'USER' | 'ADMIN' | 'SYSTEM'
 export type SheetEntityType = 'CHARACTER' | 'ARMY' | 'DECK'
+export type InviteCapability = 'AUTOJOIN'
+export type InviteResourceType = 'CAMPAIGN'
 
 export interface SheetSchemaField {
   key?: string
@@ -167,9 +169,45 @@ export interface CampaignResponse {
   isOpen: boolean
   isActive: boolean
   isSearchable: boolean
+  inviteCode: string
   gameSystem?: string | null
   allowedModules: string[]
   createdAt: string
+}
+
+export interface CampaignInviteCodeResponse {
+  inviteCode: string
+}
+
+export interface CreateInviteTokenRequest {
+  capabilities: InviteCapability[]
+  expiresAt?: string | null
+  maxUses?: number | null
+}
+
+export interface InviteTokenResponse {
+  id: string
+  resourceType: InviteResourceType
+  resourceId: string
+  token: string
+  capabilities: InviteCapability[]
+  createdByUserId: string
+  expiresAt: string | null
+  maxUses: number | null
+  useCount: number
+  isActive: boolean
+  createdAt: string
+}
+
+export interface InviteTokenPreviewResponse {
+  campaignId: string
+  campaignName: string
+  campaignSummary: string | null
+  coverImageUrl: string | null
+  founderId: string
+  isOpen: boolean
+  gameSystem: string
+  capabilities: InviteCapability[]
 }
 
 export interface CampaignMembershipResponse {
@@ -204,11 +242,25 @@ export interface CampaignDiscoverResponse {
   isOpen: boolean
   isActive: boolean
   isSearchable: boolean
+  inviteCode?: string
   gameSystem?: string | null
   createdAt: string
   membershipStatus: CampaignMemberStatus | null
   membershipRole: CampaignRole | null
   moderationReason: string | null
+}
+
+export interface CampaignInvitePreviewResponse {
+  id: string
+  name: string
+  description: string | null
+  summary: string | null
+  coverImageUrl: string | null
+  founderId: string
+  isOpen: boolean
+  isActive: boolean
+  gameSystem?: string | null
+  createdAt: string
 }
 
 export interface AdminCampaignListItem {
@@ -274,6 +326,7 @@ export interface MissionResponse {
   closesAt: string | null
   quorum: number | null
   maxParticipants: number | null
+  participantCount: number
   autoReopenOnDrop: boolean
   createdAt: string
 }
