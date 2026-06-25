@@ -685,7 +685,11 @@ function App() {
     value === 'Gestione Personaggi' || value === 'Scheda PG' || value === 'Crea Personaggio'
 
   const addEvent = (text: string, level: UiEvent['level']) => {
-    setEvents((prev) => [{ id: `${Date.now()}`, ts: new Date().toISOString(), text, level }, ...prev].slice(0, 50))
+    const id = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+
+    setEvents((prev) => [{ id, ts: new Date().toISOString(), text, level }, ...prev].slice(0, 50))
   }
 
   const requiresCampaignSelection = (value: Screen) => CAMPAIGN_ACTIVE_REQUIRED_SCREENS.includes(value)
