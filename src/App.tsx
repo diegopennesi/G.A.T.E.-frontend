@@ -1,6 +1,13 @@
-import { Fragment, cloneElement, isValidElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Dispatch, FormEvent, KeyboardEvent, ReactElement, ReactNode, SetStateAction } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { Dispatch, SetStateAction } from 'react'
 import './App.css'
+import { AuthScreen } from './features/auth'
+import { ApprovalPage, CampaignAccessBadge, CampaignOpenBadge, CampaignStatusBadge, CreateCampaignPage } from './features/campaigns'
+import { CreateCharacterPage, SelectCharacterPage } from './features/characters'
+import { NotificationsPage } from './features/notifications'
+import { EditProfilePage, ProfilePage } from './features/profile'
+import { RoomsPage } from './features/rooms'
+import { DataTable, FieldLabel, Icon } from './shared/components'
 import { ApiError, getAccessToken } from './services/apiClient'
 import {
   createAdminGameSystem,
@@ -41,12 +48,8 @@ import {
   listPendingApplications,
   listMissions,
   listRooms,
-  login,
   logout,
-  register,
   rejectApplication,
-  requestPasswordReset,
-  confirmPasswordReset,
   updateAdminCampaign,
   updateAdminGameSystem,
   updateAdminSheetType,
@@ -121,14 +124,6 @@ type UiEvent = {
   ts: string
   text: string
   level: 'info' | 'ok' | 'error'
-}
-
-type ProfileDraft = {
-  profileName: string
-  bio: string
-  whatsapp: string
-  instagram: string
-  otherSocial: string
 }
 
 const CAMPAIGN_ID_KEY = 'gate_campaign_id'
@@ -247,7 +242,6 @@ const platformRoleLabel = (role: PlatformRole) => {
 const ADMIN_PLATFORM_ROLES: PlatformRole[] = ['USER', 'ADMIN', 'SYSTEM']
 type SystemAdminView = 'users' | 'campaigns' | 'sheets'
 
-type CampaignAccessBadgeKind = 'edit' | 'player' | 'outside' | 'pending' | 'blocked' | 'banned'
 type InviteAccessPreview = {
   campaignId: string
   campaignName: string
@@ -362,137 +356,6 @@ const MODULE_REQUIRED_BY_SCREEN: Partial<Record<Screen, string>> = {
   Stanze: 'STANZE',
 }
 
-function Icon({ name, className = '' }: { name: string; className?: string }) {
-  return <i aria-hidden="true" className={`${name} ${className}`.trim()} />
-}
-
-function FieldLabel({ icon, label }: { icon: string; label: string }) {
-  return (
-    <span className="field-label-with-icon">
-      <Icon name={icon} className="field-label-icon" />
-      <span>{label}</span>
-    </span>
-  )
-}
-
-function CampaignAccessIcon({ kind }: { kind: CampaignAccessBadgeKind }) {
-  const commonProps = {
-    width: 16,
-    height: 16,
-    viewBox: '0 0 24 24',
-    fill: 'none',
-    stroke: 'currentColor',
-    strokeWidth: 1.9,
-    strokeLinecap: 'round' as const,
-    strokeLinejoin: 'round' as const,
-    'aria-hidden': true,
-    focusable: false,
-  }
-
-  switch (kind) {
-    case 'edit':
-      return (
-        <svg {...commonProps}>
-          <path d="M12 3.5 19 6v5c0 4.5-2.6 7.9-7 10-4.4-2.1-7-5.5-7-10V6l7-2.5Z" />
-          <path d="m14.5 9.5 1 1" />
-          <path d="m10 15 4.2-4.2a1.2 1.2 0 0 1 1.7 0l1.3 1.3a1.2 1.2 0 0 1 0 1.7L13 18H10v-3Z" />
-        </svg>
-      )
-    case 'player':
-      return (
-        <svg {...commonProps}>
-          <circle cx="12" cy="8" r="3.25" />
-          <path d="M5.5 19c1.1-3.1 3.5-4.7 6.5-4.7s5.4 1.6 6.5 4.7" />
-        </svg>
-      )
-    case 'pending':
-      return (
-        <svg {...commonProps}>
-          <circle cx="12" cy="12" r="8" />
-          <path d="M12 7.8V12l2.7 1.8" />
-        </svg>
-      )
-    case 'blocked':
-      return (
-        <svg {...commonProps}>
-          <rect x="5" y="10" width="14" height="9" rx="2" />
-          <path d="M8.5 10V8.2a3.5 3.5 0 0 1 7 0V10" />
-        </svg>
-      )
-    case 'banned':
-      return (
-        <svg {...commonProps}>
-          <circle cx="12" cy="12" r="8" />
-          <path d="m8.5 8.5 7 7" />
-        </svg>
-      )
-    case 'outside':
-    default:
-      return (
-        <svg {...commonProps}>
-          <path d="M6 5h8v14H6z" />
-          <path d="M14 6.5 18.5 8.8v6.4L14 17.5" />
-          <path d="M10.5 12h4.5" />
-        </svg>
-      )
-  }
-}
-
-function CampaignAccessBadge({ item }: { item: CampaignDiscoverResponse }) {
-  const badge = (() => {
-    if (item.membershipStatus === 'APPROVED') {
-      if (item.membershipRole === 'MASTER') {
-        return { kind: 'edit' as const, label: 'MASTER', title: 'Ruolo campagna: MASTER' }
-      }
-      if (item.membershipRole === 'SUPER_MASTER') {
-        return { kind: 'edit' as const, label: 'SUPER MASTER', title: 'Ruolo campagna: SUPER MASTER' }
-      }
-      if (item.membershipRole === 'CO_MASTER') {
-        return { kind: 'edit' as const, label: 'CO-MASTER', title: 'Ruolo campagna: CO-MASTER' }
-      }
-      return { kind: 'player' as const, label: 'GIOCATORE', title: 'Ruolo campagna: GIOCATORE' }
-    }
-    if (item.membershipStatus === 'PENDING') {
-      return { kind: 'pending' as const, label: 'IN ATTESA', title: 'Richiesta di accesso in attesa' }
-    }
-    if (item.membershipStatus === 'BLOCKED') {
-      return { kind: 'blocked' as const, label: 'BLOCCATO', title: 'Membership sospesa' }
-    }
-    if (item.membershipStatus === 'BANNED') {
-      return { kind: 'banned' as const, label: 'BANNATO', title: 'Membership bannata' }
-    }
-    return { kind: 'outside' as const, label: 'FUORI', title: 'Non fai parte della campagna' }
-  })()
-
-  return (
-    <span className="campaign-access-badge" title={badge.title} aria-label={badge.title}>
-      <span className={`campaign-access-icon is-${badge.kind}`} aria-hidden="true">
-        <CampaignAccessIcon kind={badge.kind} />
-      </span>
-      <span className="campaign-access-label">{badge.label}</span>
-    </span>
-  )
-}
-
-function CampaignStatusBadge({ isActive }: { isActive: boolean }) {
-  return (
-    <span className={`campaign-status-badge ${isActive ? 'is-active' : 'is-disabled'}`}>
-      {isActive ? 'Attiva' : 'Disattivata'}
-    </span>
-  )
-}
-
-function CampaignOpenBadge({ isOpen }: { isOpen: boolean }) {
-  return (
-    <span className={`campaign-open-badge ${isOpen ? 'is-open' : 'is-closed'}`} title={isOpen ? 'Campagna aperta' : 'Campagna chiusa'}>
-      <span className="campaign-open-badge-icon" aria-hidden="true">
-        <Icon name={isOpen ? 'fa-solid fa-circle-check' : 'fa-solid fa-circle-xmark'} />
-      </span>
-      <span>{isOpen ? 'APERTA' : 'CHIUSA'}</span>
-    </span>
-  )
-}
-
 function App() {
   const [screen, setScreen] = useState<Screen>('Profilo')
   const [profile, setProfile] = useState<UserProfile | null>(null)
@@ -552,6 +415,7 @@ function App() {
   const isSystemSession = isSystemRole
   const effectiveTheme: EffectiveThemeMode = isSystemRole ? 'sysadmin' : theme
   const welcomeProfileName = profile?.profileName?.trim() || profile?.username?.trim() || 'profilo'
+  const activeUserId = profile?.id ?? null
 
   useEffect(() => {
     document.documentElement.dataset.theme = effectiveTheme
@@ -642,16 +506,16 @@ function App() {
     }
     return map
   }, [missions])
-  const campaignIsActiveForCurrentUser = (campaignToCheck: string) => {
-    if (isSystemRole) return true
-    const visibleCampaign = campaignsForList.find((item) => item.id === campaignToCheck)
-    return visibleCampaign?.isActive === true
-  }
-  const canShowCampaignInNavbar = (role: CampaignRole | null | undefined) => {
-    if (isSystemRole) return true
-    return role === 'CO_MASTER' || role === 'MASTER' || role === 'SUPER_MASTER'
-  }
   const selectableCampaigns = useMemo<CampaignPickerCampaign[]>(() => {
+    const campaignIsActiveForCurrentUser = (campaignToCheck: string) => {
+      if (isSystemRole) return true
+      const visibleCampaign = campaignsForList.find((item) => item.id === campaignToCheck)
+      return visibleCampaign?.isActive === true
+    }
+    const canShowCampaignInNavbar = (role: CampaignRole | null | undefined) => {
+      if (isSystemRole) return true
+      return role === 'CO_MASTER' || role === 'MASTER' || role === 'SUPER_MASTER'
+    }
     const byId = new Map<string, CampaignPickerCampaign>()
     for (const item of myCampaigns) {
       if (item.memberStatus === 'APPROVED' && canShowCampaignInNavbar(item.role)) {
@@ -680,7 +544,7 @@ function App() {
       if (right.campaignId === campaignId) return 1
       return left.campaignName.localeCompare(right.campaignName, 'it')
     })
-  }, [campaignIsActiveForCurrentUser, campaignsForList, myCampaigns, canShowCampaignInNavbar, isSystemRole, campaignId])
+  }, [campaignsForList, myCampaigns, isSystemRole, campaignId])
   const isCharacterScope = (value: Screen) =>
     value === 'Gestione Personaggi' || value === 'Scheda PG' || value === 'Crea Personaggio'
 
@@ -1450,7 +1314,7 @@ function App() {
     return list
   }
 
-  const loadPendingForActiveCampaign = async () => {
+  async function loadPendingForActiveCampaign() {
     if (!campaignId.trim()) return
     await loadPendingForCampaign(campaignId)
   }
@@ -1469,6 +1333,8 @@ function App() {
 
   useEffect(() => {
     if (!getAccessToken()) return
+    // Auth bootstrap: profile state is loaded from the API after token storage is available.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refreshProfile()
   }, [])
 
@@ -1579,28 +1445,37 @@ function App() {
     if (activeCampaignIsEnabled) return
     if (campaign?.isActive !== false && activeCampaignListEntry?.isActive !== false) return
 
+    // Navigation guard: leave screens that require an active campaign.
+    /* eslint-disable react-hooks/set-state-in-effect */
     rememberCampaignId('')
     clearCampaignWorkspace()
     if (screen !== 'Lista Campagne') {
       setScreen('Lista Campagne')
     }
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [activeCampaignIsEnabled, activeCampaignListEntry?.isActive, campaign?.isActive, campaignId, isSystemRole, screen])
   useEffect(() => {
     if (hasActiveCampaign) return
     if (screen !== 'Scheda Campagna' && screen !== 'Gestione Campagna' && screen !== 'Stanze') return
     if (isCampaignPickerOpen && campaignPickerTarget === screen) return
+    // Navigation guard: prompt for an active campaign before entering campaign-scoped screens.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     openCampaignPicker(screen)
   }, [screen, hasActiveCampaign, isCampaignPickerOpen, campaignPickerTarget])
 
   useEffect(() => {
     if (screen !== 'Approvazione Accessi') return
     if (canAccessCampaignManagement) return
+    // Navigation guard: access approval requires campaign management permissions.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setScreen('Scheda Campagna')
   }, [screen, canAccessCampaignManagement])
 
   useEffect(() => {
     if (screen !== 'Gestione Campagna') return
     if (canAccessCampaignManagement) return
+    // Navigation guard: campaign management requires management permissions.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setScreen('Scheda Campagna')
   }, [screen, canAccessCampaignManagement])
 
@@ -1630,6 +1505,8 @@ function App() {
   useEffect(() => {
     if (screen !== 'Scheda PG') return
     if (!selectedCharacterId) {
+      // Navigation guard: character detail requires a selected character.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setScreen('Gestione Personaggi')
       return
     }
@@ -1739,7 +1616,7 @@ function App() {
     await refreshProfile()
   }
 
-  const handleLogout = () => {
+  function handleLogout() {
     logout()
     setProfile(null)
     setCampaignId('')
@@ -1772,8 +1649,6 @@ function App() {
     setSystemAdminView('users')
     addEvent('Logout eseguito', 'info')
   }
-
-  const activeUserId = profile?.id ?? null
 
   const realtimeActionsRef = useRef<RealtimeActionMap>({
     refreshProfile: async () => {},
@@ -1935,6 +1810,8 @@ function App() {
 
   useEffect(() => {
     if (!isSystemSession) {
+      // Session boundary cleanup: leaving SYSTEM mode clears admin-only state.
+      /* eslint-disable react-hooks/set-state-in-effect */
       setAdminUsersPage(null)
       setAdminUsersPageIndex(0)
       setAdminUsersDrafts({})
@@ -1944,6 +1821,7 @@ function App() {
       setAdminGameSystems([])
       setAdminSheetTypes([])
       setAdminSheetCatalogsLoaded(false)
+      /* eslint-enable react-hooks/set-state-in-effect */
       return
     }
     if (systemAdminView === 'users' && !adminUsersPage) {
@@ -2006,11 +1884,14 @@ function App() {
     const scopedPendingApplications = readPendingApplicationsCache(activeUserId)
     const nextPendingApplications = nextCampaignId ? scopedPendingApplications[nextCampaignId] || [] : []
 
+    // Storage hydration: user-scoped campaign state is restored after auth resolves.
+    /* eslint-disable react-hooks/set-state-in-effect */
     setCampaignId(nextCampaignId)
     setKnownCampaignIds(nextKnownCampaignIds)
     setKnownCampaignMeta(nextKnownCampaignMeta)
     setPendingApplications(nextPendingApplications)
     setPendingApplicationsByCampaignId(scopedPendingApplications)
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [activeUserId, profile])
 
   if (!profile) {
@@ -3193,6 +3074,7 @@ function App() {
 
         {screen === 'Modifica Profilo' && (
           <EditProfilePage
+            key={profile.id}
             profile={profile}
             onSave={(draft) =>
               run('Profilo aggiornato', async () => {
@@ -3239,6 +3121,7 @@ function App() {
 
         {screen === 'Scheda PG' && (
           <CharacterDetailPage
+            key={`${selectedCharacterId || 'no-character'}-${characterSheetDetail?.updatedAt || characterSheetDetail?.schemaVersion || 'no-sheet'}`}
             character={selectedCharacter}
             sheet={characterSheetDetail}
             onRefresh={() => void refreshCharacterBlock()}
@@ -3271,6 +3154,7 @@ function App() {
 
         {screen === 'Gestione Campagna' && (
           <CampaignManagementPage
+            key={campaign?.id || 'empty-campaign-management'}
             campaign={campaign}
             availableModules={campaignModules}
             availableGameSystems={campaignGameSystems}
@@ -3326,6 +3210,7 @@ function App() {
 
         {screen === 'Profilo Membro Campagna' && selectedCampaignMember && selectedCampaignMemberProfile && (
           <CampaignMemberProfilePage
+            key={selectedCampaignMember.userId}
             membership={selectedCampaignMember}
             profile={selectedCampaignMemberProfile}
             onRefresh={() =>
@@ -3422,6 +3307,7 @@ function App() {
 
         {screen === 'Seleziona PG' && (
           <SelectCharacterPage
+            key={`${activeCampaignCharacterId || 'no-preferred'}-${characters.map((character) => character.id).join('|')}`}
             characters={characters}
             preferredCharacterId={activeCampaignCharacterId}
             onApply={(characterId) =>
@@ -3434,6 +3320,7 @@ function App() {
 
         {screen === 'Crea Personaggio' && (
           <CreateCharacterPage
+            key={`${canCreatePlayerCharacter}-${canCreateNpc}`}
             hasActiveCampaign={hasActiveCampaign}
             canCreatePlayerCharacter={canCreatePlayerCharacter}
             canCreateNpc={canCreateNpc}
@@ -3473,231 +3360,6 @@ function App() {
           />
         )}
       </main>
-    </div>
-  )
-}
-
-function AuthScreen({ onAuth }: { onAuth: (session: AuthSession) => Promise<void> }) {
-  const [mode, setMode] = useState<'login' | 'register' | 'recover'>('login')
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
-  const [profileName, setProfileName] = useState('')
-  const [bio, setBio] = useState('')
-  const [resetSeed, setResetSeed] = useState('')
-  const [resetExpiresAt, setResetExpiresAt] = useState('')
-  const [newPassword, setNewPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
-  const [recoveryStep, setRecoveryStep] = useState<'request' | 'confirm'>('request')
-  const [error, setError] = useState('')
-  const [info, setInfo] = useState('')
-  const [busy, setBusy] = useState(false)
-
-  const resetRecoveryState = () => {
-    setResetSeed('')
-    setResetExpiresAt('')
-    setNewPassword('')
-    setConfirmPassword('')
-    setRecoveryStep('request')
-    setInfo('')
-  }
-
-  const switchMode = (nextMode: typeof mode) => {
-    setMode(nextMode)
-    setError('')
-    if (nextMode !== 'recover') {
-      resetRecoveryState()
-    }
-  }
-
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setError('')
-    setInfo('')
-    setBusy(true)
-    try {
-      if (mode === 'login') {
-        await onAuth(await login(username, password))
-        return
-      }
-
-      if (mode === 'register') {
-        await onAuth(await register({ username, password, profileName, bio }))
-        return
-      }
-
-      if (recoveryStep === 'request') {
-        const response = await requestPasswordReset(username)
-        setResetSeed(response.resetSeed)
-        setResetExpiresAt(response.expiresAt)
-        setRecoveryStep('confirm')
-        setInfo('Seed di reset generato. Usa il seed ricevuto per confermare il reset.')
-        return
-      }
-
-      if (newPassword !== confirmPassword) {
-        throw new Error('La nuova password e la conferma non coincidono')
-      }
-
-      await onAuth(
-        await confirmPasswordReset({
-          resetSeed,
-          newPassword,
-        }),
-      )
-    } catch (err) {
-      setError(toMessage(err))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <div className="auth-layout">
-      <section className="auth-side">
-        <h1>Taverna del Codice</h1>
-        <p>Frontend reale su API backend. Scope: tutte le pagine tranne chat.</p>
-      </section>
-      <section className="auth-panel">
-        <form className="auth-card" onSubmit={submit}>
-          <div className="auth-mode-picker" role="tablist" aria-label="Accesso e password">
-            {[
-              {
-                key: 'login' as const,
-                label: 'Login',
-                hint: 'Entra con username e password.',
-              },
-              {
-                key: 'register' as const,
-                label: 'Registrazione',
-                hint: 'Crea un nuovo account con profilo base.',
-              },
-              {
-                key: 'recover' as const,
-                label: 'Recupero password',
-                hint: 'Richiedi un seed e conferma il reset in due passi.',
-              },
-            ].map((item) => (
-              <button
-                key={item.key}
-                type="button"
-                className={`auth-mode-pill ${mode === item.key ? 'is-active' : ''}`}
-                onClick={() => switchMode(item.key)}
-                title={item.hint}
-                aria-label={`${item.label}. ${item.hint}`}
-              >
-                <span>{item.label}</span>
-                <span className="auth-mode-hint" aria-hidden="true">
-                  {item.hint}
-                </span>
-              </button>
-            ))}
-          </div>
-          <h2>{mode === 'login' ? 'Login' : mode === 'register' ? 'Registrazione' : 'Recupero password'}</h2>
-          {mode === 'recover' && (
-            <p className="auth-note">
-              Il reset è pubblico e avviene in due passaggi. Prima richiedi un seed, poi confermi il reset con il seed e la nuova password.
-            </p>
-          )}
-          {mode !== 'recover' && (
-            <label>
-              Username
-              <input required value={username} placeholder="Il tuo username" onChange={(event) => setUsername(event.target.value)} />
-            </label>
-          )}
-          {mode === 'login' && (
-            <label>
-              Password
-              <input
-                required
-                type="password"
-                placeholder="Password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-              />
-            </label>
-          )}
-          {mode === 'register' && (
-            <>
-              <label>
-                Password
-                <input
-                  required
-                  type="password"
-                  placeholder="Password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                />
-              </label>
-              <label>
-                Profile Name
-                <input value={profileName} placeholder="Nome profilo" onChange={(event) => setProfileName(event.target.value)} />
-              </label>
-              <label>
-                Bio
-                <textarea rows={3} placeholder="Breve presentazione del tuo profilo" value={bio} onChange={(event) => setBio(event.target.value)} />
-              </label>
-            </>
-          )}
-          {mode === 'recover' && (
-            <>
-              {recoveryStep === 'request' ? (
-                <label>
-                  Username
-                  <input
-                    required
-                    value={username}
-                    placeholder="Username dell'account"
-                    onChange={(event) => setUsername(event.target.value)}
-                  />
-                </label>
-              ) : (
-                <>
-                  <div className="auth-result-box">
-                    <p className="auth-result-label">Seed di reset</p>
-                    <p className="auth-result-value">{resetSeed}</p>
-                    <p className="auth-result-meta">Scadenza: {resetExpiresAt || 'n/d'}</p>
-                  </div>
-                  <label>
-                    Reset seed
-                    <input required value={resetSeed} placeholder="Seed ricevuto dal request" onChange={(event) => setResetSeed(event.target.value)} />
-                  </label>
-                  <label>
-                    Nuova password
-                    <input
-                      required
-                      type="password"
-                      placeholder="Nuova password"
-                      value={newPassword}
-                      onChange={(event) => setNewPassword(event.target.value)}
-                    />
-                  </label>
-                  <label>
-                    Conferma nuova password
-                    <input
-                      required
-                      type="password"
-                      placeholder="Ripeti la nuova password"
-                      value={confirmPassword}
-                      onChange={(event) => setConfirmPassword(event.target.value)}
-                    />
-                  </label>
-                </>
-              )}
-            </>
-          )}
-          {error && <p className="form-error">{error}</p>}
-          {info && <p className="auth-note">{info}</p>}
-          {mode === 'recover' ? (
-            <button className="primary-btn" disabled={busy} type="submit">
-              {busy ? 'Attendere...' : recoveryStep === 'request' ? 'Richiedi seed' : 'Conferma reset'}
-            </button>
-          ) : (
-            <button className="primary-btn" disabled={busy} type="submit">
-              {busy ? 'Attendere...' : mode === 'login' ? 'Accedi' : 'Crea account'}
-            </button>
-          )}
-        </form>
-      </section>
     </div>
   )
 }
@@ -3989,311 +3651,12 @@ function CampaignListPage({
   )
 }
 
-function CreateCampaignPage({
-  availableModules,
-  availableGameSystems,
-  onCreate,
-}: {
-  availableModules: CampaignCatalogEntry[]
-  availableGameSystems: CampaignCatalogEntry[]
-  onCreate: (payload: {
-    name: string
-    description: string
-    summary: string
-    setting: string
-    tone: string
-    rules: string
-    requirements: string
-    coverImageUrl: string
-    isOpen: boolean
-    isSearchable: boolean
-    gameSystem: string
-    allowedModules: string[]
-  }) => void
-}) {
-  const [name, setName] = useState('Nuova Campagna')
-  const [description, setDescription] = useState('')
-  const [summary, setSummary] = useState('')
-  const [setting, setSetting] = useState('')
-  const [tone, setTone] = useState('')
-  const [rules, setRules] = useState('')
-  const [requirements, setRequirements] = useState('')
-  const [coverImageUrl, setCoverImageUrl] = useState('')
-  const [isOpen, setIsOpen] = useState(true)
-  const [isSearchable, setIsSearchable] = useState(true)
-  const [selectedGameSystem, setSelectedGameSystem] = useState('DND5E')
-  const [selectedModules, setSelectedModules] = useState<string[]>([])
-
-  useEffect(() => {
-    if (availableModules.length === 0) return
-    setSelectedModules((prev) => {
-      if (prev.length === 0) return availableModules.map((module) => module.code)
-      const allowed = new Set(availableModules.map((module) => module.code))
-      return prev.filter((moduleCode) => allowed.has(moduleCode))
-    })
-  }, [availableModules])
-
-  useEffect(() => {
-    if (availableGameSystems.length === 0) {
-      setSelectedGameSystem('DND5E')
-      return
-    }
-    setSelectedGameSystem((prev) => {
-      const allowed = new Set(availableGameSystems.map((item) => item.code))
-      return allowed.has(prev) ? prev : availableGameSystems[0]?.code || 'DND5E'
-    })
-  }, [availableGameSystems])
-
-  const toggleModule = (moduleCode: string) => {
-    setSelectedModules((prev) =>
-      prev.includes(moduleCode) ? prev.filter((item) => item !== moduleCode) : [...prev, moduleCode]
-    )
-  }
-  const campaignVisibilityRows = [
-    {
-      key: 'open',
-      title: 'Campagna aperta',
-      description: 'Permette richiesta di accesso dall’elenco campagne.',
-      active: isOpen,
-      activeLabel: 'Aperta',
-      inactiveLabel: 'Privata',
-      onToggle: () => setIsOpen((prev) => !prev),
-    },
-    {
-      key: 'searchable',
-      title: 'Visibile nella ricerca',
-      description: 'La campagna può essere trovata nella ricerca pubblica.',
-      active: isSearchable,
-      activeLabel: 'Ricercabile',
-      inactiveLabel: 'Nascosta',
-      onToggle: () => setIsSearchable((prev) => !prev),
-    },
-  ]
-
-  return (
-    <section className="panel">
-      <h2>Crea Campagna</h2>
-      <label>
-        <FieldLabel icon="fa-solid fa-gamepad" label="Sistema di gioco" />
-        <select
-          required
-          value={selectedGameSystem}
-          onChange={(event) => setSelectedGameSystem(event.target.value)}
-        >
-          {availableGameSystems.length > 0 ? (
-            availableGameSystems.map((gameSystem) => (
-              <option key={gameSystem.code} value={gameSystem.code}>
-                {gameSystem.label || gameSystem.code}
-              </option>
-            ))
-          ) : (
-            <option value="DND5E">D&D 5E</option>
-          )}
-        </select>
-        <p className="muted">{catalogEntryDescription(availableGameSystems, selectedGameSystem)}</p>
-        <p className="muted">Obbligatorio. Definisce il template della scheda e la logica base della campagna.</p>
-      </label>
-      <label>
-        <FieldLabel icon="fa-solid fa-signature" label="Nome" />
-        <input value={name} placeholder="Nome della campagna" onChange={(event) => setName(event.target.value)} />
-      </label>
-      <label>
-        <FieldLabel icon="fa-solid fa-align-left" label="Descrizione" />
-        <textarea rows={3} placeholder="Descrizione estesa della campagna" value={description} onChange={(event) => setDescription(event.target.value)} />
-      </label>
-      <label>
-        <FieldLabel icon="fa-solid fa-quote-right" label="Riassunto breve" />
-        <textarea rows={2} placeholder="Riassunto breve visibile in elenco" value={summary} onChange={(event) => setSummary(event.target.value)} maxLength={280} />
-      </label>
-      <div className="form-grid">
-        <label>
-          <FieldLabel icon="fa-solid fa-map-location-dot" label="Ambientazione" />
-          <textarea rows={3} placeholder="Ambientazione, mondo o contesto di gioco" value={setting} onChange={(event) => setSetting(event.target.value)} />
-        </label>
-        <label>
-          <FieldLabel icon="fa-solid fa-wand-magic-sparkles" label="Tono" />
-          <select value={tone} onChange={(event) => setTone(event.target.value)}>
-            <option value="">Seleziona tono</option>
-            {CAMPAIGN_TONE_OPTIONS.map((toneOption) => (
-              <option key={toneOption.value} value={toneOption.value}>
-                {toneOption.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <label>
-        <FieldLabel icon="fa-solid fa-gavel" label="Regole" />
-        <textarea rows={3} placeholder="Regole principali della campagna" value={rules} onChange={(event) => setRules(event.target.value)} />
-      </label>
-      <label>
-        <FieldLabel icon="fa-solid fa-door-open" label="Requisiti d'ingresso" />
-        <textarea rows={3} placeholder="Requisiti richiesti per entrare" value={requirements} onChange={(event) => setRequirements(event.target.value)} />
-      </label>
-      <label>
-        <FieldLabel icon="fa-solid fa-image" label="URL immagine copertina" />
-        <input value={coverImageUrl} placeholder="https://..." onChange={(event) => setCoverImageUrl(event.target.value)} />
-      </label>
-      <CampaignToggleSettingsTable
-        title="Visibilità e accesso"
-        description="Impostazioni base di pubblicazione della campagna."
-        rows={campaignVisibilityRows}
-      />
-      <CampaignToggleSettingsTable
-        title="Addon campagna"
-        description="I moduli sono sempre visibili e puoi attivarli o disattivarli senza passaggi aggiuntivi."
-        availableModules={availableModules}
-        selectedModules={selectedModules}
-        onToggle={toggleModule}
-      />
-      <button
-        type="button"
-        className="primary-btn campaign-submit-btn"
-        onClick={() =>
-          onCreate({
-            name,
-            description,
-            summary,
-            setting,
-            tone,
-            rules,
-            requirements,
-            coverImageUrl,
-            isOpen,
-            isSearchable,
-            gameSystem: selectedGameSystem,
-            allowedModules: selectedModules,
-          })
-        }
-      >
-        <Icon name="fa-solid fa-plus" />
-        Crea
-      </button>
-    </section>
-  )
-}
-
 function InfoBlock({ title, value }: { title: string; value: string | null }) {
   if (!value) return null
   return (
     <div className="info-block">
       <p className="field-label">{title}</p>
       <p>{value}</p>
-    </div>
-  )
-}
-
-type DataTableColumn = {
-  key: string
-  label: string
-  className?: string
-  sortKey?: string
-}
-
-function DataTable<T>({
-  columns,
-  rows,
-  getRowKey,
-  renderRow,
-  emptyMessage,
-  className,
-  sortBy,
-  sortDirection,
-  onSortChange,
-  onRowClick,
-  selectedRowKey,
-}: {
-  columns: DataTableColumn[]
-  rows: T[]
-  getRowKey: (row: T) => string
-  renderRow: (row: T) => ReactNode
-  emptyMessage: string
-  className?: string
-  sortBy?: string | null
-  sortDirection?: 'asc' | 'desc'
-  onSortChange?: (sortKey: string) => void
-  onRowClick?: (row: T) => void
-  selectedRowKey?: string | null
-}) {
-  return (
-    <div className={`data-table-shell ${className || ''}`.trim()}>
-      <div className="data-table-wrap">
-        <table className="data-table">
-          <thead>
-            <tr>
-              {columns.map((column) => (
-                <th
-                  key={column.key}
-                  className={column.className}
-                  aria-sort={
-                    column.sortKey && sortBy === column.sortKey
-                      ? sortDirection === 'asc'
-                        ? 'ascending'
-                        : 'descending'
-                      : 'none'
-                  }
-                >
-                  {column.sortKey && onSortChange ? (
-                    <button
-                      type="button"
-                      className={`data-table-sort-btn ${sortBy === column.sortKey ? 'is-active' : ''}`}
-                      onClick={() => onSortChange(column.sortKey as string)}
-                    >
-                      <span>{column.label}</span>
-                      <Icon
-                        name={
-                          sortBy === column.sortKey
-                            ? sortDirection === 'asc'
-                              ? 'fa-solid fa-arrow-up-wide-short'
-                              : 'fa-solid fa-arrow-down-wide-short'
-                            : 'fa-solid fa-sort'
-                        }
-                      />
-                    </button>
-                  ) : (
-                    column.label
-                  )}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 ? (
-              <tr>
-                <td className="data-table-empty" colSpan={columns.length}>
-                  {emptyMessage}
-                </td>
-              </tr>
-            ) : (
-              rows.map((row) => {
-                const rowKey = getRowKey(row)
-                const renderedRow = renderRow(row)
-                const rowClassName = rowKey === selectedRowKey ? 'is-selected' : undefined
-                if (isValidElement(renderedRow)) {
-                  const rowElement = renderedRow as ReactElement<any>
-                  return cloneElement(rowElement, {
-                    key: rowKey,
-                    className: [rowElement.props.className, rowClassName].filter(Boolean).join(' ') || undefined,
-                    onClick: onRowClick ? () => onRowClick(row) : rowElement.props.onClick,
-                    onKeyDown: onRowClick
-                      ? (event: KeyboardEvent<HTMLTableRowElement>) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault()
-                            onRowClick(row)
-                          }
-                        }
-                      : rowElement.props.onKeyDown,
-                    tabIndex: onRowClick ? 0 : rowElement.props.tabIndex,
-                    role: onRowClick ? 'button' : rowElement.props.role,
-                    'aria-selected': rowClassName ? true : rowElement.props['aria-selected'],
-                  })
-                }
-                return <Fragment key={rowKey}>{renderedRow}</Fragment>
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
     </div>
   )
 }
@@ -5703,64 +5066,6 @@ function SystemCatalogsPage({
   )
 }
 
-function ApprovalPage({
-  pendingApplications,
-  onLoadPending,
-  onApprove,
-  onReject,
-}: {
-  pendingApplications: CampaignApplicationResponse[]
-  onLoadPending: () => void
-  onApprove: (userId: string) => void
-  onReject: (userId: string) => void
-}) {
-  return (
-    <section className="panel">
-      <h2>Approvazione Accessi</h2>
-      <div className="row-between">
-        <p className="muted">Le richieste si caricano automaticamente quando entri in questa pagina.</p>
-        <button type="button" className="secondary-btn" onClick={onLoadPending}>
-          Aggiorna elenco
-        </button>
-      </div>
-      <DataTable
-        columns={[
-          { key: 'profile', label: 'Profilo' },
-          { key: 'username', label: 'Username' },
-          { key: 'status', label: 'Stato' },
-          { key: 'actions', label: 'Azioni' },
-        ]}
-        rows={pendingApplications}
-        getRowKey={(item) => item.userId}
-        emptyMessage="Nessuna richiesta pending."
-        renderRow={(item) => (
-          <tr>
-            <td>
-              <div className="data-table-primary">
-                <p className="data-table-title">{item.profileName}</p>
-              </div>
-            </td>
-            <td className="data-table-muted">@{item.username}</td>
-            <td>
-              <span className="status status-warning">PENDING</span>
-            </td>
-            <td>
-              <div className="data-table-actions">
-                <button type="button" className="primary-btn" onClick={() => onApprove(item.userId)}>
-                  Approva
-                </button>
-                <button type="button" className="secondary-btn" onClick={() => onReject(item.userId)}>
-                  Rifiuta
-                </button>
-              </div>
-            </td>
-          </tr>
-        )}
-      />
-    </section>
-  )
-}
-
 function MissionsPage({
   missions,
   selectedMission,
@@ -5897,18 +5202,8 @@ function MissionsPage({
   const [campaignFilter, setCampaignFilter] = useState<'all' | string>('all')
   const [statusView, setStatusView] = useState<'joinable' | 'all'>('joinable')
 
-  useEffect(() => {
-    if (mode === 'create') {
-      setCreateDraft(defaultDraft())
-      setCreateError('')
-    }
-  }, [mode])
-
-  useEffect(() => {
-    if (mode !== 'create') return
-    if (canCreateMissions && activeCampaignId) return
-    setMode('browse')
-  }, [mode, canCreateMissions, activeCampaignId])
+  const canUseCreateMode = canCreateMissions && Boolean(activeCampaignId)
+  const visibleMode = mode === 'create' && canUseCreateMode ? 'create' : 'browse'
 
   const parseOptionalInt = (value: string): number | null => {
     const trimmed = value.trim()
@@ -6252,8 +5547,16 @@ function MissionsPage({
           <p className="muted">Cerca, filtra e joina le missioni aperte delle campagne a cui sei approvato.</p>
         </div>
         <div className="inline-actions">
-          {canCreateMissions && activeCampaignId && mode !== 'create' && (
-            <button type="button" className="secondary-btn" onClick={() => setMode('create')}>
+          {canUseCreateMode && visibleMode !== 'create' && (
+            <button
+              type="button"
+              className="secondary-btn"
+              onClick={() => {
+                setCreateDraft(defaultDraft())
+                setCreateError('')
+                setMode('create')
+              }}
+            >
               <Icon name="fa-solid fa-plus" />
               Crea missione
             </button>
@@ -6261,7 +5564,7 @@ function MissionsPage({
         </div>
       </div>
 
-      {canCreateMissions && activeCampaignId && mode === 'create' && (
+      {canUseCreateMode && visibleMode === 'create' && (
         <div className="subpanel mission-form-panel">{renderMissionForm(createDraft, setCreateDraft, createError, setCreateError, 'Crea missione', submitCreate)}</div>
       )}
 
@@ -6336,139 +5639,6 @@ function MissionsPage({
           )}
         />
       </div>
-    </section>
-  )
-}
-
-function RoomsPage({
-  rooms,
-  canCreateRoom,
-  onCreate,
-}: {
-  rooms: RoomResponse[]
-  canCreateRoom: boolean
-  onCreate: (payload: { name: string; type: 'ROLEPLAY' | 'SPAM'; ttlHours: number; slowmodeSeconds: number }) => void
-}) {
-  const [name, setName] = useState('Piazza Centrale')
-  const [type, setType] = useState<'ROLEPLAY' | 'SPAM'>('ROLEPLAY')
-  const [ttlHours, setTtlHours] = useState(72)
-  const [slowmodeSeconds, setSlowmodeSeconds] = useState(0)
-
-  return (
-    <section className="panel">
-      <h2>Stanze</h2>
-      {canCreateRoom ? (
-        <>
-          <div className="form-grid">
-            <label>
-              <FieldLabel icon="fa-solid fa-signature" label="Nome" />
-              <input value={name} placeholder="Nome della stanza" onChange={(event) => setName(event.target.value)} />
-            </label>
-            <label>
-              <FieldLabel icon="fa-solid fa-layer-group" label="Tipo" />
-              <select value={type} onChange={(event) => setType(event.target.value as 'ROLEPLAY' | 'SPAM')}>
-                <option value="ROLEPLAY">ROLEPLAY</option>
-                <option value="SPAM">SPAM</option>
-              </select>
-            </label>
-          </div>
-          <div className="form-grid">
-            <label>
-              <FieldLabel icon="fa-solid fa-hourglass-half" label="TTL hours" />
-              <input
-                type="number"
-                min={1}
-                max={72}
-                placeholder="72"
-                value={ttlHours}
-                onChange={(event) => setTtlHours(Number(event.target.value))}
-              />
-            </label>
-            <label>
-              <FieldLabel icon="fa-solid fa-stopwatch" label="Slowmode seconds" />
-              <input
-                type="number"
-                min={0}
-                max={600}
-                placeholder="0"
-                value={slowmodeSeconds}
-                onChange={(event) => setSlowmodeSeconds(Number(event.target.value))}
-              />
-            </label>
-          </div>
-          <button
-            type="button"
-            className="primary-btn"
-            onClick={() => onCreate({ name, type, ttlHours, slowmodeSeconds })}
-          >
-            <Icon name="fa-solid fa-circle-plus" />
-            Crea Stanza
-          </button>
-        </>
-      ) : (
-        <div className="info-box">
-          <p className="section-title">Creazione non disponibile</p>
-          <p className="muted">
-            Solo i ruoli <strong>MASTER</strong> e <strong>SUPER_MASTER</strong> possono creare stanze.
-          </p>
-        </div>
-      )}
-
-      <div className="divider" />
-      <h3 className="section-title">Elenco Stanze</h3>
-      <DataTable
-        columns={[
-          { key: 'room', label: 'Stanza' },
-          { key: 'type', label: 'Tipo' },
-          { key: 'ttl', label: 'TTL' },
-          { key: 'slowmode', label: 'Slowmode' },
-        ]}
-        rows={rooms}
-        getRowKey={(room) => room.id}
-        emptyMessage="Nessuna stanza disponibile."
-        renderRow={(room) => (
-          <tr>
-            <td>
-              <div className="data-table-primary">
-                <p className="data-table-title">{room.name}</p>
-              </div>
-            </td>
-            <td>{room.type}</td>
-            <td className="data-table-muted">{room.ttlHours}h</td>
-            <td className="data-table-muted">{room.slowmodeSeconds}s</td>
-          </tr>
-        )}
-      />
-    </section>
-  )
-}
-
-function NotificationsPage({ events }: { events: UiEvent[] }) {
-  return (
-    <section className="panel">
-      <h2>Notifiche</h2>
-      <p className="muted">Feed locale basato su azioni API client.</p>
-      <DataTable
-        columns={[
-          { key: 'time', label: 'Ora' },
-          { key: 'level', label: 'Livello' },
-          { key: 'message', label: 'Messaggio' },
-        ]}
-        rows={events}
-        getRowKey={(event) => event.id}
-        emptyMessage="Nessuna notifica disponibile."
-        renderRow={(event) => (
-          <tr>
-            <td className="data-table-muted">{new Date(event.ts).toLocaleTimeString()}</td>
-            <td>
-              <span className={`status ${event.level === 'error' ? 'status-danger' : event.level === 'ok' ? 'status-success' : 'status-neutral'}`}>
-                {event.level}
-              </span>
-            </td>
-            <td>{event.text}</td>
-          </tr>
-        )}
-      />
     </section>
   )
 }
@@ -6587,231 +5757,6 @@ function LeaveCampaignModal({
         </div>
       </div>
     </div>
-  )
-}
-
-function ProfilePage({
-  profile,
-  onGoEdit,
-}: {
-  profile: UserProfile
-  onGoEdit: () => void
-}) {
-  const displayValue = (value: string | null | undefined) => (value && value.trim() ? value : 'Non impostato')
-  const avatarLabel = profile.profileName?.trim() || profile.username?.trim() || 'U'
-  return (
-    <section className="panel profile-shell">
-      <div className="profile-header">
-        <div className="profile-avatar" aria-hidden="true">
-          {avatarLabel.slice(0, 2).toUpperCase()}
-        </div>
-        <div className="profile-header-copy">
-          <p className="profile-kicker">Profilo utente</p>
-          <h2>{displayValue(profile.profileName)}</h2>
-          <p className="muted">{displayValue(profile.username ? `@${profile.username}` : null)}</p>
-        </div>
-        <div className="profile-header-actions">
-          <button type="button" className="primary-btn" onClick={onGoEdit}>
-            <Icon name="fa-solid fa-pen-to-square" />
-            <span>Modifica profilo</span>
-          </button>
-        </div>
-      </div>
-
-      <div className="profile-grid">
-        <article className="profile-card">
-          <div className="profile-card-head">
-            <Icon name="fa-solid fa-user" className="profile-card-icon" />
-            <p className="profile-card-label">Nome profilo</p>
-          </div>
-          <p className="profile-card-value">{displayValue(profile.profileName)}</p>
-        </article>
-
-        <article className="profile-card">
-          <div className="profile-card-head">
-            <Icon name="fa-solid fa-at" className="profile-card-icon" />
-            <p className="profile-card-label">Username</p>
-          </div>
-          <p className="profile-card-value">{displayValue(profile.username ? `@${profile.username}` : null)}</p>
-        </article>
-
-        <article className="profile-card profile-card-wide">
-          <div className="profile-card-head">
-            <Icon name="fa-solid fa-quote-left" className="profile-card-icon" />
-            <p className="profile-card-label">Bio</p>
-          </div>
-          <p className="profile-card-value profile-card-body">{displayValue(profile.bio)}</p>
-        </article>
-
-        <article className="profile-card">
-          <div className="profile-card-head">
-            <Icon name="fa-solid fa-phone" className="profile-card-icon" />
-            <p className="profile-card-label">WhatsApp</p>
-          </div>
-          <p className="profile-card-value">{displayValue(profile.whatsapp)}</p>
-        </article>
-
-        <article className="profile-card">
-          <div className="profile-card-head">
-            <Icon name="fa-brands fa-instagram" className="profile-card-icon" />
-            <p className="profile-card-label">Instagram</p>
-          </div>
-          <p className="profile-card-value">{displayValue(profile.socialLinks.instagram)}</p>
-        </article>
-
-        <article className="profile-card profile-card-wide">
-          <div className="profile-card-head">
-            <Icon name="fa-solid fa-link" className="profile-card-icon" />
-            <p className="profile-card-label">Altro social</p>
-          </div>
-          <p className="profile-card-value">{displayValue(profile.socialLinks.other)}</p>
-        </article>
-      </div>
-
-      <p className="profile-footnote muted">I campi vuoti vengono mostrati esplicitamente per evitare ambiguità nel profilo.</p>
-    </section>
-  )
-}
-
-function EditProfilePage({
-  profile,
-  onSave,
-  onChangePassword,
-}: {
-  profile: UserProfile
-  onSave: (draft: ProfileDraft) => void
-  onChangePassword: (params: { currentPassword: string; newPassword: string }) => Promise<void>
-}) {
-  const [draft, setDraft] = useState<ProfileDraft>(() => profileToDraft(profile))
-  const [currentPassword, setCurrentPassword] = useState('')
-  const [newPassword, setNewPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
-  const [passwordBusy, setPasswordBusy] = useState(false)
-  const [passwordError, setPasswordError] = useState('')
-  const [passwordInfo, setPasswordInfo] = useState('')
-
-  useEffect(() => {
-    setDraft(profileToDraft(profile))
-  }, [profile.id, profile.profileName, profile.bio, profile.whatsapp, profile.socialLinks])
-
-  const submitPasswordChange = async () => {
-    setPasswordError('')
-    setPasswordInfo('')
-    if (newPassword !== confirmPassword) {
-      setPasswordError('La nuova password e la conferma non coincidono.')
-      return
-    }
-
-    setPasswordBusy(true)
-    try {
-      await onChangePassword({ currentPassword, newPassword })
-      setCurrentPassword('')
-      setNewPassword('')
-      setConfirmPassword('')
-      setPasswordInfo('Password aggiornata con successo.')
-    } catch (err) {
-      setPasswordError(toMessage(err))
-    } finally {
-      setPasswordBusy(false)
-    }
-  }
-
-  return (
-    <section className="panel">
-      <h2>Modifica Profilo</h2>
-      <div className="form-grid">
-        <label>
-          <FieldLabel icon="fa-solid fa-user" label="Profile Name" />
-          <input
-            placeholder="Nome profilo"
-            value={draft.profileName}
-            onChange={(event) => setDraft((prev) => ({ ...prev, profileName: event.target.value }))}
-          />
-        </label>
-        <label>
-          <FieldLabel icon="fa-brands fa-whatsapp" label="WhatsApp" />
-          <input
-            placeholder="Numero o contatto WhatsApp"
-            value={draft.whatsapp}
-            onChange={(event) => setDraft((prev) => ({ ...prev, whatsapp: event.target.value }))}
-          />
-        </label>
-      </div>
-      <label>
-        <FieldLabel icon="fa-solid fa-quote-left" label="Bio" />
-        <textarea
-          rows={4}
-          placeholder="Breve presentazione del tuo profilo"
-          value={draft.bio}
-          onChange={(event) => setDraft((prev) => ({ ...prev, bio: event.target.value }))}
-        />
-      </label>
-      <div className="form-grid">
-        <label>
-          <FieldLabel icon="fa-brands fa-instagram" label="Instagram" />
-          <input
-            placeholder="@account instagram"
-            value={draft.instagram}
-            onChange={(event) => setDraft((prev) => ({ ...prev, instagram: event.target.value }))}
-          />
-        </label>
-        <label>
-          <FieldLabel icon="fa-solid fa-link" label="Altro social" />
-          <input
-            placeholder="Link o nickname"
-            value={draft.otherSocial}
-            onChange={(event) => setDraft((prev) => ({ ...prev, otherSocial: event.target.value }))}
-          />
-        </label>
-      </div>
-      <button type="button" className="primary-btn" onClick={() => onSave(draft)}>
-        <Icon name="fa-solid fa-floppy-disk" />
-        Salva
-      </button>
-      <div className="divider" />
-      <div className="profile-password-block">
-        <div className="row-between">
-          <h3 className="section-title">Cambio password</h3>
-          <span className="status status-info">Protetto</span>
-        </div>
-        <p className="muted">Usa la password attuale per aggiornare le credenziali e invalidare le sessioni precedenti.</p>
-        <label>
-          <FieldLabel icon="fa-solid fa-key" label="Password corrente" />
-          <input
-            type="password"
-            placeholder="Password corrente"
-            value={currentPassword}
-            onChange={(event) => setCurrentPassword(event.target.value)}
-          />
-        </label>
-        <div className="form-grid">
-          <label>
-            <FieldLabel icon="fa-solid fa-lock" label="Nuova password" />
-            <input
-              type="password"
-              placeholder="Nuova password"
-              value={newPassword}
-              onChange={(event) => setNewPassword(event.target.value)}
-            />
-          </label>
-          <label>
-            <FieldLabel icon="fa-solid fa-lock" label="Conferma nuova password" />
-            <input
-              type="password"
-              placeholder="Ripeti la nuova password"
-              value={confirmPassword}
-              onChange={(event) => setConfirmPassword(event.target.value)}
-            />
-          </label>
-        </div>
-        {passwordError && <p className="form-error">{passwordError}</p>}
-        {passwordInfo && <p className="auth-note">{passwordInfo}</p>}
-        <button type="button" className="secondary-btn" disabled={passwordBusy} onClick={() => void submitPasswordChange()}>
-          <Icon name="fa-solid fa-unlock-keyhole" />
-          {passwordBusy ? 'Attendere...' : 'Aggiorna password'}
-        </button>
-      </div>
-    </section>
   )
 }
 
@@ -7108,32 +6053,17 @@ function CharacterDetailPage({
   onSaveSheet: (dataJson: Record<string, unknown>) => Promise<void>
 }) {
   const value = externalDetail || character
-  const [status, setStatus] = useState<CharacterStatus>('ACTIVE')
-  const [sheetDraft, setSheetDraft] = useState<Record<string, unknown>>({})
+  const [status, setStatus] = useState<CharacterStatus>(value?.characterStatus || 'ACTIVE')
+  const [sheetDraft, setSheetDraft] = useState<Record<string, unknown>>(() => sheet?.dataJson || {})
   const [sheetDirty, setSheetDirty] = useState(false)
   const [sheetSaving, setSheetSaving] = useState(false)
   const sheetBlocks = useMemo(() => getSheetBlocks(sheet?.schemaJson || {}), [sheet?.schemaJson])
 
-  useEffect(() => {
-    if (value?.characterStatus) setStatus(value.characterStatus)
-  }, [value?.id, value?.characterStatus])
-
-  useEffect(() => {
-    setSheetDraft(sheet?.dataJson || {})
-    setSheetDirty(false)
-    setSheetSaving(false)
-  }, [sheet?.characterId, sheet?.schemaVersion, sheet?.updatedAt, sheet?.sheetTypeCode])
-
   const deadAllowed = canMarkCharacterDead(value)
+  const effectiveStatus = status === 'DEAD' && !deadAllowed ? 'RETIRED' : status
   const canReactivate = canReactivateCharacter(value)
   const sheetLockedBecauseInactive = value?.characterStatus !== 'ACTIVE'
   const canEditSheet = Boolean(sheet?.editable && !sheetLockedBecauseInactive)
-
-  useEffect(() => {
-    if (status === 'DEAD' && !deadAllowed) {
-      setStatus('RETIRED')
-    }
-  }, [status, deadAllowed])
 
   const updateSheetField = (fieldPath: string, nextValue: unknown) => {
     setSheetDraft((prev) => ({ ...prev, [fieldPath]: nextValue }))
@@ -7282,28 +6212,28 @@ function CharacterDetailPage({
           )}
           <label>
             Nuovo status
-            <select value={status} onChange={(event) => setStatus(event.target.value as CharacterStatus)}>
+            <select value={effectiveStatus} onChange={(event) => setStatus(event.target.value as CharacterStatus)}>
               <option value="ACTIVE">ACTIVE</option>
               <option value="RETIRED">RETIRED</option>
               {deadAllowed && <option value="DEAD">DEAD</option>}
             </select>
           </label>
           {!deadAllowed && <p className="muted">Non hai permessi per impostare lo stato DEAD.</p>}
-          {status === 'ACTIVE' && value.characterStatus !== 'ACTIVE' && !canReactivate && (
+          {effectiveStatus === 'ACTIVE' && value.characterStatus !== 'ACTIVE' && !canReactivate && (
             <p className="muted">Non hai permessi per riportare il personaggio ad ACTIVE.</p>
           )}
           <button
             type="button"
             className="primary-btn"
-            disabled={(status === 'DEAD' && !deadAllowed) || (status === 'ACTIVE' && value.characterStatus !== 'ACTIVE' && !canReactivate)}
+            disabled={(effectiveStatus === 'DEAD' && !deadAllowed) || (effectiveStatus === 'ACTIVE' && value.characterStatus !== 'ACTIVE' && !canReactivate)}
             title={
-              status === 'DEAD' && !deadAllowed
+              effectiveStatus === 'DEAD' && !deadAllowed
                 ? 'Non hai permessi per impostare DEAD.'
-                : status === 'ACTIVE' && value.characterStatus !== 'ACTIVE' && !canReactivate
+                : effectiveStatus === 'ACTIVE' && value.characterStatus !== 'ACTIVE' && !canReactivate
                   ? 'Non hai permessi per riportare il personaggio ad ACTIVE.'
                   : undefined
             }
-            onClick={() => onUpdateStatus(status)}
+            onClick={() => onUpdateStatus(effectiveStatus)}
           >
             Aggiorna Status
           </button>
@@ -7388,10 +6318,6 @@ function CampaignMemberProfilePage({
   const [role, setRole] = useState<CampaignRole>(membership.role)
   const [moderationMode, setModerationMode] = useState<'suspend' | 'ban' | null>(null)
   const [moderationReason, setModerationReason] = useState('')
-
-  useEffect(() => {
-    setRole(membership.role)
-  }, [membership.role])
 
   const roleOptions: CampaignRole[] = ['GIOCATORE', 'CO_MASTER', 'MASTER']
   const activityLabel =
@@ -7646,26 +6572,6 @@ function CampaignManagementPage({
       onToggle: () => setIsSearchable((prev) => !prev),
     },
   ]
-
-  useEffect(() => {
-    if (!campaign) return
-    setName(campaign.name)
-    setDescription(campaign.description || '')
-    setSummary(campaign.summary || '')
-    setSetting(campaign.setting || '')
-    setTone(campaign.tone || '')
-    setRules(campaign.rules || '')
-    setRequirements(campaign.requirements || '')
-    setCoverImageUrl(campaign.coverImageUrl || '')
-    setIsOpen(campaign.isOpen)
-    setIsSearchable(campaign.isSearchable)
-    setSelectedModules(campaign.allowedModules)
-    setInviteTokenResult(null)
-    setInviteTokenFeedback('')
-    setInviteTokenAutoJoin(false)
-    setInviteTokenExpiresAt('')
-    setInviteTokenMaxUses('')
-  }, [campaign])
 
   useEffect(() => {
     if (!campaign) return
@@ -7998,166 +6904,6 @@ function CampaignManagementPage({
       )}
     </section>
   )
-}
-
-function SelectCharacterPage({
-  characters,
-  preferredCharacterId,
-  onApply,
-}: {
-  characters: Character[]
-  preferredCharacterId: string
-  onApply: (characterId: string) => void
-}) {
-  const [characterId, setCharacterId] = useState('')
-  useEffect(() => {
-    if (characters.length === 0) {
-      if (characterId) setCharacterId('')
-      return
-    }
-    if (preferredCharacterId && characters.some((character) => character.id === preferredCharacterId)) {
-      setCharacterId(preferredCharacterId)
-      return
-    }
-    if (!characters.some((character) => character.id === characterId)) {
-      setCharacterId(characters[0]?.id || '')
-    }
-  }, [characters, characterId, preferredCharacterId])
-  return (
-    <section className="panel">
-      <h2>Seleziona PG</h2>
-      <label>
-        <FieldLabel icon="fa-solid fa-user" label="Personaggio" />
-        <select value={characterId} onChange={(event) => setCharacterId(event.target.value)}>
-          {characters.map((character) => (
-            <option key={character.id} value={character.id}>
-              {character.name} ({character.characterStatus || 'N/A'})
-            </option>
-          ))}
-        </select>
-      </label>
-      <button type="button" className="primary-btn" onClick={() => characterId && onApply(characterId)}>
-        <Icon name="fa-solid fa-arrow-right" />
-        Apply alla campagna con PG
-      </button>
-    </section>
-  )
-}
-
-function CreateCharacterPage({
-  hasActiveCampaign,
-  canCreatePlayerCharacter,
-  canCreateNpc,
-  onCreate,
-}: {
-  hasActiveCampaign: boolean
-  canCreatePlayerCharacter: boolean
-  canCreateNpc: boolean
-  onCreate: (payload: { name: string; nickname?: string; portraitUrl?: string; isNpc?: boolean }) => void
-}) {
-  const [name, setName] = useState('Nuovo PG')
-  const [nickname, setNickname] = useState('')
-  const [portraitUrl, setPortraitUrl] = useState('')
-  const [isNpc, setIsNpc] = useState(false)
-  const canCreateSelectedType = isNpc ? canCreateNpc : canCreatePlayerCharacter
-  const saveDisabled =
-    !hasActiveCampaign ||
-    (!canCreatePlayerCharacter && !canCreateNpc) ||
-    !canCreateSelectedType ||
-    name.trim().length === 0
-
-  useEffect(() => {
-    if (isNpc && !canCreateNpc && canCreatePlayerCharacter) {
-      setIsNpc(false)
-    }
-    if (!isNpc && !canCreatePlayerCharacter && canCreateNpc) {
-      setIsNpc(true)
-    }
-  }, [isNpc, canCreateNpc, canCreatePlayerCharacter])
-
-  return (
-    <section className="panel">
-      <h2>Crea Personaggio</h2>
-      {!hasActiveCampaign && <p className="muted">Per creare un personaggio devi prima attivare una campagna.</p>}
-      {hasActiveCampaign && !canCreatePlayerCharacter && (
-        <div className="character-create-warning" role="alert" aria-live="polite">
-          <Icon name="fa-solid fa-triangle-exclamation" className="character-create-warning-icon" />
-          <div>
-            <p className="character-create-warning-title">Limite raggiunto</p>
-            <p className="character-create-warning-text">
-              Hai già un PG attivo in questa campagna: non puoi crearne un altro.
-              {canCreateNpc
-                ? ' Se ti serve un personaggio aggiuntivo, puoi creare solo un NPC.'
-                : ' I PG morti o ritirati non bloccano la creazione di un nuovo PG.'}
-            </p>
-          </div>
-        </div>
-      )}
-      {hasActiveCampaign && !canCreateNpc && (
-        <p className="muted">Con ruolo GIOCATORE non puoi creare NPC.</p>
-      )}
-      <div className="form-grid">
-        <label>
-          <FieldLabel icon="fa-solid fa-signature" label="Nome" />
-          <input value={name} placeholder="Nome del personaggio" onChange={(event) => setName(event.target.value)} />
-        </label>
-        <label>
-          <FieldLabel icon="fa-solid fa-quote-right" label="Nickname" />
-          <input value={nickname} placeholder="Soprannome o alias" onChange={(event) => setNickname(event.target.value)} />
-        </label>
-      </div>
-      <label>
-        <FieldLabel icon="fa-solid fa-image" label="Portrait URL" />
-        <input value={portraitUrl} placeholder="https://..." onChange={(event) => setPortraitUrl(event.target.value)} />
-      </label>
-      <div>
-        <div className="field-label">Tipo</div>
-        <div className="segmented">
-          <button
-            type="button"
-          className={`segmented-btn ${!isNpc ? 'is-active' : ''}`}
-          disabled={!canCreatePlayerCharacter}
-          onClick={() => setIsNpc(false)}
-        >
-            <span className="char-kind-icon" aria-hidden="true">
-              <Icon name="fa-solid fa-user" />
-            </span>
-            Personaggio
-          </button>
-          <button
-            type="button"
-          className={`segmented-btn ${isNpc ? 'is-active' : ''}`}
-          disabled={!canCreateNpc}
-          onClick={() => setIsNpc(true)}
-        >
-            <span className="char-kind-icon" aria-hidden="true">
-              <Icon name="fa-solid fa-mask" />
-            </span>
-            NPC
-          </button>
-        </div>
-      </div>
-      <button
-        type="button"
-        className="primary-btn"
-        disabled={saveDisabled}
-        onClick={() => onCreate({ name, nickname, portraitUrl, isNpc })}
-      >
-        <Icon name="fa-solid fa-plus" />
-        Crea
-      </button>
-    </section>
-  )
-}
-
-function profileToDraft(profile: UserProfile): ProfileDraft {
-  return {
-    profileName: profile.profileName || '',
-    bio: profile.bio || '',
-    whatsapp: profile.whatsapp || '',
-    instagram: profile.socialLinks.instagram || '',
-    otherSocial: profile.socialLinks.other || '',
-  }
 }
 
 function statusTone(status: Character['characterStatus']): 'success' | 'warning' | 'danger' | 'neutral' {
