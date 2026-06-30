@@ -645,6 +645,10 @@ export async function joinMission(
   )
 }
 
+export async function listMissionParticipants(campaignId: string, missionId: string): Promise<MissionParticipantResponse[]> {
+  return apiRequest<MissionParticipantResponse[]>(`/campaigns/${campaignId}/missions/${missionId}/participants`)
+}
+
 export async function leaveMission(campaignId: string, missionId: string): Promise<MissionParticipantResponse> {
   return apiRequest<MissionParticipantResponse>(
     `/campaigns/${campaignId}/missions/${missionId}/participants/me/leave`,

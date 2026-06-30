@@ -2863,13 +2863,13 @@ textarea {
 
 .mission-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  grid-template-columns: minmax(520px, 0.95fr) minmax(420px, 1.05fr);
   gap: 14px;
   align-items: start;
 }
 
 .mission-block {
-  min-height: 100%;
+  min-height: 0;
 }
 
 .mission-list-block,
@@ -2911,6 +2911,17 @@ textarea {
 .mission-form-card {
   display: grid;
   gap: 12px;
+}
+
+.mission-form-card--compact {
+  gap: 10px;
+}
+
+.mission-form-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(260px, 1.2fr);
+  gap: 10px;
+  align-items: start;
 }
 
 .card-section-header {
@@ -3030,6 +3041,21 @@ textarea {
   white-space: nowrap;
 }
 
+.mission-data-table .data-table td,
+.mission-detail-data-table .data-table td {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.mission-module-chip {
+  padding: 4px 8px;
+  font-size: 0.74rem;
+}
+
+.mission-module-chip i {
+  font-size: 0.78rem;
+}
+
 .mission-status-icon {
   display: inline-grid;
   place-items: center;
@@ -3117,6 +3143,29 @@ textarea {
   align-items: flex-start;
 }
 
+.mission-description-block {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid #2e2a45;
+  border-radius: 8px;
+  background: rgba(18, 16, 27, 0.55);
+}
+
+.mission-description-text {
+  margin: 0;
+  color: var(--text);
+  font-style: italic;
+  line-height: 1.55;
+  white-space: normal;
+}
+
+.mission-description-text strong {
+  color: var(--text);
+  font-style: italic;
+  font-weight: 800;
+}
+
 .mission-card-section {
   display: grid;
   gap: 4px;
@@ -3142,6 +3191,111 @@ textarea {
   gap: 10px;
 }
 
+.mission-detail-data-table .data-table th:first-child,
+.mission-detail-data-table .data-table td:first-child {
+  width: 30%;
+}
+
+.mission-join-table {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.mission-join-table label {
+  margin: 0;
+}
+
+.mission-participation-control {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.mission-participation-control .segmented-btn {
+  min-width: 96px;
+}
+
+.mission-exit-btn {
+  border-color: rgba(239, 143, 132, 0.65);
+  background: transparent;
+  color: #ef8f84;
+}
+
+.mission-exit-btn:hover:not(:disabled),
+.mission-exit-btn:focus-visible {
+  border-color: #ef8f84;
+  background: transparent;
+  color: #ffb3ab;
+}
+
+.mission-participants-table .data-table {
+  margin-top: 6px;
+}
+
+.mission-campaign-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #2e2a45;
+  border-radius: 8px;
+  background: rgba(18, 16, 27, 0.45);
+}
+
+.mission-campaign-entry p {
+  margin: 0;
+}
+
+.mission-inline-table {
+  display: grid;
+  border: 1px solid #2e2a45;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.mission-inline-table-row {
+  display: grid;
+  grid-template-columns: 110px minmax(150px, 0.8fr) minmax(260px, 1.2fr);
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border-bottom: 1px solid #2e2a45;
+}
+
+.mission-inline-table-row:last-child {
+  border-bottom: 0;
+}
+
+.mission-inline-table-label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.mission-toggle-row {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.mission-time-stepper--compact,
+.mission-count-stepper--compact {
+  justify-content: flex-start;
+}
+
+.mission-count-stepper--compact {
+  display: grid;
+  grid-template-columns: auto 30px minmax(42px, auto) 30px;
+  gap: 6px;
+  align-items: center;
+}
+
 .mission-actions {
   flex-wrap: wrap;
 }
@@ -3163,6 +3317,12 @@ textarea {
   }
 
   .mission-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mission-form-grid,
+  .mission-inline-table-row,
+  .mission-join-table {
     grid-template-columns: 1fr;
   }
 

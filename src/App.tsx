@@ -1,9 +1,9 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Dispatch, SetStateAction } from 'react'
 import './App.css'
 import { AuthScreen } from './features/auth'
 import { ApprovalPage, CampaignAccessBadge, CampaignOpenBadge, CampaignStatusBadge, CreateCampaignPage } from './features/campaigns'
 import { CreateCharacterPage, SelectCharacterPage } from './features/characters'
+import { MissionsPage } from './features/missions'
 import { NotificationsPage } from './features/notifications'
 import { EditProfilePage, ProfilePage } from './features/profile'
 import { RoomsPage } from './features/rooms'
@@ -43,13 +43,18 @@ import {
   getMe,
   getPublicProfile,
   leaveCampaign,
+  leaveMission,
   listCharacters,
+  listMissionParticipants,
   listMyCampaignMemberships,
   listPendingApplications,
   listMissions,
   listRooms,
   logout,
   rejectApplication,
+  joinMission,
+  updateMission,
+  updateMissionParticipationType,
   updateAdminCampaign,
   updateAdminGameSystem,
   updateAdminSheetType,
@@ -83,6 +88,8 @@ import type {
   CharacterSheetResponse,
   CharacterStatus,
   MyCampaignMembershipResponse,
+  MissionParticipantResponse,
+  MissionParticipationType,
   MissionResponse,
   MissionStatus,
   RoomResponse,
@@ -352,7 +359,6 @@ const SCREEN_ICONS: Record<Screen, string> = {
 
 const CAMPAIGN_REQUIRED_TOOLTIP = 'Caricare prima la campagna'
 const MODULE_REQUIRED_BY_SCREEN: Partial<Record<Screen, string>> = {
-  Missioni: 'MISSIONI',
   Stanze: 'STANZE',
 }
 
@@ -368,6 +374,7 @@ function App() {
   const [knownCampaignMeta, setKnownCampaignMeta] = useState<KnownCampaignMeta[]>([])
   const [myCampaigns, setMyCampaigns] = useState<MyCampaignMembershipResponse[]>([])
   const [discoverableCampaigns, setDiscoverableCampaigns] = useState<CampaignDiscoverResponse[]>([])
+  const [campaignDetailsById, setCampaignDetailsById] = useState<Record<string, CampaignResponse>>({})
   const [pendingApplications, setPendingApplications] = useState<CampaignApplicationResponse[]>([])
   const [campaign, setCampaign] = useState<CampaignResponse | null>(null)
   const [members, setMembers] = useState<CampaignMembershipResponse[]>([])
@@ -399,6 +406,9 @@ function App() {
 
   const [missions, setMissions] = useState<MissionResponse[]>([])
   const [selectedMissionId, setSelectedMissionId] = useState('')
+  const [missionParticipantsById, setMissionParticipantsById] = useState<Record<string, MissionParticipantResponse[]>>({})
+  const [myMissionParticipationById, setMyMissionParticipationById] = useState<Record<string, MissionParticipationType>>({})
+  const [missionParticipantCharacterLabelById, setMissionParticipantCharacterLabelById] = useState<Record<string, string>>({})
 
   const [rooms, setRooms] = useState<RoomResponse[]>([])
   const [selectedCampaignMember, setSelectedCampaignMember] = useState<CampaignMembershipResponse | null>(null)
@@ -432,13 +442,37 @@ function App() {
     const currentUserId = profile?.id
     const activeCampaign = campaignId.trim()
     if (!currentUserId || !activeCampaign) return ''
-    return members.find((item) => item.userId === currentUserId && item.campaignId === activeCampaign)?.characterId || ''
-  }, [campaignId, members, profile?.id])
+    const activeCharacter = characters.find(
+      (character) =>
+        character.userId === currentUserId &&
+        character.campaignId === activeCampaign &&
+        character.characterStatus === 'ACTIVE' &&
+        !character.isNpc,
+    )
+    return activeCharacter?.id || members.find((item) => item.userId === currentUserId && item.campaignId === activeCampaign)?.characterId || ''
+  }, [campaignId, characters, members, profile?.id])
 
   const selectedMission = useMemo(
     () => missions.find((mission) => mission.id === selectedMissionId) || null,
     [missions, selectedMissionId],
   )
+  const selectedMissionCharacterId = useMemo(() => {
+    const currentUserId = profile?.id
+    if (!currentUserId || !selectedMission) return activeCampaignCharacterId
+    const participantCharacterId = (missionParticipantsById[selectedMission.id] || []).find(
+      (participant) => participant.userId === currentUserId,
+    )?.characterId
+    if (participantCharacterId) return participantCharacterId
+
+    const activeCharacter = characters.find(
+      (character) =>
+        character.userId === currentUserId &&
+        character.campaignId === selectedMission.campaignId &&
+        character.characterStatus === 'ACTIVE' &&
+        !character.isNpc,
+    )
+    return activeCharacter?.id || activeCampaignCharacterId
+  }, [activeCampaignCharacterId, characters, missionParticipantsById, profile?.id, selectedMission])
   const approvedCampaignMemberships = useMemo(
     () => myCampaigns.filter((item) => item.memberStatus === 'APPROVED'),
     [myCampaigns],
@@ -457,7 +491,10 @@ function App() {
     MASTER: 3,
     SUPER_MASTER: 4,
   }
-  const canCreateMissions = activeCampaignRole === 'CO_MASTER' || activeCampaignRole === 'MASTER' || activeCampaignRole === 'SUPER_MASTER'
+  const activeCampaignHasMissionsModule = Boolean(campaign?.allowedModules?.includes('MISSIONI'))
+  const canCreateMissions =
+    activeCampaignHasMissionsModule &&
+    (activeCampaignRole === 'CO_MASTER' || activeCampaignRole === 'MASTER' || activeCampaignRole === 'SUPER_MASTER')
   const canAccessCampaignManagement = activeCampaignRole === 'MASTER' || activeCampaignRole === 'SUPER_MASTER'
   const missionWindowSince = () => new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
   const campaignsForList = useMemo(() => {
@@ -468,27 +505,38 @@ function App() {
 
     for (const membership of myCampaigns) {
       const existing = byId.get(membership.campaignId)
+      const detail = campaignDetailsById[membership.campaignId]
       if (existing) {
         byId.set(membership.campaignId, {
           ...existing,
+          isOpen: detail?.isOpen ?? existing.isOpen,
+          isActive: detail?.isActive ?? existing.isActive,
+          isSearchable: detail?.isSearchable ?? existing.isSearchable,
           membershipStatus: membership.memberStatus,
           membershipRole: membership.role,
           moderationReason: membership.moderationReason,
-          name: existing.name || membership.campaignName,
+          name: detail?.name || existing.name || membership.campaignName,
+          description: detail?.description ?? existing.description,
+          summary: detail?.summary ?? existing.summary,
+          coverImageUrl: detail?.coverImageUrl ?? existing.coverImageUrl,
+          founderId: detail?.founderId || existing.founderId,
+          gameSystem: detail?.gameSystem ?? existing.gameSystem,
+          createdAt: detail?.createdAt || existing.createdAt,
         })
       } else {
         byId.set(membership.campaignId, {
           id: membership.campaignId,
-          name: membership.campaignName,
-          description: null,
-          summary: null,
-          coverImageUrl: null,
-          founderId: '',
-          isOpen: true,
-          isActive: true,
-          isSearchable: false,
-          inviteCode: '',
-          createdAt: '',
+          name: detail?.name || membership.campaignName,
+          description: detail?.description ?? null,
+          summary: detail?.summary ?? null,
+          coverImageUrl: detail?.coverImageUrl ?? null,
+          founderId: detail?.founderId || '',
+          isOpen: detail?.isOpen ?? false,
+          isActive: detail?.isActive ?? false,
+          isSearchable: detail?.isSearchable ?? false,
+          inviteCode: detail?.inviteCode || '',
+          gameSystem: detail?.gameSystem ?? null,
+          createdAt: detail?.createdAt || '',
           membershipStatus: membership.memberStatus,
           membershipRole: membership.role,
           moderationReason: membership.moderationReason,
@@ -497,7 +545,7 @@ function App() {
     }
 
     return Array.from(byId.values())
-  }, [discoverableCampaigns, myCampaigns])
+  }, [campaignDetailsById, discoverableCampaigns, myCampaigns])
   const missionAlertsByCampaign = useMemo(() => {
     const map: Record<string, number> = {}
     for (const mission of missions) {
@@ -645,6 +693,9 @@ function App() {
         setSelectedCampaignMemberProfile(null)
         setCharacters([])
         setMissions([])
+        setMissionParticipantsById({})
+        setMyMissionParticipationById({})
+        setMissionParticipantCharacterLabelById({})
         setRooms([])
       } else if (campaignId && !mine.some((item) => item.campaignId === campaignId && item.memberStatus === 'APPROVED')) {
         rememberCampaignId('', me.id)
@@ -657,6 +708,9 @@ function App() {
         setSelectedCampaignMemberProfile(null)
         setCharacters([])
         setMissions([])
+        setMissionParticipantsById({})
+        setMyMissionParticipationById({})
+        setMissionParticipantCharacterLabelById({})
         setRooms([])
       }
     })
@@ -691,6 +745,7 @@ function App() {
       ? await listCampaignMembersForManagement(targetCampaignId).catch(() => [])
       : []
     setCampaign(campaignValue)
+    setCampaignDetailsById((prev) => ({ ...prev, [campaignValue.id]: campaignValue }))
     rememberCampaignMeta(campaignValue.id, campaignValue.name)
     setMembers(memberValue)
     setCampaignMembersForManagement(memberManagementValue)
@@ -698,10 +753,10 @@ function App() {
     setPendingApplications(pendingValue)
     writePendingApplicationsForCampaign(activeUserId, targetCampaignId, pendingValue)
     setCharacters(characterValue)
-    setMissions(missionValue)
+    setMissions(missionValue.map((mission) => ({ ...mission, campaignId: targetCampaignId })))
     setRooms(roomValue)
     setSelectedCharacterId((prev) => prev || characterValue[0]?.id || '')
-    setSelectedMissionId((prev) => prev || missionValue[0]?.id || '')
+    setSelectedMissionId((prev) => (missionValue.some((mission) => mission.id === prev) ? prev : missionValue[0]?.id || ''))
   }
 
   const normalizeLegacyInvitePreview = (preview: CampaignInvitePreviewResponse): InviteAccessPreview => ({
@@ -1035,6 +1090,9 @@ function App() {
     setCharacterDetail(null)
     setCharacterSheetDetail(null)
     setMissions([])
+    setMissionParticipantsById({})
+    setMyMissionParticipationById({})
+    setMissionParticipantCharacterLabelById({})
     setSelectedMissionId('')
     setRooms([])
     setSelectedCampaignMember(null)
@@ -1140,17 +1198,34 @@ function App() {
     if (approvedCampaignIds.length === 0) {
       setMissions([])
       setSelectedMissionId('')
+      setMissionParticipantsById({})
+      setMyMissionParticipationById({})
+      setMissionParticipantCharacterLabelById({})
       return
     }
 
     const settled = await Promise.allSettled(
       approvedCampaignIds.map(async (targetCampaignId) => {
-        const list = await listMissions(targetCampaignId, missionWindowSince())
-        return list.map((mission) => ({ ...mission, campaignId: targetCampaignId }))
+        const [missionRows, characterRows] = await Promise.all([
+          listMissions(targetCampaignId, missionWindowSince()),
+          listCharacters(targetCampaignId).catch(() => []),
+        ])
+        return {
+          missions: missionRows.map((mission) => ({ ...mission, campaignId: targetCampaignId })),
+          characters: characterRows,
+        }
       }),
     )
 
-    const combined = settled.flatMap((result) => (result.status === 'fulfilled' ? result.value : []))
+    const combined = settled.flatMap((result) => (result.status === 'fulfilled' ? result.value.missions : []))
+    const nextCharactersFromMissions = settled.flatMap((result) => (result.status === 'fulfilled' ? result.value.characters : []))
+    const characterLabels = settled.reduce<Record<string, string>>((labels, result) => {
+      if (result.status !== 'fulfilled') return labels
+      for (const character of result.value.characters) {
+        labels[character.id] = character.name
+      }
+      return labels
+    }, {})
     const missionRank = (status: MissionStatus) => {
       switch (status) {
         case 'OPEN':
@@ -1175,13 +1250,92 @@ function App() {
       return right.createdAt.localeCompare(left.createdAt)
     })
     setMissions(nextMissions)
+    setCharacters((prev) => {
+      const byId = new Map(prev.map((character) => [character.id, character]))
+      for (const character of nextCharactersFromMissions) {
+        byId.set(character.id, character)
+      }
+      return Array.from(byId.values())
+    })
     setSelectedMissionId((prev) => (nextMissions.some((item) => item.id === prev) ? prev : nextMissions[0]?.id || ''))
+
+    const participantSettled = await Promise.allSettled(
+      nextMissions.map(async (mission) => ({
+        missionId: mission.id,
+        participants: await listMissionParticipants(mission.campaignId, mission.id),
+      })),
+    )
+    const nextParticipantsById: Record<string, MissionParticipantResponse[]> = {}
+    const nextMyParticipationById: Record<string, MissionParticipationType> = {}
+    const participantUserIds = new Set<string>()
+
+    for (const result of participantSettled) {
+      if (result.status !== 'fulfilled') continue
+      nextParticipantsById[result.value.missionId] = result.value.participants
+      for (const participant of result.value.participants) {
+        participantUserIds.add(participant.userId)
+        if (participant.userId === profile?.id) {
+          nextMyParticipationById[result.value.missionId] = participant.participationType
+        }
+      }
+    }
+
+    setMissionParticipantsById(nextParticipantsById)
+    setMyMissionParticipationById(nextMyParticipationById)
+    setMissionParticipantCharacterLabelById(characterLabels)
+
+    const missingUserIds = Array.from(participantUserIds).filter((userId) => userId !== profile?.id && !memberNames[userId])
+    if (missingUserIds.length > 0) {
+      const settledProfiles = await Promise.allSettled(missingUserIds.map((userId) => getPublicProfile(userId)))
+      setMemberNames((prev) => {
+        const next = { ...prev }
+        for (let index = 0; index < settledProfiles.length; index += 1) {
+          const userId = missingUserIds[index]
+          const result = settledProfiles[index]
+          if (result.status === 'fulfilled') {
+            next[userId] = result.value.profileName || result.value.username || 'Profilo non disponibile'
+          } else if (!next[userId]) {
+            next[userId] = 'Profilo non disponibile'
+          }
+        }
+        return next
+      })
+    }
   }
 
   const loadDiscoverableCampaigns = async () => {
     const list = await discoverCampaigns(false)
     setDiscoverableCampaigns(list)
   }
+
+  useEffect(() => {
+    if (!getAccessToken()) return
+    const missingCampaignIds = myCampaigns
+      .map((membership) => membership.campaignId)
+      .filter((membershipCampaignId, index, all) => all.indexOf(membershipCampaignId) === index)
+      .filter((membershipCampaignId) => !campaignDetailsById[membershipCampaignId])
+    if (missingCampaignIds.length === 0) return
+
+    let cancelled = false
+    void (async () => {
+      const settled = await Promise.allSettled(missingCampaignIds.map((membershipCampaignId) => getCampaign(membershipCampaignId)))
+      if (cancelled) return
+      setCampaignDetailsById((prev) => {
+        const next = { ...prev }
+        for (let index = 0; index < settled.length; index += 1) {
+          const result = settled[index]
+          if (result.status === 'fulfilled') {
+            next[result.value.id] = result.value
+          }
+        }
+        return next
+      })
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [campaignDetailsById, myCampaigns])
 
   useEffect(() => {
     if (!getAccessToken()) return
@@ -1639,6 +1793,9 @@ function App() {
     setAdminSheetTypes([])
     setAdminSheetCatalogsLoaded(false)
     setMissions([])
+    setMissionParticipantsById({})
+    setMyMissionParticipationById({})
+    setMissionParticipantCharacterLabelById({})
     setRooms([])
     setPermissions([])
     setCharacterDetail(null)
@@ -1991,6 +2148,17 @@ function App() {
   }
   if (campaign?.id && campaign?.name) {
     campaignNameById[campaign.id] = campaign.name
+  }
+  const campaignGameSystemById: Record<string, string> = {}
+  const campaignCanBeOpenedById: Record<string, boolean> = {}
+  for (const item of campaignsForList) {
+    if (item.gameSystem) {
+      campaignGameSystemById[item.id] = catalogEntryLabel(campaignGameSystems, item.gameSystem) || item.gameSystem
+    }
+    campaignCanBeOpenedById[item.id] = item.membershipStatus === 'APPROVED' && item.isActive
+  }
+  if (campaign?.id && campaign?.gameSystem) {
+    campaignGameSystemById[campaign.id] = catalogEntryLabel(campaignGameSystems, campaign.gameSystem) || campaign.gameSystem
   }
   const campaignNameForCharacter = (character: Character) => {
     if (!character.campaignId) return 'Campagna non assegnata'
@@ -3038,7 +3206,18 @@ function App() {
             selectedMission={selectedMission}
             canCreateMissions={canCreateMissions}
             activeCampaignId={campaignId.trim()}
+            activeCampaignRole={activeCampaignRole}
+            activeCampaignCharacterId={selectedMissionCharacterId}
             campaignNameById={campaignNameById}
+            campaignGameSystemById={campaignGameSystemById}
+            campaignCanBeOpenedById={campaignCanBeOpenedById}
+            missionParticipantsById={missionParticipantsById}
+            missionParticipantLabelByUserId={{
+              ...memberNames,
+              ...(profile?.id ? { [profile.id]: profile.profileName || profile.username || profile.id } : {}),
+            }}
+            missionParticipantCharacterLabelById={missionParticipantCharacterLabelById}
+            myMissionParticipationById={myMissionParticipationById}
             onCreate={(payload) =>
               run('Missione creata', async () => {
                 const created = await createMission(campaignId, payload)
@@ -3047,6 +3226,72 @@ function App() {
               })
             }
             onSelectMission={setSelectedMissionId}
+            onJoinMission={(missionId, participationType) =>
+              run('Partecipazione missione aggiornata', async () => {
+                if (!selectedMission) {
+                  throw new Error('Seleziona prima una missione.')
+                }
+                if (!campaignId.trim()) {
+                  throw new Error('Campagna non attiva.')
+                }
+                if (!selectedMissionCharacterId) {
+                  throw new Error('Nessun personaggio attivo disponibile.')
+                }
+
+                let participant: MissionParticipantResponse
+                try {
+                  participant = await joinMission(campaignId, missionId, {
+                    characterId: selectedMissionCharacterId,
+                    participationType,
+                  })
+                } catch {
+                  participant = await updateMissionParticipationType(campaignId, missionId, {
+                    participationType,
+                  })
+                }
+                setMyMissionParticipationById((prev) => ({ ...prev, [missionId]: participant.participationType }))
+                setMissionParticipantsById((prev) => {
+                  const current = prev[missionId] || []
+                  const withoutCurrentUser = current.filter((item) => item.userId !== participant.userId)
+                  return { ...prev, [missionId]: [...withoutCurrentUser, participant] }
+                })
+                await refreshMissions()
+              })
+            }
+            onLeaveMission={(missionId) =>
+              run('Uscita missione completata', async () => {
+                if (!campaignId.trim()) {
+                  throw new Error('Campagna non attiva.')
+                }
+
+                const participant = await leaveMission(campaignId, missionId)
+                setMyMissionParticipationById((prev) => {
+                  const next = { ...prev }
+                  delete next[missionId]
+                  return next
+                })
+                setMissionParticipantsById((prev) => {
+                  const current = prev[missionId] || []
+                  return { ...prev, [missionId]: current.filter((item) => item.userId !== participant.userId) }
+                })
+                await refreshMissions()
+              })
+            }
+            onOpenCampaign={(targetCampaignId) => void activateCampaignAndNavigate(targetCampaignId, 'Missioni')}
+            onBrowseCampaigns={() => setScreen('Lista Campagne')}
+            onUpdateMission={(missionId, payload) =>
+              run('Missione aggiornata', async () => {
+                if (!selectedMission) {
+                  throw new Error('Seleziona prima una missione.')
+                }
+                if (!campaignId.trim()) {
+                  throw new Error('Campagna non attiva.')
+                }
+
+                await updateMission(campaignId, missionId, payload)
+                await refreshMissions()
+              })
+            }
           />
         )}
 
@@ -3147,6 +3392,7 @@ function App() {
                 const updated = await updateCharacterStatus(targetCampaignId, selectedCharacter.id, status)
                 setCharacters((prev) => prev.map((item) => (item.id === updated.id ? updated : item)))
                 setCharacterDetail(updated)
+                await refreshMissions()
               })
             }
           />
@@ -3164,6 +3410,7 @@ function App() {
               run('Campagna aggiornata', async () => {
                 const updated = await updateCampaign(campaign.id, payload)
                 setCampaign(updated)
+                setCampaignDetailsById((prev) => ({ ...prev, [updated.id]: updated }))
                 rememberCampaignMeta(updated.id, updated.name)
                 setMyCampaigns((prev) =>
                   prev.map((item) =>
@@ -3193,6 +3440,7 @@ function App() {
               run('Ownership trasferita', async () => {
                 const updated = await transferOwnership(campaignId, newOwnerId)
                 setCampaign(updated)
+                setCampaignDetailsById((prev) => ({ ...prev, [updated.id]: updated }))
               })
             }
             onCreateInviteToken={(payload) =>
@@ -3614,14 +3862,15 @@ function CampaignListPage({
                 </td>
                 <td>
                   <div className="data-table-actions">
-                    {item.membershipStatus === 'APPROVED' && !isDisabled && (
-                      <button type="button" className="secondary-btn" onClick={() => onOpenCampaign(item.id)}>
+                    {item.membershipStatus === 'APPROVED' && (
+                      <button
+                        type="button"
+                        className="secondary-btn"
+                        onClick={() => onOpenCampaign(item.id)}
+                        disabled={isDisabled}
+                        title={isDisabled ? 'Campagna disattivata: apri e attiva non disponibile' : undefined}
+                      >
                         Apri e attiva
-                      </button>
-                    )}
-                    {item.membershipStatus === 'APPROVED' && isDisabled && (
-                      <button type="button" className="secondary-btn" disabled title="Campagna disattivata">
-                        Disattivata
                       </button>
                     )}
                     {(item.membershipStatus === null || item.membershipStatus === 'REJECTED') && item.isOpen && !isDisabled && (
@@ -5066,583 +5315,6 @@ function SystemCatalogsPage({
   )
 }
 
-function MissionsPage({
-  missions,
-  selectedMission,
-  canCreateMissions,
-  activeCampaignId,
-  campaignNameById,
-  onCreate,
-  onSelectMission,
-}: {
-  missions: MissionResponse[]
-  selectedMission: MissionResponse | null
-  canCreateMissions: boolean
-  activeCampaignId: string
-  campaignNameById: Record<string, string>
-  onCreate: (payload: {
-    title: string
-    description: string
-    isMultiSession: boolean
-    sessionAt: string
-    closesAt: string
-    quorum: number | null
-    maxParticipants: number | null
-    autoReopenOnDrop: boolean
-  }) => void
-  onSelectMission: (id: string) => void
-}) {
-  const missionTimeConfig = {
-    hourMin: 0,
-    hourMax: 23,
-    minuteStep: 15,
-    defaultTime: '15:30',
-  } as const
-
-  type MissionDraft = {
-    title: string
-    description: string
-    isMultiSession: boolean
-    sessionDate: string
-    sessionTime: string
-    closesDate: string
-    closesTime: string
-    quorum: string
-    maxParticipants: string
-    autoReopenOnDrop: boolean
-  }
-
-  const pad2 = (value: number) => value.toString().padStart(2, '0')
-
-  const formatDateInputValue = (value: string | Date): string => {
-    const date = value instanceof Date ? value : new Date(value)
-    if (Number.isNaN(date.getTime())) return ''
-    return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`
-  }
-
-  const addDaysToDate = (base: Date, days: number) => {
-    const next = new Date(base)
-    next.setDate(next.getDate() + days)
-    return next
-  }
-
-  const combineDateAndTime = (dateValue: string, timeValue: string): string | null => {
-    const trimmedDate = dateValue.trim()
-    const trimmedTime = timeValue.trim()
-    if (!trimmedDate || !trimmedTime) return null
-    const date = new Date(`${trimmedDate}T${trimmedTime}:00`)
-    if (Number.isNaN(date.getTime())) return null
-    return date.toISOString()
-  }
-
-  const missionMinutes = Array.from({ length: 60 / missionTimeConfig.minuteStep }, (_, index) => index * missionTimeConfig.minuteStep)
-
-  const parseTimeParts = (value: string) => {
-    const [hourText = '0', minuteText = '0'] = value.split(':')
-    const hour = Number.parseInt(hourText, 10)
-    const minute = Number.parseInt(minuteText, 10)
-    return {
-      hour: Number.isFinite(hour) ? Math.min(Math.max(hour, missionTimeConfig.hourMin), missionTimeConfig.hourMax) : missionTimeConfig.hourMin,
-      minute: missionMinutes.includes(minute) ? minute : 0,
-    }
-  }
-
-  const formatTimeParts = (hour: number, minute: number) => `${pad2(hour)}:${pad2(minute)}`
-
-  const clampHour = (hour: number) => Math.min(Math.max(hour, missionTimeConfig.hourMin), missionTimeConfig.hourMax)
-
-  const shiftHour = (value: string, direction: 1 | -1) => {
-    const { hour, minute } = parseTimeParts(value)
-    return formatTimeParts(clampHour(hour + direction), minute)
-  }
-
-  const shiftMinute = (value: string, direction: 1 | -1) => {
-    const { hour, minute } = parseTimeParts(value)
-    const currentIndex = missionMinutes.indexOf(minute)
-    const nextIndex = currentIndex + direction
-    if (nextIndex < 0) {
-      if (hour === missionTimeConfig.hourMin) return formatTimeParts(hour, missionMinutes[0])
-      return formatTimeParts(hour - 1, missionMinutes[missionMinutes.length - 1])
-    }
-    if (nextIndex >= missionMinutes.length) {
-      if (hour === missionTimeConfig.hourMax) return formatTimeParts(hour, missionMinutes[missionMinutes.length - 1])
-      return formatTimeParts(hour + 1, missionMinutes[0])
-    }
-    return formatTimeParts(hour, missionMinutes[nextIndex])
-  }
-
-  const shiftCount = (value: string, direction: 1 | -1, minValue = 1, maxValue = 999) => {
-    const parsed = Number.parseInt(value, 10)
-    const current = Number.isFinite(parsed) ? parsed : minValue
-    return String(Math.min(Math.max(current + direction, minValue), maxValue))
-  }
-
-  const defaultDraft = (): MissionDraft => {
-    const sessionDate = addDaysToDate(new Date(), 3)
-    const sessionTime = missionTimeConfig.defaultTime
-    const closeDate = addDaysToDate(sessionDate, -2)
-      return {
-      title: '',
-      description: '',
-      isMultiSession: false,
-      sessionDate: formatDateInputValue(sessionDate),
-      sessionTime,
-      closesDate: formatDateInputValue(closeDate),
-      closesTime: sessionTime,
-      quorum: '3',
-      maxParticipants: '5',
-      autoReopenOnDrop: true,
-    }
-  }
-
-  const [mode, setMode] = useState<'browse' | 'create'>('browse')
-  const [createDraft, setCreateDraft] = useState<MissionDraft>(defaultDraft)
-  const [createError, setCreateError] = useState('')
-  const [searchText, setSearchText] = useState('')
-  const [campaignFilter, setCampaignFilter] = useState<'all' | string>('all')
-  const [statusView, setStatusView] = useState<'joinable' | 'all'>('joinable')
-
-  const canUseCreateMode = canCreateMissions && Boolean(activeCampaignId)
-  const visibleMode = mode === 'create' && canUseCreateMode ? 'create' : 'browse'
-
-  const parseOptionalInt = (value: string): number | null => {
-    const trimmed = value.trim()
-    if (!trimmed) return null
-    const parsed = Number.parseInt(trimmed, 10)
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : null
-  }
-
-  const toIsoTimestamp = (dateValue: string, timeValue: string): string | null => {
-    const combined = combineDateAndTime(dateValue, timeValue)
-    if (!combined) return null
-    const date = new Date(combined)
-    if (Number.isNaN(date.getTime())) return null
-    return date.toISOString()
-  }
-
-  const formatMissionDay = (value: string | null | undefined): string => {
-    if (!value) return 'Non impostato'
-    const date = new Date(value)
-    if (Number.isNaN(date.getTime())) return value
-    return new Intl.DateTimeFormat('it-IT', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }).format(date)
-  }
-
-  const formatMissionTime = (value: string | null | undefined): string => {
-    if (!value) return 'Ora non impostata'
-    const date = new Date(value)
-    if (Number.isNaN(date.getTime())) return value
-    return new Intl.DateTimeFormat('it-IT', { hour: '2-digit', minute: '2-digit' }).format(date)
-  }
-
-  const formatMissionParticipants = (mission: MissionResponse) => {
-    const current = Number.isFinite(mission.participantCount) ? mission.participantCount : 0
-    const total = mission.maxParticipants ?? '∞'
-    return `${current}/${total}`
-  }
-
-  const campaignOptions = useMemo(
-    () =>
-      Array.from(
-        new Map(
-          missions
-            .filter((mission) => mission.campaignId)
-            .map((mission) => [mission.campaignId as string, campaignNameById[mission.campaignId] || mission.campaignId]),
-        ).entries(),
-      ).map(([id, name]) => ({ id, name })),
-    [missions, campaignNameById],
-  )
-  const normalizedSearchText = searchText.trim().toLowerCase()
-  const filteredMissions = missions.filter((mission) => {
-    if (campaignFilter !== 'all' && mission.campaignId !== campaignFilter) return false
-    if (statusView === 'joinable' && mission.status !== 'OPEN' && mission.status !== 'REOPENED') return false
-    if (!normalizedSearchText) return true
-    const missionCampaignName = campaignNameById[mission.campaignId] || mission.campaignId
-    return (
-      mission.title.toLowerCase().includes(normalizedSearchText) ||
-      (mission.description || '').toLowerCase().includes(normalizedSearchText) ||
-      missionCampaignName.toLowerCase().includes(normalizedSearchText)
-    )
-  })
-
-  const submitCreate = () => {
-    const sessionIso = toIsoTimestamp(createDraft.sessionDate, createDraft.sessionTime)
-    const closesIso = toIsoTimestamp(createDraft.closesDate, createDraft.closesTime)
-    if (sessionIso && closesIso && new Date(closesIso).getTime() >= new Date(sessionIso).getTime()) {
-      setCreateError('La chiusura iscrizioni deve precedere la data della sessione.')
-      return
-    }
-
-    setCreateError('')
-    onCreate({
-      title: createDraft.title,
-      description: createDraft.description,
-      isMultiSession: createDraft.isMultiSession,
-      sessionAt: sessionIso || '',
-      closesAt: closesIso || '',
-      quorum: parseOptionalInt(createDraft.quorum),
-      maxParticipants: parseOptionalInt(createDraft.maxParticipants),
-      autoReopenOnDrop: createDraft.autoReopenOnDrop,
-    })
-    setMode('browse')
-  }
-
-  const renderMissionForm = (
-    draft: MissionDraft,
-    setDraft: Dispatch<SetStateAction<MissionDraft>>,
-    error: string,
-    setError: (value: string) => void,
-    submitLabel: string,
-    onSubmit: () => void,
-  ) => (
-    <div className="mission-form-card">
-      <div className="card-section-header">
-        <div>
-          <h3 className="section-title">{submitLabel}</h3>
-          <p className="muted">Compila i parametri della sessione e conferma solo dopo aver controllato date e cap.</p>
-        </div>
-      </div>
-      <div className="form-grid">
-        <label>
-          <FieldLabel icon="fa-solid fa-pen-to-square" label="Titolo sessione" />
-          <input
-            value={draft.title}
-            placeholder="Suggerimento titolo"
-            onChange={(event) => setDraft((prev) => ({ ...prev, title: event.target.value }))}
-          />
-        </label>
-      </div>
-      <label>
-        <FieldLabel icon="fa-solid fa-align-left" label="Descrizione" />
-        <textarea
-          rows={3}
-          placeholder="Obiettivo, contesto e dettagli utili della sessione"
-          value={draft.description}
-          onChange={(event) => setDraft((prev) => ({ ...prev, description: event.target.value }))}
-        />
-      </label>
-      <div className="mission-settings-table">
-        <div className="mission-settings-section">
-          <div className="mission-settings-section-head">
-            <div>
-              <h4 className="section-title">Programmazione</h4>
-              <p className="muted">Data, ora di sessione e chiusura iscrizioni.</p>
-            </div>
-          </div>
-          <div className="mission-settings-row">
-            <div className="mission-settings-copy">
-              <FieldLabel icon="fa-solid fa-calendar-day" label="Giorno della sessione" />
-              <p className="muted">Tre giorni avanti di default.</p>
-            </div>
-            <div className="mission-time-inline">
-              <label className="mission-inline-field">
-                <span className="mission-inline-caption">Data</span>
-                <input
-                  type="date"
-                  value={draft.sessionDate}
-                  onChange={(event) => setDraft((prev) => ({ ...prev, sessionDate: event.target.value }))}
-                />
-              </label>
-              <label className="mission-inline-field mission-time-field">
-                <span className="mission-inline-caption">Ora</span>
-                <div className="mission-time-stepper">
-                  <button
-                    type="button"
-                    className="secondary-btn mission-time-step-btn"
-                    onClick={() => setDraft((prev) => ({ ...prev, sessionTime: shiftHour(prev.sessionTime, -1) }))}
-                  >
-                    <Icon name="fa-solid fa-minus" />
-                  </button>
-                  <span className="mission-time-step-value">{pad2(parseTimeParts(draft.sessionTime || missionTimeConfig.defaultTime).hour)}</span>
-                  <button
-                    type="button"
-                    className="secondary-btn mission-time-step-btn"
-                    onClick={() => setDraft((prev) => ({ ...prev, sessionTime: shiftHour(prev.sessionTime, 1) }))}
-                  >
-                    <Icon name="fa-solid fa-plus" />
-                  </button>
-                </div>
-              </label>
-              <label className="mission-inline-field mission-time-field">
-                <span className="mission-inline-caption">Minuti</span>
-                <div className="mission-time-stepper">
-                  <button
-                    type="button"
-                    className="secondary-btn mission-time-step-btn"
-                    onClick={() => setDraft((prev) => ({ ...prev, sessionTime: shiftMinute(prev.sessionTime, -1) }))}
-                  >
-                    <Icon name="fa-solid fa-minus" />
-                  </button>
-                  <span className="mission-time-step-value">
-                    {pad2(parseTimeParts(draft.sessionTime || missionTimeConfig.defaultTime).minute)}
-                  </span>
-                  <button
-                    type="button"
-                    className="secondary-btn mission-time-step-btn"
-                    onClick={() => setDraft((prev) => ({ ...prev, sessionTime: shiftMinute(prev.sessionTime, 1) }))}
-                  >
-                    <Icon name="fa-solid fa-plus" />
-                  </button>
-                </div>
-              </label>
-            </div>
-          </div>
-          <div className="mission-settings-row">
-            <div className="mission-settings-copy">
-              <FieldLabel icon="fa-solid fa-hourglass-end" label="Chiusura iscrizioni" />
-              <p className="muted">Di default chiude 48 ore prima della sessione.</p>
-            </div>
-            <div className="mission-time-inline">
-              <label className="mission-inline-field">
-                <span className="mission-inline-caption">Data</span>
-                <input
-                  type="date"
-                  value={draft.closesDate}
-                  onChange={(event) => setDraft((prev) => ({ ...prev, closesDate: event.target.value }))}
-                />
-              </label>
-              <label className="mission-inline-field mission-time-field">
-                <span className="mission-inline-caption">Ora</span>
-                <div className="mission-time-stepper">
-                  <button
-                    type="button"
-                    className="secondary-btn mission-time-step-btn"
-                    onClick={() => setDraft((prev) => ({ ...prev, closesTime: shiftHour(prev.closesTime, -1) }))}
-                  >
-                    <Icon name="fa-solid fa-minus" />
-                  </button>
-                  <span className="mission-time-step-value">{pad2(parseTimeParts(draft.closesTime || missionTimeConfig.defaultTime).hour)}</span>
-                  <button
-                    type="button"
-                    className="secondary-btn mission-time-step-btn"
-                    onClick={() => setDraft((prev) => ({ ...prev, closesTime: shiftHour(prev.closesTime, 1) }))}
-                  >
-                    <Icon name="fa-solid fa-plus" />
-                  </button>
-                </div>
-              </label>
-              <label className="mission-inline-field mission-time-field">
-                <span className="mission-inline-caption">Minuti</span>
-                <div className="mission-time-stepper">
-                  <button
-                    type="button"
-                    className="secondary-btn mission-time-step-btn"
-                    onClick={() => setDraft((prev) => ({ ...prev, closesTime: shiftMinute(prev.closesTime, -1) }))}
-                  >
-                    <Icon name="fa-solid fa-minus" />
-                  </button>
-                  <span className="mission-time-step-value">
-                    {pad2(parseTimeParts(draft.closesTime || missionTimeConfig.defaultTime).minute)}
-                  </span>
-                  <button
-                    type="button"
-                    className="secondary-btn mission-time-step-btn"
-                    onClick={() => setDraft((prev) => ({ ...prev, closesTime: shiftMinute(prev.closesTime, 1) }))}
-                  >
-                    <Icon name="fa-solid fa-plus" />
-                  </button>
-                </div>
-              </label>
-            </div>
-          </div>
-          <div className="mission-settings-row mission-settings-row--compact">
-            <div className="mission-settings-copy">
-              <FieldLabel icon="fa-solid fa-users" label="Capienza" />
-              <p className="muted">Quorum titolari e massimo partecipanti.</p>
-            </div>
-            <div className="mission-capacity-inline">
-              <label className="mission-inline-field mission-count-field">
-                <span className="mission-inline-caption">Quorum</span>
-                <div className="mission-count-stepper">
-                  <button
-                    type="button"
-                    className="secondary-btn mission-time-step-btn"
-                    onClick={() => setDraft((prev) => ({ ...prev, quorum: shiftCount(prev.quorum, -1, 1, 99) }))}
-                  >
-                    <Icon name="fa-solid fa-minus" />
-                  </button>
-                  <span className="mission-time-step-value">{draft.quorum || '3'}</span>
-                  <button
-                    type="button"
-                    className="secondary-btn mission-time-step-btn"
-                    onClick={() => setDraft((prev) => ({ ...prev, quorum: shiftCount(prev.quorum, 1, 1, 99) }))}
-                  >
-                    <Icon name="fa-solid fa-plus" />
-                  </button>
-                </div>
-              </label>
-              <label className="mission-inline-field mission-count-field">
-                <span className="mission-inline-caption">Max partecipanti</span>
-                <div className="mission-count-stepper">
-                  <button
-                    type="button"
-                    className="secondary-btn mission-time-step-btn"
-                    onClick={() => setDraft((prev) => ({ ...prev, maxParticipants: shiftCount(prev.maxParticipants, -1, 1, 999) }))}
-                  >
-                    <Icon name="fa-solid fa-minus" />
-                  </button>
-                  <span className="mission-time-step-value">{draft.maxParticipants || '5'}</span>
-                  <button
-                    type="button"
-                    className="secondary-btn mission-time-step-btn"
-                    onClick={() => setDraft((prev) => ({ ...prev, maxParticipants: shiftCount(prev.maxParticipants, 1, 1, 999) }))}
-                  >
-                    <Icon name="fa-solid fa-plus" />
-                  </button>
-                </div>
-              </label>
-            </div>
-          </div>
-        </div>
-      </div>
-      <CampaignToggleSettingsTable
-        title="Opzioni sessione"
-        description="Impostazioni rapide della missione."
-        rows={[
-          {
-            key: 'multi-session',
-            title: 'Sessione multipla',
-            description: 'Consente più sessioni collegate alla stessa missione.',
-            active: draft.isMultiSession,
-            activeLabel: 'ON',
-            inactiveLabel: 'OFF',
-            onToggle: () => setDraft((prev) => ({ ...prev, isMultiSession: !prev.isMultiSession })),
-          },
-          {
-            key: 'auto-reopen',
-            title: 'Riapri automaticamente',
-            description: 'Riapre la missione se si scende sotto quorum.',
-            active: draft.autoReopenOnDrop,
-            activeLabel: 'ON',
-            inactiveLabel: 'OFF',
-            onToggle: () => setDraft((prev) => ({ ...prev, autoReopenOnDrop: !prev.autoReopenOnDrop })),
-          },
-        ]}
-      />
-      {error && <p className="form-error">{error}</p>}
-      <div className="inline-actions mission-actions">
-        <button type="button" className="primary-btn" onClick={onSubmit}>
-          <Icon name="fa-solid fa-floppy-disk" />
-          {submitLabel}
-        </button>
-        <button
-          type="button"
-          className="secondary-btn"
-          onClick={() => {
-            setError('')
-            setMode('browse')
-          }}
-        >
-          <Icon name="fa-solid fa-xmark" />
-          Annulla
-        </button>
-      </div>
-    </div>
-  )
-
-  return (
-    <section className="panel mission-shell">
-      <div className="panel-header mission-page-header">
-        <div>
-          <h2>Missioni</h2>
-          <p className="muted">Cerca, filtra e joina le missioni aperte delle campagne a cui sei approvato.</p>
-        </div>
-        <div className="inline-actions">
-          {canUseCreateMode && visibleMode !== 'create' && (
-            <button
-              type="button"
-              className="secondary-btn"
-              onClick={() => {
-                setCreateDraft(defaultDraft())
-                setCreateError('')
-                setMode('create')
-              }}
-            >
-              <Icon name="fa-solid fa-plus" />
-              Crea missione
-            </button>
-          )}
-        </div>
-      </div>
-
-      {canUseCreateMode && visibleMode === 'create' && (
-        <div className="subpanel mission-form-panel">{renderMissionForm(createDraft, setCreateDraft, createError, setCreateError, 'Crea missione', submitCreate)}</div>
-      )}
-
-      <div className="mission-toolbar">
-        <label className="mission-search">
-          <FieldLabel icon="fa-solid fa-magnifying-glass" label="Cerca" />
-          <input value={searchText} onChange={(event) => setSearchText(event.target.value)} placeholder="Titolo, descrizione o campagna" />
-        </label>
-        <label className="mission-campaign-filter">
-          <FieldLabel icon="fa-solid fa-folder-open" label="Campagna" />
-          <select value={campaignFilter} onChange={(event) => setCampaignFilter(event.target.value)}>
-            <option value="all">Tutte</option>
-            {campaignOptions.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="segmented-btn-group mission-status-toggle">
-          <button type="button" className={`segmented-btn ${statusView === 'joinable' ? 'is-active' : ''}`} onClick={() => setStatusView('joinable')}>
-            Aperte
-          </button>
-          <button type="button" className={`segmented-btn ${statusView === 'all' ? 'is-active' : ''}`} onClick={() => setStatusView('all')}>
-            Tutte
-          </button>
-        </div>
-      </div>
-
-      <div className="subpanel mission-block mission-list-block">
-        <div className="row-between">
-          <div>
-            <h3 className="section-title">Risultati</h3>
-            <p className="muted">Le missioni sono aggregate per tutte le campagne approvate.</p>
-          </div>
-          <span className="mission-count">{filteredMissions.length}</span>
-        </div>
-        <DataTable
-          className="mission-data-table"
-          columns={[
-            { key: 'title', label: 'Titolo missione' },
-            { key: 'participants', label: 'Partecipanti' },
-            { key: 'session', label: 'Data sessione' },
-            { key: 'campaign', label: 'Campagna' },
-          ]}
-          rows={filteredMissions}
-          getRowKey={(mission) => `${mission.campaignId}-${mission.id}`}
-          emptyMessage="Nessuna missione corrisponde ai filtri."
-          selectedRowKey={selectedMission?.id || null}
-          onRowClick={(mission) => {
-            onSelectMission(mission.id)
-            setMode('browse')
-          }}
-          renderRow={(mission) => (
-            <tr className={selectedMission?.id === mission.id ? 'is-selected' : ''}>
-              <td>
-                <div className="data-table-primary">
-                  <p className="data-table-title">{mission.title}</p>
-                </div>
-              </td>
-              <td>
-                <span className="status status-info">{formatMissionParticipants(mission)}</span>
-              </td>
-              <td>
-                <div className="data-table-primary">
-                  <p className="data-table-title">{formatMissionDay(mission.sessionAt)}</p>
-                  <p className="data-table-meta">{formatMissionTime(mission.sessionAt)}</p>
-                </div>
-              </td>
-              <td className="data-table-muted">{campaignNameById[mission.campaignId] || mission.campaignId}</td>
-            </tr>
-          )}
-        />
-      </div>
-    </section>
-  )
-}
-
 function CampaignPickerModal({
   campaigns,
   targetScreen,
@@ -6508,6 +6180,11 @@ function CampaignManagementPage({
   const [isOpen, setIsOpen] = useState(campaign?.isOpen ?? true)
   const [isSearchable, setIsSearchable] = useState(campaign?.isSearchable ?? true)
   const [selectedModules, setSelectedModules] = useState<string[]>(campaign?.allowedModules || [])
+  const availableModuleCodes = useMemo(() => availableModules.map((module) => module.code), [availableModules])
+  const selectedAvailableModules =
+    availableModuleCodes.length === 0
+      ? []
+      : selectedModules.filter((moduleCode) => availableModuleCodes.includes(moduleCode))
   const permissionChecklist: Array<{
     action: string
     label: string
@@ -6580,7 +6257,9 @@ function CampaignManagementPage({
 
   const toggleModule = (moduleCode: string) => {
     setSelectedModules((prev) =>
-      prev.includes(moduleCode) ? prev.filter((item) => item !== moduleCode) : [...prev, moduleCode],
+      prev.includes(moduleCode)
+        ? prev.filter((item) => item !== moduleCode)
+        : [...prev.filter((item) => availableModuleCodes.includes(item)), moduleCode],
     )
   }
 
@@ -6788,7 +6467,7 @@ function CampaignManagementPage({
             title="Addon campagna"
             description="I moduli sono sempre disponibili e puoi accenderli o spegnerli senza ricaricare la lista."
             availableModules={availableModules}
-            selectedModules={selectedModules}
+            selectedModules={selectedAvailableModules}
             onToggle={toggleModule}
           />
           <button
@@ -6806,7 +6485,7 @@ function CampaignManagementPage({
                 coverImageUrl,
                 isOpen,
                 isSearchable,
-                allowedModules: selectedModules,
+                allowedModules: selectedAvailableModules,
               })
             }
           >
