@@ -595,6 +595,13 @@ export async function closeMission(campaignId: string, missionId: string): Promi
   })
 }
 
+export async function completeMission(campaignId: string, missionId: string): Promise<MissionResponse> {
+  return apiRequest<MissionResponse>(`/campaigns/${campaignId}/missions/${missionId}/complete`, {
+    method: 'POST',
+    body: {},
+  })
+}
+
 export async function updateMission(
   campaignId: string,
   missionId: string,

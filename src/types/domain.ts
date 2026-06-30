@@ -2,7 +2,19 @@ export type CharacterStatus = 'ACTIVE' | 'RETIRED' | 'DEAD'
 export type CampaignRole = 'GIOCATORE' | 'CO_MASTER' | 'MASTER' | 'SUPER_MASTER'
 export type CampaignMemberStatus = 'PENDING' | 'APPROVED' | 'BLOCKED' | 'REJECTED' | 'BANNED'
 export type CampaignCharacterStatus = 'ACTIVE' | 'RETIRED' | 'DEAD'
-export type MissionStatus = 'OPEN' | 'CLOSED' | 'CONFIRMED' | 'REOPENED' | 'CANCELLED'
+export type MissionStatus = 'OPEN' | 'CLOSED' | 'CONFIRMED' | 'REOPENED' | 'CANCELLED' | 'COMPLETED'
+export type MissionStatusReason =
+  | 'CONFIRMED_BY_QUORUM'
+  | 'CONFIRMED_BY_MAX_PARTICIPANTS'
+  | 'CONFIRMED_BY_DEADLINE'
+  | 'CONFIRMED_BY_BENCH'
+  | 'CLOSED_MANUALLY'
+  | 'CLOSED_BY_DEADLINE'
+  | 'REOPENED_MANUALLY'
+  | 'REOPENED_BY_ROSTER_DROP'
+  | 'CANCELLED_MANUALLY'
+  | 'CANCELLED_NO_BENCH'
+  | 'COMPLETED_MANUALLY'
 export type MissionParticipationType = 'TITOLARE' | 'NON_TITOLARE'
 export type RoomType = 'ROLEPLAY' | 'SPAM'
 export type PlatformRole = 'USER' | 'ADMIN' | 'SYSTEM'
@@ -321,6 +333,7 @@ export interface MissionResponse {
   description: string | null
   createdBy: string
   status: MissionStatus
+  statusReason: MissionStatusReason | null
   isMultiSession: boolean
   sessionAt: string | null
   closesAt: string | null

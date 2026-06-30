@@ -3123,6 +3123,10 @@ textarea {
   color: #27ae60;
 }
 
+.mission-status-completed .mission-status-icon {
+  color: #2ecc71;
+}
+
 .mission-status-closed .mission-status-icon {
   color: #ef8f84;
 }
@@ -5428,6 +5432,10 @@ html[data-theme='light'] .mission-status-reopened .mission-status-icon {
 }
 
 html[data-theme='light'] .mission-status-confirmed .mission-status-icon {
+  color: #0f7a4c;
+}
+
+html[data-theme='light'] .mission-status-completed .mission-status-icon {
   color: #0f7a4c;
 }
 

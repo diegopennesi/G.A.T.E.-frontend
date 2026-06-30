@@ -23,6 +23,8 @@ import {
   changePassword,
   checkPermission,
   banCampaignMember,
+  cancelMission,
+  completeMission,
   createCampaign,
   createInviteToken,
   createCharacter,
@@ -1236,9 +1238,11 @@ function App() {
           return 2
         case 'CLOSED':
           return 3
+        case 'COMPLETED':
+          return 4
         case 'CANCELLED':
         default:
-          return 4
+          return 5
       }
     }
     const nextMissions = combined.sort((left, right) => {
@@ -3289,6 +3293,24 @@ function App() {
                 }
 
                 await updateMission(campaignId, missionId, payload)
+                await refreshMissions()
+              })
+            }
+            onCompleteMission={(missionId) =>
+              run('Missione completata', async () => {
+                if (!campaignId.trim()) {
+                  throw new Error('Campagna non attiva.')
+                }
+                await completeMission(campaignId, missionId)
+                await refreshMissions()
+              })
+            }
+            onCancelMission={(missionId) =>
+              run('Missione cancellata', async () => {
+                if (!campaignId.trim()) {
+                  throw new Error('Campagna non attiva.')
+                }
+                await cancelMission(campaignId, missionId)
                 await refreshMissions()
               })
             }

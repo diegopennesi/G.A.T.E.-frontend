@@ -1,7 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
 import { DataTable, FieldLabel, Icon } from '../../../shared/components'
-import type { CampaignRole, MissionParticipantResponse, MissionParticipationType, MissionResponse } from '../../../types/domain'
+import type {
+  CampaignRole,
+  MissionParticipantResponse,
+  MissionParticipationType,
+  MissionResponse,
+  MissionStatusReason,
+} from '../../../types/domain'
 
 type MissionPayload = {
   title: string
@@ -185,8 +191,39 @@ function missionStatusLabel(status: MissionResponse['status']) {
       return 'Chiusa'
     case 'CANCELLED':
       return 'Annullata'
+    case 'COMPLETED':
+      return 'Completata'
     default:
       return status
+  }
+}
+
+function missionStatusReasonLabel(reason: MissionStatusReason | null | undefined) {
+  switch (reason) {
+    case 'CONFIRMED_BY_QUORUM':
+      return 'Quorum raggiunto'
+    case 'CONFIRMED_BY_MAX_PARTICIPANTS':
+      return 'Capienza raggiunta'
+    case 'CONFIRMED_BY_DEADLINE':
+      return 'Confermata alla scadenza'
+    case 'CONFIRMED_BY_BENCH':
+      return 'Confermata da panchina'
+    case 'CLOSED_MANUALLY':
+      return 'Chiusura manuale'
+    case 'CLOSED_BY_DEADLINE':
+      return 'Chiusura alla scadenza'
+    case 'REOPENED_MANUALLY':
+      return 'Riaperta manualmente'
+    case 'REOPENED_BY_ROSTER_DROP':
+      return 'Riaperta per calo roster'
+    case 'CANCELLED_MANUALLY':
+      return 'Annullata manualmente'
+    case 'CANCELLED_NO_BENCH':
+      return 'Annullata senza panchina'
+    case 'COMPLETED_MANUALLY':
+      return 'Completata manualmente'
+    default:
+      return ''
   }
 }
 
@@ -264,6 +301,8 @@ export function MissionsPage({
   onOpenCampaign,
   onBrowseCampaigns,
   onUpdateMission,
+  onCompleteMission,
+  onCancelMission,
 }: {
   missions: MissionResponse[]
   selectedMission: MissionResponse | null
@@ -293,12 +332,14 @@ export function MissionsPage({
   onOpenCampaign: (campaignId: string) => void
   onBrowseCampaigns: () => void
   onUpdateMission: (missionId: string, payload: MissionPayload) => void
+  onCompleteMission: (missionId: string) => void
+  onCancelMission: (missionId: string) => void
 }) {
   const [mode, setMode] = useState<'browse' | 'create'>('browse')
   const [createDraft, setCreateDraft] = useState<MissionDraft>(defaultDraft)
   const [createError, setCreateError] = useState('')
   const [searchText, setSearchText] = useState('')
-  const [campaignFilter, setCampaignFilter] = useState<'all' | string>('all')
+  const [campaignFilters, setCampaignFilters] = useState<Record<string, string>>({})
   const [showExpired, setShowExpired] = useState(false)
   const [sortBy, setSortBy] = useState<MissionSortKey>('session')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
@@ -309,6 +350,7 @@ export function MissionsPage({
   const canUseCreateMode = canCreateMissions && hasActiveCampaign
   const visibleMode = mode === 'create' && canUseCreateMode ? 'create' : 'browse'
   const selectedMissionInActiveCampaign = Boolean(selectedMission && selectedMission.campaignId === activeCampaignId)
+  const campaignFilter = activeCampaignId ? campaignFilters[activeCampaignId] || 'all' : 'all'
   const selectedMissionStarted = Boolean(
     selectedMission?.sessionAt && new Date(selectedMission.sessionAt).getTime() <= now,
   )
@@ -326,6 +368,13 @@ export function MissionsPage({
   const canEditSelectedMission =
     Boolean(selectedMission) &&
     selectedMissionInActiveCampaign &&
+    selectedMission?.status !== 'COMPLETED' &&
+    (activeCampaignRole === 'MASTER' || activeCampaignRole === 'SUPER_MASTER')
+  const canResolveSelectedMission =
+    Boolean(selectedMission) &&
+    selectedMissionInActiveCampaign &&
+    selectedMission?.status !== 'COMPLETED' &&
+    selectedMission?.status !== 'CANCELLED' &&
     (activeCampaignRole === 'MASTER' || activeCampaignRole === 'SUPER_MASTER')
   const campaignOptions = useMemo(
     () =>
@@ -338,10 +387,6 @@ export function MissionsPage({
       ).map(([id, name]) => ({ id, name })),
     [missions, campaignNameById],
   )
-
-  useEffect(() => {
-    setCampaignFilter('all')
-  }, [activeCampaignId])
 
   const normalizedSearchText = searchText.trim().toLowerCase()
   const isExpiredMission = (mission: MissionResponse) => {
@@ -384,7 +429,8 @@ export function MissionsPage({
       REOPENED: 1,
       CONFIRMED: 2,
       CLOSED: 3,
-      CANCELLED: 4,
+      COMPLETED: 4,
+      CANCELLED: 5,
     }
     const roleRank = (mission: MissionResponse) => {
       const participation = myMissionParticipationById[mission.id] || null
@@ -393,35 +439,27 @@ export function MissionsPage({
       return 2
     }
 
-    let result = 0
-    switch (sortBy) {
-      case 'title':
-        result = compareText(left.title, right.title)
-        break
-      case 'status':
-        result = compareNumber(statusRank[left.status], statusRank[right.status])
-        break
-      case 'participants':
-        result = compareNumber(left.participantCount, right.participantCount)
-        break
-      case 'role':
-        result = compareNumber(roleRank(left), roleRank(right))
-        break
-      case 'campaign':
-        result = compareText(campaignNameById[left.campaignId] || left.campaignId, campaignNameById[right.campaignId] || right.campaignId)
-        break
-      case 'module':
-        result = compareText(campaignGameSystemById[left.campaignId] || 'N/D', campaignGameSystemById[right.campaignId] || 'N/D')
-        break
-      case 'session':
-      default:
-        result = compareDate(left.sessionAt, right.sessionAt)
-        break
-    }
-    if (result === 0) {
-      result = compareText(left.title, right.title)
-    }
-    return sortDirection === 'asc' ? result : -result
+    const result = (() => {
+      switch (sortBy) {
+        case 'title':
+          return compareText(left.title, right.title)
+        case 'status':
+          return compareNumber(statusRank[left.status], statusRank[right.status])
+        case 'participants':
+          return compareNumber(left.participantCount, right.participantCount)
+        case 'role':
+          return compareNumber(roleRank(left), roleRank(right))
+        case 'campaign':
+          return compareText(campaignNameById[left.campaignId] || left.campaignId, campaignNameById[right.campaignId] || right.campaignId)
+        case 'module':
+          return compareText(campaignGameSystemById[left.campaignId] || 'N/D', campaignGameSystemById[right.campaignId] || 'N/D')
+        case 'session':
+        default:
+          return compareDate(left.sessionAt, right.sessionAt)
+      }
+    })()
+    const fallbackResult = result === 0 ? compareText(left.title, right.title) : result
+    return sortDirection === 'asc' ? fallbackResult : -fallbackResult
   })
   const handleSortChange = (nextSortBy: string) => {
     const typedSortBy = nextSortBy as MissionSortKey
@@ -549,6 +587,7 @@ export function MissionsPage({
 
     const missionCampaignName = campaignNameById[selectedMission.campaignId] || selectedMission.campaignId
     const missionStatusClass = `mission-status-${selectedMission.status.toLowerCase()}`
+    const selectedMissionStatusReason = missionStatusReasonLabel(selectedMission.statusReason)
     const selectedMissionReachedMax = missionReachedMaxParticipants(selectedMission)
     const selectedMissionBelowQuorum =
       selectedMission.status === 'CONFIRMED' &&
@@ -601,6 +640,9 @@ export function MissionsPage({
               </span>
               {missionStatusLabel(selectedMission.status)}
             </span>
+            {selectedMissionStatusReason && (
+              <span className="status status-neutral">{selectedMissionStatusReason}</span>
+            )}
             <span className="mission-count">{formatMissionParticipants(selectedMission)}</span>
           </div>
         </div>
@@ -728,12 +770,26 @@ export function MissionsPage({
           )}
         />
 
-        {canEditSelectedMission && editingMissionId !== selectedMission.id && (
+        {(canEditSelectedMission || canResolveSelectedMission) && editingMissionId !== selectedMission.id && (
           <div className="inline-actions mission-actions">
-            <button type="button" className="secondary-btn" onClick={() => setEditingMissionId(selectedMission.id)}>
-              <Icon name="fa-solid fa-pen-to-square" />
-              Modifica missione
-            </button>
+            {canEditSelectedMission && (
+              <button type="button" className="secondary-btn" onClick={() => setEditingMissionId(selectedMission.id)}>
+                <Icon name="fa-solid fa-pen-to-square" />
+                Modifica missione
+              </button>
+            )}
+            {canResolveSelectedMission && (
+              <>
+                <button type="button" className="secondary-btn" onClick={() => onCompleteMission(selectedMission.id)}>
+                  <Icon name="fa-solid fa-circle-check" />
+                  Segna completata
+                </button>
+                <button type="button" className="danger-btn" onClick={() => onCancelMission(selectedMission.id)}>
+                  <Icon name="fa-solid fa-ban" />
+                  Cancella sessione
+                </button>
+              </>
+            )}
           </div>
         )}
 
@@ -796,7 +852,14 @@ export function MissionsPage({
         {campaignOptions.length > 1 && (
           <label className="mission-campaign-filter">
             <FieldLabel icon="fa-solid fa-folder-open" label="Campagna" />
-            <select value={campaignFilter} onChange={(event) => setCampaignFilter(event.target.value)}>
+            <select
+              value={campaignFilter}
+              onChange={(event) => {
+                if (!activeCampaignId) return
+                const nextValue = event.target.value
+                setCampaignFilters((prev) => ({ ...prev, [activeCampaignId]: nextValue }))
+              }}
+            >
               <option value="all">Tutte</option>
               {campaignOptions.map((option) => (
                 <option key={option.id} value={option.id}>
@@ -869,6 +932,11 @@ export function MissionsPage({
                   <span className={`mission-status mission-status-${mission.status.toLowerCase()}`}>
                     {missionStatusLabel(mission.status)}
                   </span>
+                  {missionStatusReasonLabel(mission.statusReason) && (
+                    <div>
+                      <span className="status status-neutral">{missionStatusReasonLabel(mission.statusReason)}</span>
+                    </div>
+                  )}
                 </td>
                 <td>
                   <span className="status status-info">{formatMissionParticipants(mission)}</span>
