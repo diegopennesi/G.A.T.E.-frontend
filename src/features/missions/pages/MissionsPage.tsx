@@ -227,6 +227,10 @@ function missionStatusReasonLabel(reason: MissionStatusReason | null | undefined
   }
 }
 
+function missionStatusClassName(status: MissionResponse['status']) {
+  return `mission-status mission-status-${status.toLowerCase()}`
+}
+
 function renderMissionText(value: string | null | undefined) {
   const text = value?.trim() || 'Nessun dettaglio missione inserito.'
   const lines = text.split(/\r?\n/)
@@ -586,7 +590,6 @@ export function MissionsPage({
     }
 
     const missionCampaignName = campaignNameById[selectedMission.campaignId] || selectedMission.campaignId
-    const missionStatusClass = `mission-status-${selectedMission.status.toLowerCase()}`
     const selectedMissionStatusReason = missionStatusReasonLabel(selectedMission.statusReason)
     const selectedMissionReachedMax = missionReachedMaxParticipants(selectedMission)
     const selectedMissionBelowQuorum =
@@ -633,16 +636,13 @@ export function MissionsPage({
             <h3 className="section-title">Missione</h3>
             <p className="muted">Campagna: <strong>{missionCampaignName}</strong></p>
           </div>
-          <div className="mission-title-badges">
-            <span className={`mission-status ${missionStatusClass}`}>
-              <span className="mission-status-icon" aria-hidden="true">
-                <Icon name="fa-solid fa-circle-info" />
-              </span>
+          <div
+            className="mission-title-badges"
+            title={selectedMissionBelowQuorum ? 'Stato incoerente: Confermata sotto quorum.' : selectedMissionStatusReason || undefined}
+          >
+            <span className={missionStatusClassName(selectedMission.status)}>
               {missionStatusLabel(selectedMission.status)}
             </span>
-            {selectedMissionStatusReason && (
-              <span className="status status-neutral">{selectedMissionStatusReason}</span>
-            )}
             <span className="mission-count">{formatMissionParticipants(selectedMission)}</span>
           </div>
         </div>
@@ -651,13 +651,6 @@ export function MissionsPage({
           <p className="mission-card-label">Missione</p>
           <p className="mission-description-text">{renderMissionText(selectedMission.description)}</p>
         </div>
-        {selectedMissionBelowQuorum && (
-          <div className="mission-campaign-entry">
-            <p className="form-error">
-              Stato missione incoerente: il BE restituisce Confermata, ma i partecipanti sono sotto quorum.
-            </p>
-          </div>
-        )}
 
         <DataTable
           className="mission-detail-data-table"
@@ -929,14 +922,12 @@ export function MissionsPage({
                   </div>
                 </td>
                 <td>
-                  <span className={`mission-status mission-status-${mission.status.toLowerCase()}`}>
+                  <span
+                    className={missionStatusClassName(mission.status)}
+                    title={missionStatusReasonLabel(mission.statusReason) || undefined}
+                  >
                     {missionStatusLabel(mission.status)}
                   </span>
-                  {missionStatusReasonLabel(mission.statusReason) && (
-                    <div>
-                      <span className="status status-neutral">{missionStatusReasonLabel(mission.statusReason)}</span>
-                    </div>
-                  )}
                 </td>
                 <td>
                   <span className="status status-info">{formatMissionParticipants(mission)}</span>
