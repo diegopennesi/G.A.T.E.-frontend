@@ -4,7 +4,7 @@ import { AuthScreen } from './features/auth'
 import { ApprovalPage, CampaignAccessBadge, CampaignOpenBadge, CampaignStatusBadge, CreateCampaignPage } from './features/campaigns'
 import { CreateCharacterPage, SelectCharacterPage } from './features/characters'
 import { MissionsPage } from './features/missions'
-import { NotificationsPage } from './features/notifications'
+import { LogPage } from './features/notifications'
 import { EditProfilePage, ProfilePage } from './features/profile'
 import { RoomsPage } from './features/rooms'
 import { DataTable, FieldLabel, Icon } from './shared/components'
@@ -119,7 +119,7 @@ type Screen =
   | 'Approvazione Accessi'
   | 'Missioni'
   | 'Stanze'
-  | 'Notifiche'
+  | 'Log'
   | 'Profilo'
   | 'Modifica Profilo'
   | 'Gestione Personaggi'
@@ -306,7 +306,7 @@ const NAVIGATION_SECTIONS: NavigationSection[] = [
   {
     label: 'Essenziali',
     description: 'Le viste che userai più spesso.',
-    items: ['Profilo', 'Lista Campagne', 'Missioni', 'Gestione Personaggi', 'Notifiche'],
+    items: ['Profilo', 'Lista Campagne', 'Missioni', 'Gestione Personaggi', 'Log'],
   },
   {
     label: 'Strumenti',
@@ -331,7 +331,7 @@ const SCREEN_LABELS: Record<Screen, string> = {
   'Approvazione Accessi': 'Accessi',
   Missioni: 'Missioni',
   Stanze: 'Stanze',
-  Notifiche: 'Notifiche',
+  Log: 'Log',
   Profilo: 'Profilo',
   'Modifica Profilo': 'Modifica profilo',
   'Gestione Personaggi': 'Personaggi',
@@ -349,7 +349,7 @@ const SCREEN_ICONS: Record<Screen, string> = {
   'Approvazione Accessi': 'fa-solid fa-shield-halved',
   Missioni: 'fa-solid fa-flag-checkered',
   Stanze: 'fa-solid fa-door-open',
-  Notifiche: 'fa-solid fa-bell',
+  Log: 'fa-solid fa-list-check',
   Profilo: 'fa-solid fa-user',
   'Modifica Profilo': 'fa-solid fa-user-gear',
   'Gestione Personaggi': 'fa-solid fa-users',
@@ -2296,7 +2296,7 @@ function App() {
           ],
           backTarget: 'Scheda Campagna' as Screen,
         }
-      case 'Notifiche':
+      case 'Log':
         return {
           title: SCREEN_LABELS[screen],
           subtitle: 'Cronologia locale delle azioni effettuate',
@@ -3346,7 +3346,7 @@ function App() {
           />
         )}
 
-        {screen === 'Notifiche' && <NotificationsPage events={events} />}
+        {screen === 'Log' && <LogPage events={events} />}
 
         {screen === 'Profilo' && (
           <ProfilePage
@@ -4003,6 +4003,25 @@ function campaignModuleTitle(module: CampaignCatalogEntry): string {
   return module.label || module.code
 }
 
+const CAMPAIGN_MODULE_UNAVAILABLE_HINT = 'Non attualmente disponibile'
+const CAMPAIGN_MODULE_HIDDEN_CODES = new Set(['NOTIFICATIONS'])
+const CAMPAIGN_MODULE_UNAVAILABLE_CODES = new Set(['STANZE'])
+
+function campaignModuleDescription(module: CampaignCatalogEntry): string {
+  switch (module.code) {
+    case 'MISSIONI':
+      return 'Abilita missioni, iscrizioni, chiusure e la chat dedicata della missione, accessibile solo a titolari e panchina.'
+    case 'STANZE':
+      return 'Spazi dedicati alla campagna. Non attualmente disponibile.'
+    default:
+      return module.description || 'Addon disponibile per la campagna.'
+  }
+}
+
+function campaignModuleUnavailable(module: CampaignCatalogEntry): boolean {
+  return CAMPAIGN_MODULE_UNAVAILABLE_CODES.has(module.code)
+}
+
 type CampaignToggleRow = {
   key: string
   title: string
@@ -4028,6 +4047,7 @@ function CampaignToggleSettingsTable({
   selectedModules?: string[]
   onToggle?: (moduleCode: string) => void
 }) {
+  const visibleModules = availableModules?.filter((module) => !CAMPAIGN_MODULE_HIDDEN_CODES.has(module.code)) || []
   const renderRowForSetting = (setting: CampaignToggleRow) => (
     <tr key={setting.key}>
       <td>
@@ -4054,23 +4074,29 @@ function CampaignToggleSettingsTable({
 
   const renderRowForModule = (module: CampaignCatalogEntry) => {
     const enabled = selectedModules?.includes(module.code) || false
+    const unavailable = campaignModuleUnavailable(module)
+    const moduleTitle = module.label || module.code
     return (
       <tr key={module.code}>
         <td>
           <div className="data-table-primary">
-            <p className="data-table-title">{module.label || module.code}</p>
+            <p className="data-table-title">{moduleTitle}</p>
             <p className="data-table-meta">{module.code}</p>
           </div>
         </td>
-        <td className="data-table-secondary">{module.description || 'Addon disponibile per la campagna.'}</td>
+        <td className="data-table-secondary">{campaignModuleDescription(module)}</td>
         <td>
-          <span className={`status ${enabled ? 'status-success' : 'status-neutral'}`}>
-            {enabled ? 'Attivo' : 'Disattivo'}
+          <span className={`status ${enabled && !unavailable ? 'status-success' : 'status-neutral'}`}>
+            {unavailable ? 'Non disponibile' : enabled ? 'Attivo' : 'Disattivo'}
           </span>
         </td>
         <td>
-          <label className="switch" aria-label={`${module.label || module.code} ${enabled ? 'attivo' : 'disattivo'}`}>
-            <input type="checkbox" checked={enabled} onChange={() => onToggle?.(module.code)} />
+          <label
+            className={`switch ${unavailable ? 'is-disabled' : ''}`}
+            aria-label={`${moduleTitle} ${unavailable ? CAMPAIGN_MODULE_UNAVAILABLE_HINT : enabled ? 'attivo' : 'disattivo'}`}
+            title={unavailable ? CAMPAIGN_MODULE_UNAVAILABLE_HINT : undefined}
+          >
+            <input type="checkbox" checked={enabled && !unavailable} disabled={unavailable} onChange={() => onToggle?.(module.code)} />
             <span className="switch-track" aria-hidden="true">
               <span className="switch-thumb" />
             </span>
@@ -4087,8 +4113,10 @@ function CampaignToggleSettingsTable({
           <h3 className="section-title">{title}</h3>
           <p className="muted">{description}</p>
         </div>
-        {availableModules && availableModules.length > 0 ? (
-          <span className="readonly-chip">{selectedModules?.length || 0}/{availableModules.length} attivi</span>
+        {visibleModules.length > 0 ? (
+          <span className="readonly-chip">
+            {visibleModules.filter((module) => selectedModules?.includes(module.code)).length}/{visibleModules.length} attivi
+          </span>
         ) : (
           <span className="readonly-chip">{rows?.filter((row) => row.active).length || 0}/{rows?.length || 0} attivi</span>
         )}
@@ -4106,7 +4134,7 @@ function CampaignToggleSettingsTable({
           emptyMessage="Nessuna impostazione disponibile."
           renderRow={renderRowForSetting}
         />
-      ) : availableModules && availableModules.length > 0 ? (
+      ) : visibleModules.length > 0 ? (
         <DataTable
           columns={[
             { key: 'module', label: 'Modulo' },
@@ -4114,7 +4142,7 @@ function CampaignToggleSettingsTable({
             { key: 'state', label: 'Stato' },
             { key: 'toggle', label: 'Attivo' },
           ]}
-          rows={availableModules}
+          rows={visibleModules}
           getRowKey={(module) => module.code}
           emptyMessage="Lista addon non ancora disponibile."
           renderRow={renderRowForModule}

@@ -1,1 +1,1 @@
-export { NotificationsPage } from './NotificationsPage'
+export { LogPage } from './NotificationsPage'

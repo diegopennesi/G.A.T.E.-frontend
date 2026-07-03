@@ -7,11 +7,11 @@ type UiEvent = {
   level: 'info' | 'ok' | 'error'
 }
 
-export function NotificationsPage({ events }: { events: UiEvent[] }) {
+export function LogPage({ events }: { events: UiEvent[] }) {
   return (
     <section className="panel">
-      <h2>Notifiche</h2>
-      <p className="muted">Feed locale basato su azioni API client.</p>
+      <h2>Log</h2>
+      <p className="muted">Registro locale basato su azioni API client.</p>
       <DataTable
         columns={[
           { key: 'time', label: 'Ora' },
@@ -20,7 +20,7 @@ export function NotificationsPage({ events }: { events: UiEvent[] }) {
         ]}
         rows={events}
         getRowKey={(event) => event.id}
-        emptyMessage="Nessuna notifica disponibile."
+        emptyMessage="Nessun log disponibile."
         renderRow={(event) => (
           <tr>
             <td className="data-table-muted">{new Date(event.ts).toLocaleTimeString()}</td>
