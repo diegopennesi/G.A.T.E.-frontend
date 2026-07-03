@@ -42,6 +42,7 @@ type MissionDetailRow = {
 }
 
 type MissionSortKey = 'title' | 'status' | 'participants' | 'session' | 'role' | 'campaign' | 'module'
+type MissionParticipantSortKey = 'user' | 'type' | 'joinedAt'
 
 const missionTimeConfig = {
   hourMin: 0,
@@ -323,7 +324,6 @@ export function MissionsPage({
   onSelectMission,
   onOpenMissionChat,
   onCloseMissionChat,
-  onRefreshMissionChat,
   onSendMissionChatMessage,
   onJoinMission,
   onLeaveMission,
@@ -364,7 +364,6 @@ export function MissionsPage({
   onSelectMission: (id: string) => void
   onOpenMissionChat: (campaignId: string, missionId: string) => void
   onCloseMissionChat: () => void
-  onRefreshMissionChat: () => void
   onSendMissionChatMessage: (body: string) => void
   onJoinMission: (missionId: string, participationType: MissionParticipationType) => void
   onLeaveMission: (missionId: string) => void
@@ -384,6 +383,8 @@ export function MissionsPage({
   const [showCompleted, setShowCompleted] = useState(false)
   const [sortBy, setSortBy] = useState<MissionSortKey>('session')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+  const [participantSortBy, setParticipantSortBy] = useState<MissionParticipantSortKey>('user')
+  const [participantSortDirection, setParticipantSortDirection] = useState<'asc' | 'desc'>('asc')
   const [now, setNow] = useState(Date.now)
   const [editingMissionId, setEditingMissionId] = useState<string | null>(null)
 
@@ -517,6 +518,18 @@ export function MissionsPage({
     })
   }
 
+  const handleParticipantSortChange = (nextSortBy: string) => {
+    const typedSortBy = nextSortBy as MissionParticipantSortKey
+    setParticipantSortBy((prev) => {
+      if (prev === typedSortBy) {
+        setParticipantSortDirection((direction) => (direction === 'asc' ? 'desc' : 'asc'))
+        return prev
+      }
+      setParticipantSortDirection('asc')
+      return typedSortBy
+    })
+  }
+
   const canOpenMissionChat = (mission: MissionResponse) =>
     mission.status !== 'COMPLETED' &&
     mission.status !== 'CANCELLED' &&
@@ -642,6 +655,41 @@ export function MissionsPage({
       typeof selectedMission.quorum === 'number' &&
       selectedMission.participantCount < selectedMission.quorum
     const selectedMissionParticipants = missionParticipantsById[selectedMission.id] || []
+    const sortedSelectedMissionParticipants = [...selectedMissionParticipants].sort((left, right) => {
+      const compareText = (leftValue: string | null | undefined, rightValue: string | null | undefined) =>
+        (leftValue || '').localeCompare(rightValue || '', 'it-IT', { sensitivity: 'base', numeric: true })
+      const compareDate = (leftValue: string | null | undefined, rightValue: string | null | undefined) => {
+        const leftTime = leftValue ? new Date(leftValue).getTime() : Number.POSITIVE_INFINITY
+        const rightTime = rightValue ? new Date(rightValue).getTime() : Number.POSITIVE_INFINITY
+        return (
+          (Number.isFinite(leftTime) ? leftTime : Number.POSITIVE_INFINITY) -
+          (Number.isFinite(rightTime) ? rightTime : Number.POSITIVE_INFINITY)
+        )
+      }
+      const participationRank = (value: MissionParticipationType) => (value === 'TITOLARE' ? 0 : 1)
+      const result = (() => {
+        switch (participantSortBy) {
+          case 'type':
+            return participationRank(left.participationType) - participationRank(right.participationType)
+          case 'joinedAt':
+            return compareDate(left.joinedAt, right.joinedAt)
+          case 'user':
+          default:
+            return compareText(
+              missionParticipantLabelByUserId[left.userId] || left.userId,
+              missionParticipantLabelByUserId[right.userId] || right.userId,
+            )
+        }
+      })()
+      const fallbackResult =
+        result === 0
+          ? compareText(
+              missionParticipantLabelByUserId[left.userId] || left.userId,
+              missionParticipantLabelByUserId[right.userId] || right.userId,
+            )
+          : result
+      return participantSortDirection === 'asc' ? fallbackResult : -fallbackResult
+    })
     const myMissionParticipation = myMissionParticipationById[selectedMission.id] || null
     const selectedMissionIsJoinableStatus = selectedMission.status === 'OPEN' || selectedMission.status === 'REOPENED'
     const selectedMissionReachedMaxForNewJoin = selectedMissionReachedMax && selectedMissionIsJoinableStatus && !myMissionParticipation
@@ -689,13 +737,14 @@ export function MissionsPage({
           >
             <button
               type="button"
-              className={`mission-chat-row-btn ${selectedMissionCanOpenChat ? 'is-enabled' : 'is-disabled'}`}
+              className={`mission-chat-row-btn mission-chat-detail-btn ${selectedMissionCanOpenChat ? 'is-enabled' : 'is-disabled'}`}
               disabled={!selectedMissionCanOpenChat}
               title={selectedMissionCanOpenChat ? 'Apri chat missione' : 'Chat accessibile solo a creatore, titolari e panchina'}
               aria-label={`Chat missione ${selectedMission.title}`}
               onClick={() => onOpenMissionChat(selectedMission.campaignId, selectedMission.id)}
             >
               <Icon name="fa-solid fa-comments" />
+              <span>Chat</span>
             </button>
             <span className={missionStatusClassName(selectedMission.status)}>
               {missionStatusLabel(selectedMission.status)}
@@ -804,12 +853,15 @@ export function MissionsPage({
         <DataTable
           className="mission-participants-table"
           columns={[
-            { key: 'user', label: 'Giocatore' },
+            { key: 'user', label: 'Giocatore', sortKey: 'user' },
             { key: 'character', label: 'Personaggio' },
-            { key: 'type', label: 'Ingresso' },
-            { key: 'joinedAt', label: 'Iscrizione' },
+            { key: 'type', label: 'Ingresso', sortKey: 'type' },
+            { key: 'joinedAt', label: 'Iscrizione', sortKey: 'joinedAt' },
           ]}
-          rows={selectedMissionParticipants}
+          rows={sortedSelectedMissionParticipants}
+          sortBy={participantSortBy}
+          sortDirection={participantSortDirection}
+          onSortChange={handleParticipantSortChange}
           getRowKey={(participant) => `${participant.missionId}-${participant.userId}-${participant.characterId}`}
           emptyMessage="Nessun giocatore in missione."
           renderRow={(participant) => (
@@ -1076,7 +1128,6 @@ export function MissionsPage({
             error={missionChatError}
             currentUserId={currentUserId}
             onClose={onCloseMissionChat}
-            onRefresh={onRefreshMissionChat}
             onSend={onSendMissionChatMessage}
           />
         ) : (

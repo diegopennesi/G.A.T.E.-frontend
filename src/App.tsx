@@ -3282,11 +3282,6 @@ function App() {
               setMissionChat(null)
               setMissionChatError('')
             }}
-            onRefreshMissionChat={() =>
-              run('Chat missione aggiornata', async () => {
-                await refreshMissionChat()
-              })
-            }
             onSendMissionChatMessage={(body) =>
               run('Messaggio missione inviato', async () => {
                 if (!selectedMissionChatContext) return
@@ -3331,7 +3326,8 @@ function App() {
                   const withoutCurrentUser = current.filter((item) => item.userId !== participant.userId)
                   return { ...prev, [missionId]: [...withoutCurrentUser, participant] }
                 })
-                await refreshMissions()
+                await refreshMissions({ clearSelection: false })
+                setSelectedMissionId(missionId)
               })
             }
             onLeaveMission={(missionId) =>

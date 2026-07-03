@@ -1171,31 +1171,43 @@ textarea {
 .mission-chat-row-btn {
   width: 34px;
   height: 34px;
-  border-radius: 8px;
+  border-radius: 999px;
   border: 1px solid #3a3454;
-  background: #171323;
+  background: transparent;
   color: #8f89a8;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 7px;
+  font-weight: 700;
+  letter-spacing: 0;
 }
 
 .mission-chat-row-btn.is-enabled {
   color: #39d98a;
-  border-color: rgba(57, 217, 138, 0.45);
+  border-color: rgba(57, 217, 138, 0.72);
   background: rgba(57, 217, 138, 0.08);
   cursor: pointer;
 }
 
 .mission-chat-row-btn.is-active {
-  color: #111827;
-  background: #39d98a;
+  color: #39d98a;
+  background: transparent;
   border-color: #39d98a;
+  box-shadow: inset 0 0 0 1px rgba(57, 217, 138, 0.28);
 }
 
 .mission-chat-row-btn.is-disabled {
   cursor: not-allowed;
   opacity: 0.55;
+}
+
+.mission-chat-detail-btn {
+  width: auto;
+  height: auto;
+  min-height: 34px;
+  min-width: 72px;
+  padding: 5px 11px;
 }
 
 .mission-chat-panel {
@@ -1211,9 +1223,37 @@ textarea {
   gap: 12px;
 }
 
-.mission-chat-icon-btn {
-  min-width: 38px;
-  padding: 9px;
+.mission-chat-action-btn {
+  min-height: 36px;
+  border-radius: 999px;
+  border: 1px solid #3a3454;
+  background: transparent;
+  color: #d8d5e6;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 13px;
+  font-weight: 700;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.mission-chat-action-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.mission-chat-summary-btn {
+  color: #e09b2d;
+  border-color: rgba(224, 155, 45, 0.78);
+  background: rgba(224, 155, 45, 0.08);
+}
+
+.mission-chat-send-btn {
+  color: #39d98a;
+  border-color: rgba(57, 217, 138, 0.72);
+  background: rgba(57, 217, 138, 0.08);
 }
 
 .mission-chat-messages {
@@ -1222,42 +1262,83 @@ textarea {
   max-height: 360px;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 12px 0;
+  padding: 8px 0;
   min-width: 0;
 }
 
 .mission-chat-message {
-  border-top: 1px solid #2e2a45;
-  padding: 10px 0;
+  padding: 6px 0;
   background: transparent;
   min-width: 0;
 }
 
-.mission-chat-message:first-child {
-  border-top: 0;
-}
-
-.mission-chat-message.is-mine .mission-chat-message-meta strong {
+.mission-chat-message.is-mine .mission-chat-role-chip {
+  border-color: rgba(240, 210, 122, 0.48);
+  background: rgba(240, 210, 122, 0.08);
   color: #f0d27a;
 }
 
 .mission-chat-message-meta {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 6px 10px;
   color: #b8b2cf;
   font-size: 12px;
-  margin-bottom: 6px;
+  margin-bottom: 3px;
   min-width: 0;
 }
 
-.mission-chat-message-meta strong {
+.mission-chat-author {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px 7px;
+  min-width: 0;
+}
+
+.mission-chat-author-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+}
+
+.mission-chat-message-meta strong,
+.mission-chat-author-separator {
   min-width: 0;
   overflow-wrap: anywhere;
   word-break: break-word;
 }
 
-.mission-chat-message-meta span {
+.mission-chat-character-name {
+  color: #f0d27a;
+}
+
+.mission-chat-profile-name {
+  color: #9cd9ff;
+}
+
+.mission-chat-author-separator {
+  color: #6f688a;
+}
+
+.mission-chat-role-chip {
+  width: fit-content;
+  border: 1px solid rgba(156, 217, 255, 0.42);
+  border-radius: 999px;
+  background: rgba(156, 217, 255, 0.08);
+  color: #9cd9ff;
+  padding: 2px 8px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-transform: none;
+}
+
+.mission-chat-message-meta > span {
   flex: 0 0 auto;
 }
 
@@ -1278,6 +1359,7 @@ textarea {
 
 .mission-chat-compose textarea {
   max-width: 100%;
+  min-height: 62px;
   overflow-wrap: anywhere;
 }
 

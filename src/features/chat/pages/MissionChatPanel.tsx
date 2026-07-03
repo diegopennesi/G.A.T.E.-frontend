@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Icon } from '../../../shared/components'
-import type { ChatMessageResponse, MissionChatResponse } from '../../../types/domain'
+import type { MissionChatResponse } from '../../../types/domain'
 
 type MissionChatPanelProps = {
   chat: MissionChatResponse | null
@@ -8,7 +8,6 @@ type MissionChatPanelProps = {
   error: string
   currentUserId: string
   onClose: () => void
-  onRefresh: () => void
   onSend: (body: string) => void
 }
 
@@ -40,14 +39,7 @@ function formatAuthorBadge(value: string) {
   }
 }
 
-function formatAuthorName(message: ChatMessageResponse) {
-  const baseName = message.authorCharacterName
-    ? `${message.authorCharacterName} - ${message.authorProfileName}`
-    : message.authorProfileName || message.authorName
-  return `${baseName} - ${formatAuthorBadge(message.authorBadge)}`
-}
-
-export function MissionChatPanel({ chat, busy, error, currentUserId, onClose, onRefresh, onSend }: MissionChatPanelProps) {
+export function MissionChatPanel({ chat, busy, error, currentUserId, onClose, onSend }: MissionChatPanelProps) {
   const [draft, setDraft] = useState('')
   const canSend = draft.trim().length > 0 && !busy && Boolean(chat)
 
@@ -59,10 +51,7 @@ export function MissionChatPanel({ chat, busy, error, currentUserId, onClose, on
           <p className="muted">Bacheca della missione visibile solo a creatore, titolari e panchina.</p>
         </div>
         <div className="inline-actions">
-          <button type="button" className="secondary-btn mission-chat-icon-btn" onClick={onRefresh} disabled={busy || !chat}>
-            <Icon name="fa-solid fa-rotate" />
-          </button>
-          <button type="button" className="secondary-btn" onClick={onClose}>
+          <button type="button" className="mission-chat-action-btn mission-chat-summary-btn" onClick={onClose}>
             <Icon name="fa-solid fa-table-list" />
             Riepilogo
           </button>
@@ -81,7 +70,18 @@ export function MissionChatPanel({ chat, busy, error, currentUserId, onClose, on
               return (
                 <article key={message.id} className={`mission-chat-message ${mine ? 'is-mine' : ''}`}>
                   <div className="mission-chat-message-meta">
-                    <strong>{formatAuthorName(message)}</strong>
+                    <div className="mission-chat-author">
+                      <div className="mission-chat-author-line">
+                        {message.authorCharacterName && (
+                          <>
+                            <strong className="mission-chat-character-name">{message.authorCharacterName}</strong>
+                            <span className="mission-chat-author-separator">-</span>
+                          </>
+                        )}
+                        <strong className="mission-chat-profile-name">{message.authorProfileName || message.authorName}</strong>
+                      </div>
+                      <span className="mission-chat-role-chip">{formatAuthorBadge(message.authorBadge)}</span>
+                    </div>
                     <span>{formatChatTimestamp(message.createdAt)}</span>
                   </div>
                   <p className="mission-chat-message-body">{message.body}</p>
@@ -91,15 +91,15 @@ export function MissionChatPanel({ chat, busy, error, currentUserId, onClose, on
           </div>
           <div className="mission-chat-compose">
             <textarea
-              rows={3}
+              rows={2}
               value={draft}
-              maxLength={2000}
+              maxLength={100}
               placeholder="Scrivi un messaggio..."
               onChange={(event) => setDraft(event.target.value)}
             />
             <button
               type="button"
-              className="primary-btn"
+              className="mission-chat-action-btn mission-chat-send-btn"
               disabled={!canSend}
               onClick={() => {
                 const body = draft.trim()
