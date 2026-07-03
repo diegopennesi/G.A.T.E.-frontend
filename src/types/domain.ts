@@ -353,6 +353,38 @@ export interface MissionParticipantResponse {
   joinedAt: string
 }
 
+export type ChatRoomType = 'MISSION_CHAT' | 'CAMPAIGN_SPAM' | 'ROLEPLAY_ROOM'
+
+export interface ChatRoomResponse {
+  id: string
+  campaignId: string
+  roomType: ChatRoomType
+  missionId: string | null
+  title: string
+  slowmodeSeconds: number
+  maxPersistedMessages: number | null
+  pruneAfterHours: number | null
+  isActive: boolean
+  createdAt: string
+}
+
+export interface ChatMessageResponse {
+  id: string
+  roomId: string
+  authorUserId: string
+  authorName: string
+  authorProfileName: string
+  authorCharacterName: string | null
+  authorBadge: string
+  body: string
+  createdAt: string
+}
+
+export interface MissionChatResponse {
+  room: ChatRoomResponse
+  messages: ChatMessageResponse[]
+}
+
 export interface RoomResponse {
   id: string
   campaignId: string

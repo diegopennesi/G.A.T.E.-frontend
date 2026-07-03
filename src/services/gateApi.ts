@@ -21,6 +21,8 @@ import type {
   MyCampaignMembershipResponse,
   MissionParticipantResponse,
   MissionParticipationType,
+  MissionChatResponse,
+  ChatMessageResponse,
   MissionResponse,
   RoomResponse,
   SheetTypeCatalogEntry,
@@ -678,6 +680,21 @@ export async function updateMissionParticipationType(
       body: payload,
     },
   )
+}
+
+export async function getMissionChat(campaignId: string, missionId: string): Promise<MissionChatResponse> {
+  return apiRequest<MissionChatResponse>(`/campaigns/${campaignId}/mission-chat/${missionId}`)
+}
+
+export async function sendMissionChatMessage(
+  campaignId: string,
+  missionId: string,
+  body: string,
+): Promise<ChatMessageResponse> {
+  return apiRequest<ChatMessageResponse>(`/campaigns/${campaignId}/mission-chat/${missionId}/messages`, {
+    method: 'POST',
+    body: { body },
+  })
 }
 
 export async function listRooms(campaignId: string): Promise<RoomResponse[]> {

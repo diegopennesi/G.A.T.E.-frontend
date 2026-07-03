@@ -55,7 +55,9 @@ import {
   logout,
   rejectApplication,
   joinMission,
+  getMissionChat,
   reopenMission,
+  sendMissionChatMessage,
   updateMission,
   updateMissionParticipationType,
   updateAdminCampaign,
@@ -93,6 +95,7 @@ import type {
   MyCampaignMembershipResponse,
   MissionParticipantResponse,
   MissionParticipationType,
+  MissionChatResponse,
   MissionResponse,
   MissionStatus,
   RoomResponse,
@@ -283,6 +286,7 @@ type RealtimeActionMap = {
   refreshCampaignBlock: () => Promise<void>
   refreshCharacterBlock: () => Promise<void>
   refreshMissions: (options?: { clearSelection?: boolean }) => Promise<void>
+  refreshMissionChat: () => Promise<void>
   loadDiscoverableCampaigns: () => Promise<void>
   loadCharactersForManagement: () => Promise<void>
   loadPendingForActiveCampaign: () => Promise<void>
@@ -412,6 +416,10 @@ function App() {
   const [missionParticipantsById, setMissionParticipantsById] = useState<Record<string, MissionParticipantResponse[]>>({})
   const [myMissionParticipationById, setMyMissionParticipationById] = useState<Record<string, MissionParticipationType>>({})
   const [missionParticipantCharacterLabelById, setMissionParticipantCharacterLabelById] = useState<Record<string, string>>({})
+  const [selectedMissionChatContext, setSelectedMissionChatContext] = useState<{ campaignId: string; missionId: string } | null>(null)
+  const [missionChat, setMissionChat] = useState<MissionChatResponse | null>(null)
+  const [missionChatBusy, setMissionChatBusy] = useState(false)
+  const [missionChatError, setMissionChatError] = useState('')
 
   const [rooms, setRooms] = useState<RoomResponse[]>([])
   const [selectedCampaignMember, setSelectedCampaignMember] = useState<CampaignMembershipResponse | null>(null)
@@ -1311,6 +1319,27 @@ function App() {
     }
   }
 
+  const loadMissionChat = async (targetCampaignId: string, missionId: string) => {
+    setMissionChatBusy(true)
+    setMissionChatError('')
+    try {
+      const value = await getMissionChat(targetCampaignId, missionId)
+      setSelectedMissionChatContext({ campaignId: targetCampaignId, missionId })
+      setMissionChat(value)
+    } catch (err) {
+      const message = toMessage(err)
+      setMissionChatError(message)
+      throw err
+    } finally {
+      setMissionChatBusy(false)
+    }
+  }
+
+  const refreshMissionChat = async () => {
+    if (!selectedMissionChatContext) return
+    await loadMissionChat(selectedMissionChatContext.campaignId, selectedMissionChatContext.missionId)
+  }
+
   const loadDiscoverableCampaigns = async () => {
     const list = await discoverCampaigns(false)
     setDiscoverableCampaigns(list)
@@ -1820,6 +1849,7 @@ function App() {
     refreshCampaignBlock: async () => {},
     refreshCharacterBlock: async () => {},
     refreshMissions: async () => {},
+    refreshMissionChat: async () => {},
     loadDiscoverableCampaigns: async () => {},
     loadCharactersForManagement: async () => {},
     loadPendingForActiveCampaign: async () => {},
@@ -1844,6 +1874,7 @@ function App() {
       refreshCampaignBlock,
       refreshCharacterBlock,
       refreshMissions,
+      refreshMissionChat,
       loadDiscoverableCampaigns,
       loadCharactersForManagement,
       loadPendingForActiveCampaign,
@@ -1886,6 +1917,7 @@ function App() {
     refreshCampaignBlock,
     refreshCharacterBlock,
     refreshMissions,
+    refreshMissionChat,
     refreshProfile,
     campaignsForList,
     screen,
@@ -1900,6 +1932,7 @@ function App() {
       ? payload.keys.some((key) => key === currentCampaignKey || key.startsWith(`${currentCampaignKey}:`))
       : false
     const missionKeyMatch = payload.keys.some((key) => key.startsWith('campaigns:') && key.endsWith(':missions'))
+    const chatKeyMatch = payload.keys.some((key) => key.startsWith('campaigns:') && key.endsWith(':chat'))
     const characterKeyMatch = payload.keys.some((key) => key.startsWith('campaigns:') && key.endsWith(':characters'))
     const pendingApplicationsCampaignIds = payload.keys
       .filter((key) => key.startsWith('campaigns:') && key.endsWith(':pending-applications'))
@@ -1934,6 +1967,11 @@ function App() {
         void realtimeActionsRef.current.loadPendingForActiveCampaign()
       }
       if (snapshot.screen === 'Approvazione Accessi') return
+    }
+
+    if (snapshot.screen === 'Missioni' && chatKeyMatch) {
+      void realtimeActionsRef.current.refreshMissionChat()
+      return
     }
 
     if (snapshot.screen === 'Missioni' && (campaignKeyMatch || missionKeyMatch || characterKeyMatch)) {
@@ -3229,6 +3267,33 @@ function App() {
             }}
             missionParticipantCharacterLabelById={missionParticipantCharacterLabelById}
             myMissionParticipationById={myMissionParticipationById}
+            currentUserId={profile.id}
+            selectedMissionChatId={selectedMissionChatContext?.missionId || null}
+            missionChat={missionChat}
+            missionChatBusy={missionChatBusy}
+            missionChatError={missionChatError}
+            onOpenMissionChat={(targetCampaignId, missionId) =>
+              run('Chat missione caricata', async () => {
+                await loadMissionChat(targetCampaignId, missionId)
+              })
+            }
+            onCloseMissionChat={() => {
+              setSelectedMissionChatContext(null)
+              setMissionChat(null)
+              setMissionChatError('')
+            }}
+            onRefreshMissionChat={() =>
+              run('Chat missione aggiornata', async () => {
+                await refreshMissionChat()
+              })
+            }
+            onSendMissionChatMessage={(body) =>
+              run('Messaggio missione inviato', async () => {
+                if (!selectedMissionChatContext) return
+                await sendMissionChatMessage(selectedMissionChatContext.campaignId, selectedMissionChatContext.missionId, body)
+                await refreshMissionChat()
+              })
+            }
             onCreate={(payload) =>
               run('Missione creata', async () => {
                 const created = await createMission(campaignId, payload)

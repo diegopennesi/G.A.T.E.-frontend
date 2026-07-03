@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react'
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
+import { MissionChatPanel } from '../../chat'
 import { DataTable, FieldLabel, Icon } from '../../../shared/components'
 import type {
   CampaignRole,
+  MissionChatResponse,
   MissionParticipantResponse,
   MissionParticipationType,
   MissionResponse,
@@ -312,8 +314,17 @@ export function MissionsPage({
   missionParticipantLabelByUserId,
   missionParticipantCharacterLabelById,
   myMissionParticipationById,
+  currentUserId,
+  selectedMissionChatId,
+  missionChat,
+  missionChatBusy,
+  missionChatError,
   onCreate,
   onSelectMission,
+  onOpenMissionChat,
+  onCloseMissionChat,
+  onRefreshMissionChat,
+  onSendMissionChatMessage,
   onJoinMission,
   onLeaveMission,
   onOpenCampaign,
@@ -336,6 +347,11 @@ export function MissionsPage({
   missionParticipantLabelByUserId: Record<string, string>
   missionParticipantCharacterLabelById: Record<string, string>
   myMissionParticipationById: Record<string, MissionParticipationType>
+  currentUserId: string
+  selectedMissionChatId: string | null
+  missionChat: MissionChatResponse | null
+  missionChatBusy: boolean
+  missionChatError: string
   onCreate: (payload: Required<Pick<MissionPayload, 'title'>> & {
     description: string
     isMultiSession: boolean
@@ -346,6 +362,10 @@ export function MissionsPage({
     autoReopenOnDrop: boolean
   }) => void
   onSelectMission: (id: string) => void
+  onOpenMissionChat: (campaignId: string, missionId: string) => void
+  onCloseMissionChat: () => void
+  onRefreshMissionChat: () => void
+  onSendMissionChatMessage: (body: string) => void
   onJoinMission: (missionId: string, participationType: MissionParticipationType) => void
   onLeaveMission: (missionId: string) => void
   onOpenCampaign: (campaignId: string) => void
@@ -497,6 +517,11 @@ export function MissionsPage({
     })
   }
 
+  const canOpenMissionChat = (mission: MissionResponse) =>
+    mission.status !== 'COMPLETED' &&
+    mission.status !== 'CANCELLED' &&
+    (mission.createdBy === currentUserId || Boolean(myMissionParticipationById[mission.id]))
+
   const submitCreate = () => {
     const payload = missionDraftToPayload(createDraft, setCreateError)
     if (!payload) return
@@ -635,6 +660,7 @@ export function MissionsPage({
       (canChangeSelectedMissionParticipation && !selectedMissionIsJoinableStatus)
     const canChooseParticipation = canSubmitParticipation && !selectedMissionReachedMaxForNewJoin
     const missingActiveCharacterInCampaign = selectedMissionInActiveCampaign && Boolean(activeCampaignRole) && !activeCampaignCharacterId
+    const selectedMissionCanOpenChat = canOpenMissionChat(selectedMission)
     const detailRows: MissionDetailRow[] = [
       { key: 'title', label: 'Titolo', value: selectedMission.title },
       { key: 'session', label: 'Sessione', value: formatMissionDateTime(selectedMission.sessionAt) },
@@ -661,6 +687,16 @@ export function MissionsPage({
             className="mission-title-badges"
             title={selectedMissionBelowQuorum ? 'Stato incoerente: Confermata sotto quorum.' : selectedMissionStatusReason || undefined}
           >
+            <button
+              type="button"
+              className={`mission-chat-row-btn ${selectedMissionCanOpenChat ? 'is-enabled' : 'is-disabled'}`}
+              disabled={!selectedMissionCanOpenChat}
+              title={selectedMissionCanOpenChat ? 'Apri chat missione' : 'Chat accessibile solo a creatore, titolari e panchina'}
+              aria-label={`Chat missione ${selectedMission.title}`}
+              onClick={() => onOpenMissionChat(selectedMission.campaignId, selectedMission.id)}
+            >
+              <Icon name="fa-solid fa-comments" />
+            </button>
             <span className={missionStatusClassName(selectedMission.status)}>
               {missionStatusLabel(selectedMission.status)}
             </span>
@@ -945,6 +981,7 @@ export function MissionsPage({
               { key: 'status', label: 'Stato', sortKey: 'status' },
               { key: 'participants', label: 'Partecipanti', sortKey: 'participants' },
               { key: 'role', label: 'Ruolo', sortKey: 'role' },
+              { key: 'chat', label: 'Chat' },
               { key: 'session', label: 'Sessione', sortKey: 'session' },
               { key: 'campaign', label: 'Campagna', sortKey: 'campaign' },
               { key: 'module', label: 'Modulo', sortKey: 'module' },
@@ -958,6 +995,7 @@ export function MissionsPage({
             selectedRowKey={selectedMission ? `${selectedMission.campaignId}-${selectedMission.id}` : null}
             onRowClick={(mission) => {
               onSelectMission(mission.id)
+              onCloseMissionChat()
               setEditingMissionId(null)
               setMode('browse')
             }}
@@ -990,6 +1028,31 @@ export function MissionsPage({
                   )}
                 </td>
                 <td>
+                  {(() => {
+                    const canOpenChat = canOpenMissionChat(mission)
+                    const isOpen = selectedMissionChatId === mission.id
+                    return (
+                      <button
+                        type="button"
+                        className={`mission-chat-row-btn ${canOpenChat ? 'is-enabled' : 'is-disabled'} ${isOpen ? 'is-active' : ''}`}
+                        disabled={!canOpenChat}
+                        title={canOpenChat ? 'Apri chat missione' : 'Chat accessibile solo a creatore, titolari e panchina'}
+                        aria-label={`Chat missione ${mission.title}`}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          if (!canOpenChat) return
+                          onSelectMission(mission.id)
+                          setEditingMissionId(null)
+                          setMode('browse')
+                          onOpenMissionChat(mission.campaignId, mission.id)
+                        }}
+                      >
+                        <Icon name="fa-solid fa-comments" />
+                      </button>
+                    )
+                  })()}
+                </td>
+                <td>
                   <div className="data-table-primary">
                     <p className="data-table-title">{formatMissionShortDay(mission.sessionAt)}</p>
                     <p className="data-table-meta">{formatMissionTime(mission.sessionAt)}</p>
@@ -1006,7 +1069,19 @@ export function MissionsPage({
             )}
           />
         </div>
-        {renderMissionDetail()}
+        {selectedMissionChatId ? (
+          <MissionChatPanel
+            chat={missionChat}
+            busy={missionChatBusy}
+            error={missionChatError}
+            currentUserId={currentUserId}
+            onClose={onCloseMissionChat}
+            onRefresh={onRefreshMissionChat}
+            onSend={onSendMissionChatMessage}
+          />
+        ) : (
+          renderMissionDetail()
+        )}
       </div>
     </section>
   )

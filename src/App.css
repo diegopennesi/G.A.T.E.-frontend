@@ -1168,6 +1168,119 @@ textarea {
   outline-offset: 2px;
 }
 
+.mission-chat-row-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid #3a3454;
+  background: #171323;
+  color: #8f89a8;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mission-chat-row-btn.is-enabled {
+  color: #39d98a;
+  border-color: rgba(57, 217, 138, 0.45);
+  background: rgba(57, 217, 138, 0.08);
+  cursor: pointer;
+}
+
+.mission-chat-row-btn.is-active {
+  color: #111827;
+  background: #39d98a;
+  border-color: #39d98a;
+}
+
+.mission-chat-row-btn.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.mission-chat-panel {
+  margin-top: 16px;
+}
+
+.mission-grid > .mission-chat-panel {
+  margin-top: 0;
+}
+
+.mission-chat-head {
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.mission-chat-icon-btn {
+  min-width: 38px;
+  padding: 9px;
+}
+
+.mission-chat-messages {
+  display: flex;
+  flex-direction: column;
+  max-height: 360px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px 0;
+  min-width: 0;
+}
+
+.mission-chat-message {
+  border-top: 1px solid #2e2a45;
+  padding: 10px 0;
+  background: transparent;
+  min-width: 0;
+}
+
+.mission-chat-message:first-child {
+  border-top: 0;
+}
+
+.mission-chat-message.is-mine .mission-chat-message-meta strong {
+  color: #f0d27a;
+}
+
+.mission-chat-message-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #b8b2cf;
+  font-size: 12px;
+  margin-bottom: 6px;
+  min-width: 0;
+}
+
+.mission-chat-message-meta strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.mission-chat-message-meta span {
+  flex: 0 0 auto;
+}
+
+.mission-chat-message-body {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
+  line-height: 1.45;
+}
+
+.mission-chat-compose {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.mission-chat-compose textarea {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
 .info-block {
   border: 1px solid #2e2a45;
   border-radius: 8px;
