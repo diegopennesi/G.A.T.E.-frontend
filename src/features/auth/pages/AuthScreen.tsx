@@ -8,8 +8,20 @@ function toMessage(error: unknown): string {
   return 'Errore imprevisto'
 }
 
-export function AuthScreen({ onAuth }: { onAuth: (session: AuthSession) => Promise<void> }) {
-  const [mode, setMode] = useState<'login' | 'register' | 'recover'>('login')
+export function AuthScreen({
+  onAuth,
+  initialMode = 'login',
+  realmCode = 'gate',
+  realmName = 'Taverna del Codice',
+  logoUrl = null,
+}: {
+  onAuth: (session: AuthSession) => Promise<void>
+  initialMode?: 'login' | 'register' | 'recover'
+  realmCode?: string
+  realmName?: string
+  logoUrl?: string | null
+}) {
+  const [mode, setMode] = useState<'login' | 'register' | 'recover'>(initialMode)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [profileName, setProfileName] = useState('')
@@ -85,8 +97,13 @@ export function AuthScreen({ onAuth }: { onAuth: (session: AuthSession) => Promi
   return (
     <div className="auth-layout">
       <section className="auth-side">
-        <h1>Taverna del Codice</h1>
-        <p>Frontend reale su API backend. Scope: tutte le pagine tranne chat.</p>
+        {logoUrl ? (
+          <img className="auth-brand-logo" src={logoUrl} alt={realmName} />
+        ) : (
+          <h1>{realmName}</h1>
+        )}
+        <p>Accesso realm-aware su API backend.</p>
+        <p className="auth-note">Realm attivo: {realmCode}</p>
       </section>
       <section className="auth-panel">
         <form className="auth-card" onSubmit={submit}>

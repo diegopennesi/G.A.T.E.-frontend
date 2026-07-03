@@ -1,4 +1,4 @@
-import { getApiBaseUrl, getAccessToken, refreshSession } from './apiClient'
+import { getApiBaseUrl, getAccessToken, getRealmCode, refreshSession } from './apiClient'
 import type { ResourceInvalidationPayload } from '../types/realtime'
 
 type StreamMessage = {
@@ -110,6 +110,7 @@ export function connectResourceInvalidationStream(options: StreamOptions) {
         headers: {
           Authorization: `Bearer ${accessToken}`,
           Accept: 'text/event-stream',
+          ...(getRealmCode()?.trim() ? { 'X-GATE-Realm-Code': getRealmCode()!.trim() } : {}),
         },
         signal: abortController.signal,
       })

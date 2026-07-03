@@ -5,6 +5,9 @@ import type {
   AdminUserUpdateRequest,
   AdminCampaignPage,
   AdminCampaignUpdateRequest,
+  AdminRealmCreateRequest,
+  AdminRealmListItem,
+  AdminRealmUpdateRequest,
   CampaignApplicationResponse,
   CampaignCatalogEntry,
   CampaignDiscoverResponse,
@@ -24,6 +27,7 @@ import type {
   MissionChatResponse,
   ChatMessageResponse,
   MissionResponse,
+  PublicRealmBrandingResponse,
   RoomResponse,
   SheetTypeCatalogEntry,
   AdminSheetTypeUpsertRequest,
@@ -164,6 +168,30 @@ export async function updateAdminUser(
 
 export async function listAdminCampaigns(page = 0): Promise<AdminCampaignPage> {
   return apiRequest<AdminCampaignPage>(`/admin/campaigns?page=${page}`)
+}
+
+export async function listAdminRealms(): Promise<AdminRealmListItem[]> {
+  return apiRequest<AdminRealmListItem[]>('/admin/realms')
+}
+
+export async function createAdminRealm(payload: AdminRealmCreateRequest): Promise<AdminRealmListItem> {
+  return apiRequest<AdminRealmListItem>('/admin/realms', {
+    method: 'POST',
+    body: payload,
+  })
+}
+
+export async function updateAdminRealm(realmId: string, payload: AdminRealmUpdateRequest): Promise<AdminRealmListItem> {
+  return apiRequest<AdminRealmListItem>(`/admin/realms/${realmId}`, {
+    method: 'PATCH',
+    body: payload,
+  })
+}
+
+export async function getPublicRealmBranding(code: string): Promise<PublicRealmBrandingResponse> {
+  return apiRequest<PublicRealmBrandingResponse>(`/public/realms/by-code/${encodeURIComponent(code)}`, {
+    auth: false,
+  })
 }
 
 export async function updateAdminCampaign(

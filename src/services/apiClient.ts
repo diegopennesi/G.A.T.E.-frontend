@@ -4,6 +4,7 @@ const BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim
 
 const ACCESS_TOKEN_KEY = 'gate_access_token'
 const REFRESH_TOKEN_KEY = 'gate_refresh_token'
+const REALM_CODE_KEY = 'gate_realm_code'
 
 let refreshPromise: Promise<void> | null = null
 
@@ -31,6 +32,18 @@ export function setTokens(accessToken: string, refreshToken: string) {
   localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken)
 }
 
+export function getRealmCode() {
+  return localStorage.getItem(REALM_CODE_KEY)
+}
+
+export function setRealmCode(realmCode: string) {
+  localStorage.setItem(REALM_CODE_KEY, realmCode.trim().toLowerCase())
+}
+
+export function clearRealmCode() {
+  localStorage.removeItem(REALM_CODE_KEY)
+}
+
 export function clearTokens() {
   localStorage.removeItem(ACCESS_TOKEN_KEY)
   localStorage.removeItem(REFRESH_TOKEN_KEY)
@@ -38,8 +51,12 @@ export function clearTokens() {
 
 const buildHeaders = (token?: string, hasBody = false) => {
   const headers: Record<string, string> = {}
+  const realmCode = getRealmCode()?.trim()
   if (token) {
     headers.Authorization = `Bearer ${token}`
+  }
+  if (realmCode) {
+    headers['X-GATE-Realm-Code'] = realmCode
   }
   if (hasBody) {
     headers['Content-Type'] = 'application/json'

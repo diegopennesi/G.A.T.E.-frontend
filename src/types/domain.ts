@@ -21,6 +21,7 @@ export type PlatformRole = 'USER' | 'ADMIN' | 'SYSTEM'
 export type SheetEntityType = 'CHARACTER' | 'ARMY' | 'DECK'
 export type InviteCapability = 'AUTOJOIN'
 export type InviteResourceType = 'CAMPAIGN'
+export type RealmType = 'GATE_OPEN' | 'STORE' | 'ASSOCIATION' | 'PRIVATE_GROUP' | 'EVENT'
 
 export interface SheetSchemaField {
   key?: string
@@ -139,6 +140,50 @@ export interface AdminUserPage {
   last: boolean
   hasNext: boolean
   hasPrevious: boolean
+}
+
+export interface RealmDomainResponse {
+  id: string
+  host: string
+  isPrimary: boolean
+  isActive: boolean
+  verifiedAt: string | null
+}
+
+export interface AdminRealmListItem {
+  id: string
+  code: string
+  name: string
+  type: RealmType
+  isActive: boolean
+  logoUrl: string | null
+  hosts: RealmDomainResponse[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AdminRealmCreateRequest {
+  code: string
+  name: string
+  type: RealmType
+  isActive: boolean
+  logoUrl?: string | null
+  hosts: string[]
+}
+
+export interface AdminRealmUpdateRequest {
+  code: string
+  name: string
+  type: RealmType
+  isActive: boolean
+  logoUrl?: string | null
+}
+
+export interface PublicRealmBrandingResponse {
+  code: string
+  name: string
+  type: RealmType
+  logoUrl: string | null
 }
 
 export interface Character {
