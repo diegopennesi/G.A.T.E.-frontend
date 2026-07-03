@@ -156,6 +156,20 @@ function formatMissionTime(value: string | null | undefined): string {
   return new Intl.DateTimeFormat('it-IT', { hour: '2-digit', minute: '2-digit' }).format(date)
 }
 
+function formatMissionJoinedAt(value: string | null | undefined): string {
+  if (!value) return 'N/D'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  const dayMonth = new Intl.DateTimeFormat('it-IT', { day: '2-digit', month: 'long' }).format(date)
+  const time = new Intl.DateTimeFormat('it-IT', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).format(date)
+  const centiseconds = Math.floor(date.getMilliseconds() / 10).toString().padStart(2, '0')
+  return `${dayMonth} ${time}:${centiseconds}`
+}
+
 function formatMissionDateTime(value: string | null | undefined): string {
   if (!value) return 'Non impostata'
   return `${formatMissionDay(value)} ${formatMissionTime(value)}`
@@ -304,6 +318,7 @@ export function MissionsPage({
   onLeaveMission,
   onOpenCampaign,
   onBrowseCampaigns,
+  onCreateCharacter,
   onUpdateMission,
   onCompleteMission,
   onCancelMission,
@@ -335,6 +350,7 @@ export function MissionsPage({
   onLeaveMission: (missionId: string) => void
   onOpenCampaign: (campaignId: string) => void
   onBrowseCampaigns: () => void
+  onCreateCharacter: () => void
   onUpdateMission: (missionId: string, payload: MissionPayload) => void
   onCompleteMission: (missionId: string) => void
   onCancelMission: (missionId: string) => void
@@ -345,6 +361,7 @@ export function MissionsPage({
   const [searchText, setSearchText] = useState('')
   const [campaignFilters, setCampaignFilters] = useState<Record<string, string>>({})
   const [showExpired, setShowExpired] = useState(false)
+  const [showCompleted, setShowCompleted] = useState(false)
   const [sortBy, setSortBy] = useState<MissionSortKey>('session')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
   const [now, setNow] = useState(Date.now)
@@ -402,8 +419,11 @@ export function MissionsPage({
   const filteredMissions = missions.filter((mission) => {
     if (campaignFilter !== 'all' && mission.campaignId !== campaignFilter) return false
     const isExpired = isExpiredMission(mission)
-    if (showExpired) {
+    if (showCompleted) {
+      if (mission.status !== 'COMPLETED') return false
+    } else if (showExpired) {
       if (!isExpired) return false
+      if (mission.status === 'COMPLETED') return false
     } else {
       if (isExpired) return false
       if (!defaultVisibleStatuses.includes(mission.status)) return false
@@ -614,6 +634,7 @@ export function MissionsPage({
       Boolean(myMissionParticipation && canChangeSelectedMissionParticipation) ||
       (canChangeSelectedMissionParticipation && !selectedMissionIsJoinableStatus)
     const canChooseParticipation = canSubmitParticipation && !selectedMissionReachedMaxForNewJoin
+    const missingActiveCharacterInCampaign = selectedMissionInActiveCampaign && Boolean(activeCampaignRole) && !activeCampaignCharacterId
     const detailRows: MissionDetailRow[] = [
       { key: 'title', label: 'Titolo', value: selectedMission.title },
       { key: 'session', label: 'Sessione', value: formatMissionDateTime(selectedMission.sessionAt) },
@@ -714,6 +735,14 @@ export function MissionsPage({
         {participationUnavailableReason && selectedMissionInActiveCampaign && (
           <div className="mission-campaign-entry">
             <p className="muted">{participationUnavailableReason}</p>
+            {missingActiveCharacterInCampaign && (
+              <div className="inline-actions">
+                <button type="button" className="secondary-btn" onClick={onCreateCharacter}>
+                  <Icon name="fa-solid fa-wand-magic-sparkles" />
+                  Crea personaggio
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -742,6 +771,7 @@ export function MissionsPage({
             { key: 'user', label: 'Giocatore' },
             { key: 'character', label: 'Personaggio' },
             { key: 'type', label: 'Ingresso' },
+            { key: 'joinedAt', label: 'Iscrizione' },
           ]}
           rows={selectedMissionParticipants}
           getRowKey={(participant) => `${participant.missionId}-${participant.userId}-${participant.characterId}`}
@@ -759,6 +789,7 @@ export function MissionsPage({
                   {participationLabel(participant.participationType)}
                 </span>
               </td>
+              <td className="data-table-muted">{formatMissionJoinedAt(participant.joinedAt)}</td>
             </tr>
           )}
         />
@@ -869,10 +900,25 @@ export function MissionsPage({
             title="Mostra solo missioni con data sessione precedente a ora"
             onClick={() => {
               setNow(Date.now())
-              setShowExpired((prev) => !prev)
+              const nextValue = !showExpired
+              setShowExpired(nextValue)
+              if (nextValue) setShowCompleted(false)
             }}
           >
             Scadute
+          </button>
+          <button
+            type="button"
+            className={`segmented-btn ${showCompleted ? 'is-active' : ''}`}
+            title="Mostra solo missioni completate"
+            onClick={() => {
+              setNow(Date.now())
+              const nextValue = !showCompleted
+              setShowCompleted(nextValue)
+              if (nextValue) setShowExpired(false)
+            }}
+          >
+            Completate
           </button>
         </div>
       </div>
@@ -885,6 +931,8 @@ export function MissionsPage({
               <p className="muted">
                 {showExpired
                   ? 'Missioni con data sessione gia passata.'
+                  : showCompleted
+                    ? 'Missioni completate.'
                   : 'Missioni aperte, riaperte o confermate non ancora scadute.'}
               </p>
             </div>

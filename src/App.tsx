@@ -55,6 +55,7 @@ import {
   logout,
   rejectApplication,
   joinMission,
+  reopenMission,
   updateMission,
   updateMissionParticipationType,
   updateAdminCampaign,
@@ -281,7 +282,7 @@ type RealtimeActionMap = {
   refreshProfile: () => Promise<void>
   refreshCampaignBlock: () => Promise<void>
   refreshCharacterBlock: () => Promise<void>
-  refreshMissions: () => Promise<void>
+  refreshMissions: (options?: { clearSelection?: boolean }) => Promise<void>
   loadDiscoverableCampaigns: () => Promise<void>
   loadCharactersForManagement: () => Promise<void>
   loadPendingForActiveCampaign: () => Promise<void>
@@ -758,7 +759,7 @@ function App() {
     setMissions(missionValue.map((mission) => ({ ...mission, campaignId: targetCampaignId })))
     setRooms(roomValue)
     setSelectedCharacterId((prev) => prev || characterValue[0]?.id || '')
-    setSelectedMissionId((prev) => (missionValue.some((mission) => mission.id === prev) ? prev : missionValue[0]?.id || ''))
+    setSelectedMissionId('')
   }
 
   const normalizeLegacyInvitePreview = (preview: CampaignInvitePreviewResponse): InviteAccessPreview => ({
@@ -1195,7 +1196,7 @@ function App() {
     }
   }, [campaignId, canAccessCampaignManagement])
 
-  const refreshMissions = async () => {
+  const refreshMissions = async (options: { clearSelection?: boolean } = {}) => {
     const approvedCampaignIds = approvedCampaignMemberships.map((membership) => membership.campaignId)
     if (approvedCampaignIds.length === 0) {
       setMissions([])
@@ -1261,7 +1262,10 @@ function App() {
       }
       return Array.from(byId.values())
     })
-    setSelectedMissionId((prev) => (nextMissions.some((item) => item.id === prev) ? prev : nextMissions[0]?.id || ''))
+    setSelectedMissionId((prev) => {
+      if (options.clearSelection) return ''
+      return nextMissions.some((item) => item.id === prev) ? prev : ''
+    })
 
     const participantSettled = await Promise.allSettled(
       nextMissions.map(async (mission) => ({
@@ -1348,7 +1352,7 @@ function App() {
     let cancelled = false
     void (async () => {
       try {
-        await refreshMissions()
+        await refreshMissions({ clearSelection: true })
       } catch (err) {
         if (cancelled) return
         const message = toMessage(err)
@@ -1933,7 +1937,7 @@ function App() {
     }
 
     if (snapshot.screen === 'Missioni' && (campaignKeyMatch || missionKeyMatch || characterKeyMatch)) {
-      void realtimeActionsRef.current.refreshMissions()
+      void realtimeActionsRef.current.refreshMissions({ clearSelection: true })
       return
     }
 
@@ -2382,6 +2386,9 @@ function App() {
     }
   })()
   const goToScreen = (value: Screen) => {
+    if (value === 'Missioni') {
+      setSelectedMissionId('')
+    }
     setScreen(value)
     setIsSidebarOpen(false)
   }
@@ -3283,6 +3290,7 @@ function App() {
             }
             onOpenCampaign={(targetCampaignId) => void activateCampaignAndNavigate(targetCampaignId, 'Missioni')}
             onBrowseCampaigns={() => setScreen('Lista Campagne')}
+            onCreateCharacter={() => setScreen('Crea Personaggio')}
             onUpdateMission={(missionId, payload) =>
               run('Missione aggiornata', async () => {
                 if (!selectedMission) {
@@ -3292,7 +3300,15 @@ function App() {
                   throw new Error('Campagna non attiva.')
                 }
 
+                const wasConfirmedBelowQuorum =
+                  selectedMission.status === 'CONFIRMED' &&
+                  typeof selectedMission.quorum === 'number' &&
+                  selectedMission.participantCount < selectedMission.quorum
+
                 await updateMission(campaignId, missionId, payload)
+                if (payload.autoReopenOnDrop === true && wasConfirmedBelowQuorum) {
+                  await reopenMission(campaignId, missionId)
+                }
                 await refreshMissions()
               })
             }
