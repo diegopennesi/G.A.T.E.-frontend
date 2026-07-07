@@ -7,13 +7,17 @@ import type {
   AdminCampaignUpdateRequest,
   AdminRealmCreateRequest,
   AdminRealmListItem,
+  AdminRealmPage,
   AdminRealmUpdateRequest,
+  AdminRealmUserRoleResponse,
+  AdminRealmUserRoleUpsertRequest,
   CampaignApplicationResponse,
   CampaignCatalogEntry,
   CampaignDiscoverResponse,
   CampaignInviteCodeResponse,
   CampaignInvitePreviewResponse,
   CreateInviteTokenRequest,
+  CurrentRealmPermissionsResponse,
   AuthSession,
   CampaignMembershipResponse,
   CampaignPermissionResponse,
@@ -43,11 +47,13 @@ type AuthResponse = {
   user: UserProfile
 }
 
+const normalizeUsername = (value: string) => value.trim().toLowerCase()
+
 export async function login(username: string, password: string): Promise<AuthSession> {
   const data = await apiRequest<AuthResponse>('/auth/login', {
     method: 'POST',
     auth: false,
-    body: { username, password },
+    body: { username: normalizeUsername(username), password },
   })
   setTokens(data.accessToken, data.refreshToken)
   return data
@@ -63,7 +69,7 @@ export async function register(params: {
     method: 'POST',
     auth: false,
     body: {
-      username: params.username,
+      username: normalizeUsername(params.username),
       password: params.password,
       profileName: params.profileName || undefined,
       bio: params.bio || undefined,
@@ -98,7 +104,7 @@ export async function requestPasswordReset(username: string): Promise<PasswordRe
   return apiRequest<PasswordResetRequestResponse>('/auth/password/reset/request', {
     method: 'POST',
     auth: false,
-    body: { username },
+    body: { username: normalizeUsername(username) },
   })
 }
 
@@ -152,8 +158,10 @@ export async function getPublicProfile(userId: string): Promise<UserProfile> {
   return apiRequest<UserProfile>(`/users/${userId}`)
 }
 
-export async function listAdminUsers(page = 0): Promise<AdminUserPage> {
-  return apiRequest<AdminUserPage>(`/admin/users?page=${page}`)
+export async function listAdminUsers(page = 0, query?: string): Promise<AdminUserPage> {
+  const params = new URLSearchParams({ page: String(page) })
+  if (query?.trim()) params.set('q', query.trim())
+  return apiRequest<AdminUserPage>(`/admin/users?${params.toString()}`)
 }
 
 export async function updateAdminUser(
@@ -170,8 +178,24 @@ export async function listAdminCampaigns(page = 0): Promise<AdminCampaignPage> {
   return apiRequest<AdminCampaignPage>(`/admin/campaigns?page=${page}`)
 }
 
-export async function listAdminRealms(): Promise<AdminRealmListItem[]> {
-  return apiRequest<AdminRealmListItem[]>('/admin/realms')
+export async function listAdminRealms(page = 0, query?: string): Promise<AdminRealmPage> {
+  const params = new URLSearchParams({ page: String(page) })
+  if (query?.trim()) params.set('q', query.trim())
+  const response = await apiRequest<AdminRealmPage | AdminRealmListItem[]>(`/admin/realms?${params.toString()}`)
+  if (Array.isArray(response)) {
+    return {
+      items: response,
+      page: 0,
+      size: response.length,
+      totalElements: response.length,
+      totalPages: 1,
+      first: true,
+      last: true,
+      hasNext: false,
+      hasPrevious: false,
+    }
+  }
+  return response
 }
 
 export async function createAdminRealm(payload: AdminRealmCreateRequest): Promise<AdminRealmListItem> {
@@ -186,6 +210,30 @@ export async function updateAdminRealm(realmId: string, payload: AdminRealmUpdat
     method: 'PATCH',
     body: payload,
   })
+}
+
+export async function listAdminRealmUserRoles(params?: {
+  realmId?: string
+  userId?: string
+}): Promise<AdminRealmUserRoleResponse[]> {
+  const query = new URLSearchParams()
+  if (params?.realmId) query.set('realmId', params.realmId)
+  if (params?.userId) query.set('userId', params.userId)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return apiRequest<AdminRealmUserRoleResponse[]>(`/admin/realm-user-roles${suffix}`)
+}
+
+export async function upsertAdminRealmUserRole(
+  payload: AdminRealmUserRoleUpsertRequest,
+): Promise<AdminRealmUserRoleResponse> {
+  return apiRequest<AdminRealmUserRoleResponse>('/admin/realm-user-roles', {
+    method: 'PUT',
+    body: payload,
+  })
+}
+
+export async function getCurrentRealmPermissions(): Promise<CurrentRealmPermissionsResponse> {
+  return apiRequest<CurrentRealmPermissionsResponse>('/realms/me/permissions')
 }
 
 export async function getPublicRealmBranding(code: string): Promise<PublicRealmBrandingResponse> {

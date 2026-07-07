@@ -13,7 +13,9 @@ import {
   createAdminRealm,
   createAdminGameSystem,
   createAdminSheetType,
+  getCurrentRealmPermissions,
   getPublicRealmBranding,
+  listAdminRealmUserRoles,
   listAdminCampaigns,
   listAdminGameSystems,
   listAdminRealms,
@@ -66,6 +68,7 @@ import {
   updateAdminCampaign,
   updateAdminGameSystem,
   updateAdminRealm,
+  upsertAdminRealmUserRole,
   updateAdminSheetType,
   updateAdminUser,
   suspendCampaignMember,
@@ -84,6 +87,8 @@ import type {
   AdminCampaignUpdateRequest,
   AdminRealmCreateRequest,
   AdminRealmListItem,
+  AdminRealmPage,
+  AdminRealmUserRoleResponse,
   AdminUserPage,
   AdminUserUpdateRequest,
   AuthSession,
@@ -107,6 +112,7 @@ import type {
   RoomResponse,
   PlatformRole,
   PublicRealmBrandingResponse,
+  RealmRole,
   RealmType,
   SheetEntityType,
   SheetSchemaBlock,
@@ -117,6 +123,7 @@ import type {
   AdminSheetTypeUpsertRequest,
   CampaignInvitePreviewResponse,
   CreateInviteTokenRequest,
+  CurrentRealmPermissionsResponse,
   InviteCapability,
   InviteTokenPreviewResponse,
   InviteTokenResponse,
@@ -218,12 +225,32 @@ function buildPathForState({
   return `/homepage/${encodeURIComponent(normalizedRealmCode)}/app/${SCREEN_PATH_SEGMENTS[screen]}`
 }
 
-function formatRealmCodeLabel(realmCode: string) {
-  return realmCode
-    .split('-')
-    .filter(Boolean)
-    .map((chunk) => chunk.charAt(0).toUpperCase() + chunk.slice(1))
-    .join(' ')
+function RealmStatusScreen({
+  realmCode,
+  state,
+  message,
+}: {
+  realmCode: string
+  state: 'loading' | 'unavailable'
+  message?: string
+}) {
+  return (
+    <div className="realm-status-screen">
+      <section className="realm-status-panel" aria-live="polite">
+        <div className={`realm-status-icon ${state === 'loading' ? 'is-loading' : ''}`}>
+          <Icon name={state === 'loading' ? 'fa-solid fa-circle-notch' : 'fa-solid fa-ban'} />
+        </div>
+        <p className="menu-group-label">Realm {realmCode}</p>
+        <h1>{state === 'loading' ? 'Caricamento realm' : 'Realm non disponibile'}</h1>
+        <p className="muted">
+          {message ||
+            (state === 'loading'
+              ? 'Verifica configurazione e stato del realm.'
+              : 'Il realm richiesto non esiste, e spento oppure non e abilitato alla navigazione.')}
+        </p>
+      </section>
+    </div>
+  )
 }
 
 const DEFAULT_APP_TITLE = 'Taverna del Codice'
@@ -336,9 +363,35 @@ const platformRoleLabel = (role: PlatformRole) => {
   }
 }
 
+const formatShortDate = (value: string | null | undefined) => {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return new Intl.DateTimeFormat('it-IT', {
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+  }).format(date)
+}
+
+const compareSortableValues = (left: unknown, right: unknown, direction: SortDirection) => {
+  const factor = direction === 'asc' ? 1 : -1
+  const normalize = (value: unknown) => {
+    if (typeof value === 'boolean') return value ? 1 : 0
+    if (typeof value === 'number') return value
+    return String(value ?? '').toLowerCase()
+  }
+  const a = normalize(left)
+  const b = normalize(right)
+  if (typeof a === 'number' && typeof b === 'number') return (a - b) * factor
+  return String(a).localeCompare(String(b), 'it') * factor
+}
+
 const ADMIN_PLATFORM_ROLES: PlatformRole[] = ['USER', 'ADMIN', 'SYSTEM']
 const REALM_TYPE_OPTIONS: RealmType[] = ['STORE', 'ASSOCIATION', 'PRIVATE_GROUP', 'EVENT']
-type SystemAdminView = 'users' | 'campaigns' | 'realms' | 'sheets'
+type SystemAdminView = 'users' | 'campaigns' | 'realms' | 'realmAccess' | 'sheets'
+type SortDirection = 'asc' | 'desc'
+type RealmAvailability = 'loading' | 'ready' | 'unavailable'
 
 type InviteAccessPreview = {
   campaignId: string
@@ -376,9 +429,10 @@ type RealtimeActionMap = {
   loadCharactersForManagement: () => Promise<void>
   loadPendingForActiveCampaign: () => Promise<void>
   refreshPendingApplicationsForCampaign: (campaignId: string) => Promise<void>
-  loadAdminUsers: (page: number) => Promise<void>
+  loadAdminUsers: (page: number, query?: string) => Promise<void>
   loadAdminCampaigns: (page: number) => Promise<void>
-  loadAdminRealms: () => Promise<void>
+  loadAdminRealms: (page?: number, query?: string) => Promise<void>
+  loadAdminRealmUserRoles: (realmId?: string) => Promise<void>
   loadAdminSheetCatalogs: () => Promise<void>
 }
 
@@ -390,6 +444,7 @@ type RealtimeStateSnapshot = {
   systemAdminView: SystemAdminView
   adminUsersPageIndex: number
   adminCampaignsPageIndex: number
+  adminRealmsPageIndex: number
 }
 
 const NAVIGATION_SECTIONS: NavigationSection[] = [
@@ -465,6 +520,10 @@ function App() {
   const [realmCode, setRealmCodeState] = useState(initialRealmContext.realmCode)
   const [authMode, setAuthMode] = useState<AuthMode>(initialRealmContext.authMode)
   const [realmBranding, setRealmBranding] = useState<PublicRealmBrandingResponse | null>(null)
+  const [realmAvailability, setRealmAvailability] = useState<RealmAvailability>('loading')
+  const [realmAvailabilityMessage, setRealmAvailabilityMessage] = useState('')
+  const [realmPermissions, setRealmPermissions] = useState<CurrentRealmPermissionsResponse | null>(null)
+  const [realmWelcome, setRealmWelcome] = useState<{ key: string; realmName: string; realmCode: string } | null>(null)
 
   const [campaignId, setCampaignId] = useState('')
   const [knownCampaignIds, setKnownCampaignIds] = useState<string[]>([])
@@ -484,11 +543,23 @@ function App() {
   const [campaignGameSystems, setCampaignGameSystems] = useState<CampaignCatalogEntry[]>([])
   const [adminUsersPage, setAdminUsersPage] = useState<AdminUserPage | null>(null)
   const [adminUsersPageIndex, setAdminUsersPageIndex] = useState(0)
+  const [adminUsersSearch, setAdminUsersSearch] = useState('')
   const [adminUsersDrafts, setAdminUsersDrafts] = useState<Record<string, AdminUserUpdateRequest>>({})
   const [adminCampaignsPage, setAdminCampaignsPage] = useState<AdminCampaignPage | null>(null)
   const [adminCampaignsPageIndex, setAdminCampaignsPageIndex] = useState(0)
   const [adminCampaignsDrafts, setAdminCampaignsDrafts] = useState<Record<string, AdminCampaignUpdateRequest>>({})
+  const [adminRealmsPage, setAdminRealmsPage] = useState<AdminRealmPage | null>(null)
+  const [adminRealmsPageIndex, setAdminRealmsPageIndex] = useState(0)
+  const [adminRealmsSearch, setAdminRealmsSearch] = useState('')
   const [adminRealms, setAdminRealms] = useState<AdminRealmListItem[]>([])
+  const [adminRealmUserRoles, setAdminRealmUserRoles] = useState<AdminRealmUserRoleResponse[]>([])
+  const [adminRealmRoleDrafts, setAdminRealmRoleDrafts] = useState<Record<string, RealmRole>>({})
+  const [selectedRealmAccessRealmId, setSelectedRealmAccessRealmId] = useState('')
+  const [realmAccessSearch, setRealmAccessSearch] = useState('')
+  const [realmAccessSearchResults, setRealmAccessSearchResults] = useState<AdminUserPage['items']>([])
+  const [realmAccessSearchMessage, setRealmAccessSearchMessage] = useState('')
+  const [systemSortBy, setSystemSortBy] = useState('profileName')
+  const [systemSortDirection, setSystemSortDirection] = useState<SortDirection>('asc')
   const [selectedAdminRealmId, setSelectedAdminRealmId] = useState('')
   const [adminRealmDraft, setAdminRealmDraft] = useState<AdminRealmCreateRequest>({
     code: '',
@@ -496,6 +567,7 @@ function App() {
     type: 'STORE',
     isActive: true,
     logoUrl: '',
+    allowUserCampaignCreation: true,
     hosts: [],
   })
   const [adminRealmHostsInput, setAdminRealmHostsInput] = useState('')
@@ -538,7 +610,6 @@ function App() {
   const effectiveTheme: EffectiveThemeMode = isSystemRole ? 'sysadmin' : theme
   const welcomeProfileName = profile?.profileName?.trim() || profile?.username?.trim() || 'profilo'
   const activeUserId = profile?.id ?? null
-  const realmLabel = formatRealmCodeLabel(realmCode)
   const brandTitle = realmBranding?.name || DEFAULT_APP_TITLE
   const brandLogoUrl = realmBranding?.logoUrl || null
 
@@ -577,24 +648,37 @@ function App() {
     let cancelled = false
     const iconLink = document.querySelector("link[rel='icon']") as HTMLLinkElement | null
 
-    const applyBranding = (branding: PublicRealmBrandingResponse | null) => {
-      const title = branding?.name?.trim() || DEFAULT_APP_TITLE
+    const applyBranding = (branding: PublicRealmBrandingResponse) => {
+      const title = branding.name.trim() || DEFAULT_APP_TITLE
       document.title = title
       if (iconLink) {
-        iconLink.href = branding?.logoUrl?.trim() || DEFAULT_FAVICON_URL
+        iconLink.href = branding.logoUrl?.trim() || DEFAULT_FAVICON_URL
       }
     }
+
+    setRealmAvailability('loading')
+    setRealmAvailabilityMessage('')
 
     void (async () => {
       try {
         const branding = await getPublicRealmBranding(realmCode)
         if (cancelled) return
         setRealmBranding(branding)
+        setRealmAvailability('ready')
+        setRealmAvailabilityMessage('')
         applyBranding(branding)
-      } catch {
+      } catch (err) {
         if (cancelled) return
+        const message = err instanceof ApiError && (err.status === 403 || err.status === 404)
+          ? 'Questo realm non e attivo o non e disponibile.'
+          : toMessage(err)
         setRealmBranding(null)
-        applyBranding(null)
+        setRealmAvailability('unavailable')
+        setRealmAvailabilityMessage(message)
+        document.title = `Realm ${realmCode} non disponibile`
+        if (iconLink) {
+          iconLink.href = DEFAULT_FAVICON_URL
+        }
       }
     })()
 
@@ -609,6 +693,26 @@ function App() {
       localStorage.setItem(THEME_KEY, theme)
     }
   }, [effectiveTheme, isSystemRole, theme])
+
+  useEffect(() => {
+    if (!profile || realmAvailability !== 'ready' || !realmBranding) {
+      setRealmWelcome(null)
+      return
+    }
+
+    const key = `${profile.id}:${realmCode}`
+    setRealmWelcome({
+      key,
+      realmCode,
+      realmName: realmBranding.name,
+    })
+
+    const timeoutId = window.setTimeout(() => {
+      setRealmWelcome((current) => (current?.key === key ? null : current))
+    }, 15000)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [profile?.id, realmAvailability, realmBranding, realmCode])
 
   const selectedCharacter = useMemo(
     () => characters.find((character) => character.id === selectedCharacterId) || null,
@@ -1016,11 +1120,11 @@ function App() {
     })
   }
 
-  const loadAdminUsers = async (page: number) => {
+  const loadAdminUsers = async (page: number, query = adminUsersSearch) => {
     setBusy(true)
     setError('')
     try {
-      const response = await listAdminUsers(page)
+      const response = await listAdminUsers(page, query)
       setAdminUsersPage(response)
       setAdminUsersPageIndex(response.page)
       setAdminUsersDrafts(
@@ -1081,17 +1185,89 @@ function App() {
     }
   }
 
-  const loadAdminRealms = async () => {
+  const loadAdminRealms = async (page = 0, query = adminRealmsSearch) => {
     setBusy(true)
     setError('')
     try {
-      const response = await listAdminRealms()
-      setAdminRealms(response)
+      const response = await listAdminRealms(page, query)
+      const items = response.items ?? []
+      setAdminRealmsPage(response)
+      setAdminRealmsPageIndex(response.page)
+      setAdminRealms(items)
+      setSelectedRealmAccessRealmId((prev) => prev || items[0]?.id || '')
       addEvent('Lista realm caricata', 'ok')
     } catch (err) {
       const message = toMessage(err)
       setError(message)
       addEvent(`Lista realm: ${message}`, 'error')
+      if (isUnauthorized(err)) {
+        handleLogout()
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const loadCurrentRealmPermissions = async () => {
+    try {
+      const response = await getCurrentRealmPermissions()
+      setRealmPermissions(response)
+    } catch (err) {
+      const message = toMessage(err)
+      setError(message)
+      addEvent(`Permessi realm: ${message}`, 'error')
+      if (isUnauthorized(err)) {
+        handleLogout()
+      }
+    }
+  }
+
+  const loadAdminRealmUserRoles = async (realmId?: string) => {
+    const targetRealmId = realmId || selectedRealmAccessRealmId
+    if (!targetRealmId) return
+    setBusy(true)
+    setError('')
+    try {
+      const response = await listAdminRealmUserRoles({ realmId: targetRealmId })
+      setAdminRealmUserRoles(response)
+      setAdminRealmRoleDrafts(
+        Object.fromEntries(
+          response.map((item) => [`${item.realmId}:${item.userId}`, item.isPrivilegeActive ? item.role : 'USER']),
+        ),
+      )
+      addEvent('Accessi realm caricati', 'ok')
+    } catch (err) {
+      const message = toMessage(err)
+      setError(message)
+      addEvent(`Accessi realm: ${message}`, 'error')
+      if (isUnauthorized(err)) {
+        handleLogout()
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const searchRealmAccessUser = async () => {
+    const query = realmAccessSearch.trim()
+    if (query.length < 3) {
+      setRealmAccessSearchResults([])
+      setRealmAccessSearchMessage('Inserisci almeno 3 caratteri.')
+      return
+    }
+
+    setBusy(true)
+    setError('')
+    setRealmAccessSearchMessage('')
+    try {
+      const response = await listAdminUsers(0, query)
+      setRealmAccessSearchResults(response.items)
+      setRealmAccessSearchMessage(response.items.length === 0 ? 'Nessun profilo trovato.' : `${response.items.length} profili trovati.`)
+    } catch (err) {
+      const message = toMessage(err)
+      setError(message)
+      setRealmAccessSearchMessage(message)
+      addEvent(`Ricerca profilo: ${message}`, 'error')
       if (isUnauthorized(err)) {
         handleLogout()
       }
@@ -1121,6 +1297,28 @@ function App() {
     }
   }
 
+  const saveAdminRealmUserRole = async (realmId: string, userId: string) => {
+    const key = `${realmId}:${userId}`
+    const role = adminRealmRoleDrafts[key] || 'USER'
+
+    setBusy(true)
+    setError('')
+    try {
+      await upsertAdminRealmUserRole({ realmId, userId, role })
+      await loadAdminRealmUserRoles(realmId)
+      addEvent('Accesso realm aggiornato', 'ok')
+    } catch (err) {
+      const message = toMessage(err)
+      setError(message)
+      addEvent(`Aggiornamento accesso realm: ${message}`, 'error')
+      if (isUnauthorized(err)) {
+        handleLogout()
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const saveAdminUser = async (userId: string) => {
     const draft = adminUsersDrafts[userId]
     if (!draft) return
@@ -1129,7 +1327,7 @@ function App() {
     setError('')
     try {
       await updateAdminUser(userId, draft)
-      await loadAdminUsers(adminUsersPageIndex)
+      await loadAdminUsers(adminUsersPageIndex, adminUsersSearch)
       addEvent('Utente aggiornato', 'ok')
     } catch (err) {
       const message = toMessage(err)
@@ -1263,11 +1461,12 @@ function App() {
         type: 'STORE',
         isActive: true,
         logoUrl: '',
+        allowUserCampaignCreation: true,
         hosts: [],
       })
       setSelectedAdminRealmId('')
       setAdminRealmHostsInput('')
-      await loadAdminRealms()
+      await loadAdminRealms(adminRealmsPageIndex, adminRealmsSearch)
       addEvent('Realm creato', 'ok')
     } catch (err) {
       const message = toMessage(err)
@@ -1293,6 +1492,7 @@ function App() {
         type: adminRealmDraft.type,
         isActive: adminRealmDraft.isActive,
         logoUrl: adminRealmDraft.logoUrl?.trim() || null,
+        allowUserCampaignCreation: adminRealmDraft.allowUserCampaignCreation,
       })
       setSelectedAdminRealmId('')
       setAdminRealmDraft({
@@ -1301,10 +1501,11 @@ function App() {
         type: 'STORE',
         isActive: true,
         logoUrl: '',
+        allowUserCampaignCreation: true,
         hosts: [],
       })
       setAdminRealmHostsInput('')
-      await loadAdminRealms()
+      await loadAdminRealms(adminRealmsPageIndex, adminRealmsSearch)
       addEvent('Realm aggiornato', 'ok')
     } catch (err) {
       const message = toMessage(err)
@@ -1326,6 +1527,7 @@ function App() {
       type: realm.type,
       isActive: realm.isActive,
       logoUrl: realm.logoUrl || '',
+      allowUserCampaignCreation: realm.allowUserCampaignCreation,
       hosts: [],
     })
     setAdminRealmHostsInput(realm.hosts.map((host) => host.host).join('\n'))
@@ -1339,6 +1541,7 @@ function App() {
       type: 'STORE',
       isActive: true,
       logoUrl: '',
+      allowUserCampaignCreation: true,
       hosts: [],
     })
     setAdminRealmHostsInput('')
@@ -2114,6 +2317,13 @@ function App() {
     setAdminUsersPage(null)
     setAdminUsersPageIndex(0)
     setAdminUsersDrafts({})
+    setAdminRealmUserRoles([])
+    setAdminRealmRoleDrafts({})
+    setSelectedRealmAccessRealmId('')
+    setRealmAccessSearch('')
+    setRealmAccessSearchResults([])
+    setRealmAccessSearchMessage('')
+    setRealmPermissions(null)
     setAdminRealms([])
     setSelectedAdminRealmId('')
     setCharacters([])
@@ -2148,6 +2358,7 @@ function App() {
     loadAdminUsers: async () => {},
     loadAdminCampaigns: async () => {},
     loadAdminRealms: async () => {},
+    loadAdminRealmUserRoles: async () => {},
     loadAdminSheetCatalogs: async () => {},
   })
   const realtimeStateRef = useRef<RealtimeStateSnapshot>({
@@ -2158,6 +2369,7 @@ function App() {
     systemAdminView,
     adminUsersPageIndex,
     adminCampaignsPageIndex,
+    adminRealmsPageIndex,
   })
 
   useEffect(() => {
@@ -2183,6 +2395,7 @@ function App() {
       loadAdminUsers,
       loadAdminCampaigns,
       loadAdminRealms,
+      loadAdminRealmUserRoles,
       loadAdminSheetCatalogs,
     }
     realtimeStateRef.current = {
@@ -2193,15 +2406,18 @@ function App() {
       systemAdminView,
       adminUsersPageIndex,
       adminCampaignsPageIndex,
+      adminRealmsPageIndex,
     }
   }, [
     activeUserId,
     adminCampaignsPageIndex,
+    adminRealmsPageIndex,
     adminUsersPageIndex,
     campaignId,
     isSystemSession,
     loadAdminCampaigns,
     loadAdminRealms,
+    loadAdminRealmUserRoles,
     loadAdminSheetCatalogs,
     loadAdminUsers,
     loadCharactersForManagement,
@@ -2249,7 +2465,10 @@ function App() {
         void realtimeActionsRef.current.loadAdminCampaigns(snapshot.adminCampaignsPageIndex)
       }
       if (snapshot.systemAdminView === 'realms' && keys.has('admin:realms')) {
-        void realtimeActionsRef.current.loadAdminRealms()
+        void realtimeActionsRef.current.loadAdminRealms(snapshot.adminRealmsPageIndex)
+      }
+      if (snapshot.systemAdminView === 'realmAccess' && (keys.has('admin:users') || keys.has('admin:realms'))) {
+        void realtimeActionsRef.current.loadAdminRealmUserRoles()
       }
       if (snapshot.systemAdminView === 'sheets' && keys.has('admin:catalogs')) {
         void realtimeActionsRef.current.loadAdminSheetCatalogs()
@@ -2309,17 +2528,35 @@ function App() {
   }, [handleRealtimeInvalidation, activeUserId])
 
   useEffect(() => {
+    if (!profile || !getAccessToken()) {
+      setRealmPermissions(null)
+      return
+    }
+    void loadCurrentRealmPermissions()
+  }, [profile?.id, realmCode])
+
+  useEffect(() => {
     if (!isSystemSession) {
       // Session boundary cleanup: leaving SYSTEM mode clears admin-only state.
       /* eslint-disable react-hooks/set-state-in-effect */
       setAdminUsersPage(null)
       setAdminUsersPageIndex(0)
+      setAdminUsersSearch('')
       setAdminUsersDrafts({})
       setAdminCampaignsPage(null)
       setAdminCampaignsPageIndex(0)
       setAdminCampaignsDrafts({})
+      setAdminRealmsPage(null)
+      setAdminRealmsPageIndex(0)
+      setAdminRealmsSearch('')
       setAdminRealms([])
       setSelectedAdminRealmId('')
+      setAdminRealmUserRoles([])
+      setAdminRealmRoleDrafts({})
+      setSelectedRealmAccessRealmId('')
+      setRealmAccessSearch('')
+      setRealmAccessSearchResults([])
+      setRealmAccessSearchMessage('')
       setAdminGameSystems([])
       setAdminSheetTypes([])
       setAdminSheetCatalogsLoaded(false)
@@ -2332,13 +2569,24 @@ function App() {
     if (systemAdminView === 'campaigns' && !adminCampaignsPage) {
       void loadAdminCampaigns(0)
     }
-    if (systemAdminView === 'realms' && adminRealms.length === 0) {
+    if (systemAdminView === 'realms' && !adminRealmsPage) {
       void loadAdminRealms()
+    }
+    if (systemAdminView === 'realmAccess') {
+      if (!adminRealmsPage) {
+        void loadAdminRealms()
+      } else {
+        const targetRealmId = selectedRealmAccessRealmId || adminRealms[0]?.id || ''
+        if (targetRealmId) {
+          if (!selectedRealmAccessRealmId) setSelectedRealmAccessRealmId(targetRealmId)
+          void loadAdminRealmUserRoles(targetRealmId)
+        }
+      }
     }
     if (systemAdminView === 'sheets' && !adminSheetCatalogsLoaded) {
       void loadAdminSheetCatalogs()
     }
-  }, [isSystemSession, profile?.id, systemAdminView, adminRealms.length, adminSheetCatalogsLoaded])
+  }, [isSystemSession, profile?.id, systemAdminView, adminRealms.length, adminRealmsPage, adminSheetCatalogsLoaded])
 
   useEffect(() => {
     if (!isSystemSession || systemAdminView !== 'campaigns') return
@@ -2399,6 +2647,28 @@ function App() {
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [activeUserId, profile])
 
+  if (realmAvailability === 'loading') {
+    return <RealmStatusScreen realmCode={realmCode} state="loading" />
+  }
+
+  if (realmAvailability === 'unavailable') {
+    return <RealmStatusScreen realmCode={realmCode} state="unavailable" message={realmAvailabilityMessage} />
+  }
+
+  const realmWelcomeNotice = realmWelcome ? (
+    <div className="realm-welcome-toast" role="status" aria-live="polite">
+      <div className="realm-welcome-copy">
+        <p className="menu-group-label">Realm {realmWelcome.realmCode}</p>
+        <strong>Benvenuto su {realmWelcome.realmName}</strong>
+        <span>{welcomeProfileName}</span>
+      </div>
+      <button type="button" className="realm-welcome-close" aria-label="Chiudi benvenuto realm" onClick={() => setRealmWelcome(null)}>
+        <Icon name="fa-solid fa-xmark" />
+      </button>
+      <span className="realm-welcome-progress" aria-hidden="true" />
+    </div>
+  ) : null
+
   if (!profile) {
     return (
       <AuthScreen
@@ -2412,9 +2682,19 @@ function App() {
     )
   }
 
+  const canCreateCampaignInRealm = realmPermissions?.permissions.createCampaign ?? true
+
   const getMenuScreenState = (value: Screen) => {
     const moduleCode = MODULE_REQUIRED_BY_SCREEN[value]
     const hasRequiredModule = !moduleCode || (campaign?.allowedModules || []).includes(moduleCode)
+
+    if (value === 'Crea Campagna' && !canCreateCampaignInRealm) {
+      return {
+        enabled: false,
+        title: 'La creazione campagne e disabilitata per il tuo ruolo in questo realm',
+        showOverlayX: false,
+      }
+    }
 
     if (value === 'Approvazione Accessi' && !canAccessCampaignManagement) {
       return {
@@ -2752,6 +3032,102 @@ function App() {
   const systemCampaignsPageLabel = adminCampaignsPage
     ? `Pagina ${adminCampaignsPage.page + 1} di ${Math.max(adminCampaignsPage.totalPages, 1)}`
     : 'Pagina 1 di 1'
+  const systemRealmsTotal = adminRealmsPage?.totalElements ?? adminRealms.length
+  const systemRealmsPageLabel = adminRealmsPage
+    ? `Pagina ${adminRealmsPage.page + 1} di ${Math.max(adminRealmsPage.totalPages, 1)}`
+    : 'Pagina 1 di 1'
+  const selectedRealmAccessRealm = adminRealms.find((item) => item.id === selectedRealmAccessRealmId) || adminRealms[0] || null
+  const adminRealmRoleByKey: Record<string, AdminRealmUserRoleResponse> = {}
+  for (const item of adminRealmUserRoles) {
+    adminRealmRoleByKey[`${item.realmId}:${item.userId}`] = item
+  }
+  const handleSystemSortChange = (sortKey: string) => {
+    if (systemSortBy === sortKey) {
+      setSystemSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+      return
+    }
+    setSystemSortBy(sortKey)
+    setSystemSortDirection('asc')
+  }
+  const sortedSystemUsers = [...systemUsers].sort((left, right) => {
+    const value = (item: AdminUserPage['items'][number]) => {
+      switch (systemSortBy) {
+        case 'username':
+          return item.username
+        case 'platformRole':
+          return item.platformRole
+        case 'isActive':
+          return item.isActive
+        case 'createdAt':
+          return item.createdAt
+        default:
+          return item.profileName
+      }
+    }
+    return compareSortableValues(value(left), value(right), systemSortDirection)
+  })
+  const sortedSystemCampaigns = [...systemCampaigns].sort((left, right) => {
+    const value = (item: AdminCampaignPage['items'][number]) => {
+      switch (systemSortBy) {
+        case 'gameSystem':
+          return item.gameSystem
+        case 'isActive':
+          return item.isActive
+        case 'isOpen':
+          return item.isOpen
+        case 'createdAt':
+          return item.createdAt
+        default:
+          return item.name
+      }
+    }
+    return compareSortableValues(value(left), value(right), systemSortDirection)
+  })
+  const sortedAdminRealms = [...adminRealms].sort((left, right) => {
+    const value = (item: AdminRealmListItem) => {
+      switch (systemSortBy) {
+        case 'code':
+          return item.code
+        case 'type':
+          return item.type
+        case 'isActive':
+          return item.isActive
+        case 'allowUserCampaignCreation':
+          return item.allowUserCampaignCreation
+        default:
+          return item.name
+      }
+    }
+    return compareSortableValues(value(left), value(right), systemSortDirection)
+  })
+  const activeRealmAdminRows = adminRealmUserRoles
+    .filter((item) => item.isPrivilegeActive && item.role === 'ADMIN')
+    .sort((left, right) => {
+      const value = (item: AdminRealmUserRoleResponse) => {
+        switch (systemSortBy) {
+          case 'username':
+            return item.username
+          case 'lastUpdate':
+            return item.lastUpdate
+          default:
+            return item.profileName
+        }
+      }
+      return compareSortableValues(value(left), value(right), systemSortDirection)
+    })
+  const sortedRealmAccessSearchResults = [...realmAccessSearchResults].sort((left, right) => {
+    const value = (item: AdminUserPage['items'][number]) => {
+      switch (systemSortBy) {
+        case 'username':
+          return item.username
+        case 'platformRole':
+          return item.platformRole
+        default:
+          return item.profileName
+      }
+    }
+    return compareSortableValues(value(left), value(right), systemSortDirection)
+  })
   const systemViewMeta = (() => {
     switch (systemAdminView) {
       case 'users':
@@ -2774,9 +3150,17 @@ function App() {
         return {
           kicker: 'Realm',
           title: 'Anagrafica realm',
-          subtitle: 'Crea nuovi contenitori cliente e registra i loro host applicativi.',
-          primaryMeta: `Totale ${adminRealms.length}`,
-          secondaryMeta: `Contesto ${realmLabel}`,
+          subtitle: 'Crea contenitori cliente e filtra per nome o codice. Anche qui massimo 15 record per pagina.',
+          primaryMeta: `Totale ${systemRealmsTotal}`,
+          secondaryMeta: systemRealmsPageLabel,
+        }
+      case 'realmAccess':
+        return {
+          kicker: 'Accessi',
+          title: 'Permessi utenti per realm',
+          subtitle: 'Assegna il ruolo operativo dell utente nel singolo realm senza cambiare il ruolo globale.',
+          primaryMeta: `Realm ${adminRealms.length}`,
+          secondaryMeta: `Admin ${activeRealmAdminRows.length}`,
         }
       case 'sheets':
         return {
@@ -2800,6 +3184,7 @@ function App() {
   if (isSystemSession) {
     return (
       <div className="app-shell system-shell">
+        {realmWelcomeNotice}
         <aside className="sidebar-drawer is-open">
           <div className="sidebar-top">
             <div className="brand">
@@ -2850,10 +3235,28 @@ function App() {
               className={`system-nav-tab ${systemAdminView === 'realms' ? 'is-active' : ''}`}
               onClick={() => {
                 setSystemAdminView('realms')
-                if (adminRealms.length === 0) void loadAdminRealms()
+                if (!adminRealmsPage) void loadAdminRealms()
               }}
             >
               Realm
+            </button>
+            <button
+              type="button"
+              className={`system-nav-tab ${systemAdminView === 'realmAccess' ? 'is-active' : ''}`}
+              onClick={() => {
+                setSystemAdminView('realmAccess')
+                if (!adminRealmsPage) {
+                  void loadAdminRealms()
+                } else {
+                  const targetRealmId = selectedRealmAccessRealmId || adminRealms[0]?.id || ''
+                  if (targetRealmId) {
+                    setSelectedRealmAccessRealmId(targetRealmId)
+                    void loadAdminRealmUserRoles(targetRealmId)
+                  }
+                }
+              }}
+            >
+              Accessi realm
             </button>
             <button
               type="button"
@@ -2906,118 +3309,140 @@ function App() {
 
             {systemAdminView === 'users' ? (
               <>
-                <div className="system-table-wrap">
-                  <table className="system-users-table">
-                    <thead>
-                      <tr>
-                        <th>Username</th>
-                        <th>Profilo</th>
-                        <th>Ruolo</th>
-                        <th>Stato</th>
-                        <th>Azioni</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {busy && systemUsers.length === 0 ? (
-                        <tr>
-                          <td colSpan={5} className="system-empty-cell">Caricamento utenti...</td>
-                        </tr>
-                      ) : systemUsers.length === 0 ? (
-                        <tr>
-                          <td colSpan={5} className="system-empty-cell">Nessun utente trovato.</td>
-                        </tr>
-                      ) : (
-                        systemUsers.map((item) => {
-                          const draft = adminUsersDrafts[item.id] || {
-                            platformRole: item.platformRole,
-                            isActive: item.isActive,
+                <div className="system-filter-bar">
+                  <label>
+                    Cerca profilo
+                    <div className="inline-actions">
+                      <input
+                        value={adminUsersSearch}
+                        placeholder="Nome profilo o username"
+                        onChange={(event) => setAdminUsersSearch(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault()
+                            void loadAdminUsers(0, adminUsersSearch)
                           }
-                          const isDirty =
-                            draft.platformRole !== item.platformRole || draft.isActive !== item.isActive
-
-                          return (
-                            <tr key={item.id}>
-                              <td>
-                                <div className="system-user-primary">
-                                  <span className="system-user-username">@{item.username}</span>
-                                  <span className="system-user-id">{item.id}</span>
-                                </div>
-                              </td>
-                              <td>
-                                <div className="system-user-secondary">
-                                  <span>{item.profileName}</span>
-                                  <span className="system-user-id">
-                                    Creato {new Date(item.createdAt).toLocaleDateString('it-IT')}
-                                  </span>
-                                </div>
-                              </td>
-                              <td>
-                                <select
-                                  className="system-inline-select"
-                                  value={draft.platformRole}
-                                  onChange={(event) =>
-                                    setAdminUsersDrafts((prev) => ({
-                                      ...prev,
-                                      [item.id]: {
-                                        ...draft,
-                                        platformRole: event.target.value as PlatformRole,
-                                      },
-                                    }))
-                                  }
-                                >
-                                  {ADMIN_PLATFORM_ROLES.map((role) => (
-                                    <option key={role} value={role}>
-                                      {platformRoleLabel(role)}
-                                    </option>
-                                  ))}
-                                </select>
-                              </td>
-                              <td>
-                                <label
-                                  className="switch system-user-switch"
-                                  aria-label={`${item.username} ${draft.isActive ? 'attivo' : 'disattivo'}`}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={draft.isActive}
-                                    onChange={(event) =>
-                                      setAdminUsersDrafts((prev) => ({
-                                        ...prev,
-                                        [item.id]: {
-                                          ...draft,
-                                          isActive: event.target.checked,
-                                        },
-                                      }))
-                                    }
-                                  />
-                                  <span className="switch-track" aria-hidden="true">
-                                    <span className="switch-thumb" />
-                                  </span>
-                                </label>
-                              </td>
-                              <td>
-                                <div className="system-row-actions">
-                                  <span className={`status ${isDirty ? 'status-warning' : 'status-neutral'}`}>
-                                    {isDirty ? 'Da salvare' : 'Salvato'}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    className="refresh-btn"
-                                    disabled={busy || !isDirty}
-                                    onClick={() => void saveAdminUser(item.id)}
-                                  >
-                                    <Icon name="fa-solid fa-floppy-disk" />
-                                    <span>Salva</span>
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          )
-                        })
-                      )}
-                    </tbody>
-                  </table>
+                        }}
+                      />
+                      <button type="button" className="refresh-btn" disabled={busy} onClick={() => void loadAdminUsers(0, adminUsersSearch)}>
+                        <Icon name="fa-solid fa-magnifying-glass" />
+                        <span>Cerca</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="refresh-btn"
+                        disabled={busy || !adminUsersSearch.trim()}
+                        onClick={() => {
+                          setAdminUsersSearch('')
+                          void loadAdminUsers(0, '')
+                        }}
+                      >
+                        <Icon name="fa-solid fa-xmark" />
+                        <span>Pulisci</span>
+                      </button>
+                    </div>
+                  </label>
                 </div>
+
+                <DataTable
+                  columns={[
+                    { key: 'username', label: 'Username', sortKey: 'username' },
+                    { key: 'profileName', label: 'Profilo', sortKey: 'profileName' },
+                    { key: 'platformRole', label: 'Ruolo', sortKey: 'platformRole' },
+                    { key: 'isActive', label: 'Stato', sortKey: 'isActive' },
+                    { key: 'actions', label: '' },
+                  ]}
+                  rows={sortedSystemUsers}
+                  getRowKey={(item) => item.id}
+                  emptyMessage={busy ? 'Caricamento utenti...' : 'Nessun utente trovato.'}
+                  sortBy={systemSortBy}
+                  sortDirection={systemSortDirection}
+                  onSortChange={handleSystemSortChange}
+                  renderRow={(item) => {
+                    const draft = adminUsersDrafts[item.id] || {
+                      platformRole: item.platformRole,
+                      isActive: item.isActive,
+                    }
+                    const isDirty = draft.platformRole !== item.platformRole || draft.isActive !== item.isActive
+
+                    return (
+                      <tr>
+                        <td>
+                          <div className="system-user-primary">
+                            <span className="system-user-username">@{item.username}</span>
+                            <span className="system-user-id">{item.id}</span>
+                          </div>
+                        </td>
+                        <td>
+                          <div className="system-user-secondary">
+                            <span>{item.profileName}</span>
+                            <span className="system-user-id">Creato {formatShortDate(item.createdAt)}</span>
+                          </div>
+                        </td>
+                        <td>
+                          <select
+                            className="system-inline-select"
+                            value={draft.platformRole}
+                            onChange={(event) =>
+                              setAdminUsersDrafts((prev) => ({
+                                ...prev,
+                                [item.id]: {
+                                  ...draft,
+                                  platformRole: event.target.value as PlatformRole,
+                                },
+                              }))
+                            }
+                          >
+                            {ADMIN_PLATFORM_ROLES.map((role) => (
+                              <option key={role} value={role}>
+                                {platformRoleLabel(role)}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td>
+                          <label
+                            className="switch system-user-switch"
+                            aria-label={`${item.username} ${draft.isActive ? 'attivo' : 'disattivo'}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={draft.isActive}
+                              onChange={(event) =>
+                                setAdminUsersDrafts((prev) => ({
+                                  ...prev,
+                                  [item.id]: {
+                                    ...draft,
+                                    isActive: event.target.checked,
+                                  },
+                                }))
+                              }
+                            />
+                            <span className="switch-track" aria-hidden="true">
+                              <span className="switch-thumb" />
+                            </span>
+                          </label>
+                        </td>
+                        <td>
+                          <div className="system-row-actions">
+                            <span className={`status ${isDirty ? 'status-warning' : 'status-neutral'}`}>
+                              {isDirty ? 'Da salvare' : 'Salvato'}
+                            </span>
+                            <button
+                              type="button"
+                              className="refresh-btn"
+                              disabled={busy || !isDirty}
+                              onClick={() => void saveAdminUser(item.id)}
+                            >
+                              <Icon name="fa-solid fa-floppy-disk" />
+                              <span>Salva</span>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  }}
+                />
 
                 <div className="system-pagination">
                   <p className="muted">
@@ -3028,7 +3453,7 @@ function App() {
                       type="button"
                       className="refresh-btn"
                       disabled={busy || !adminUsersPage || adminUsersPage.first}
-                      onClick={() => void loadAdminUsers(Math.max(adminUsersPageIndex - 1, 0))}
+                      onClick={() => void loadAdminUsers(Math.max(adminUsersPageIndex - 1, 0), adminUsersSearch)}
                     >
                       <Icon name="fa-solid fa-chevron-left" />
                       <span>Precedente</span>
@@ -3037,7 +3462,7 @@ function App() {
                       type="button"
                       className="refresh-btn"
                       disabled={busy || !adminUsersPage || adminUsersPage.last}
-                      onClick={() => void loadAdminUsers(adminUsersPageIndex + 1)}
+                      onClick={() => void loadAdminUsers(adminUsersPageIndex + 1, adminUsersSearch)}
                     >
                       <span>Successiva</span>
                       <Icon name="fa-solid fa-chevron-right" />
@@ -3051,11 +3476,26 @@ function App() {
                   <table className="system-users-table">
                     <thead>
                       <tr>
-                        <th>Campagna</th>
-                        <th>Sistema</th>
-                        <th>Stato</th>
+                        <th>
+                          <button type="button" className={`data-table-sort-btn ${systemSortBy === 'name' ? 'is-active' : ''}`} onClick={() => handleSystemSortChange('name')}>
+                            <span>Campagna</span>
+                            <Icon name={systemSortBy === 'name' ? systemSortDirection === 'asc' ? 'fa-solid fa-arrow-up-wide-short' : 'fa-solid fa-arrow-down-wide-short' : 'fa-solid fa-sort'} />
+                          </button>
+                        </th>
+                        <th>
+                          <button type="button" className={`data-table-sort-btn ${systemSortBy === 'gameSystem' ? 'is-active' : ''}`} onClick={() => handleSystemSortChange('gameSystem')}>
+                            <span>Sistema</span>
+                            <Icon name={systemSortBy === 'gameSystem' ? systemSortDirection === 'asc' ? 'fa-solid fa-arrow-up-wide-short' : 'fa-solid fa-arrow-down-wide-short' : 'fa-solid fa-sort'} />
+                          </button>
+                        </th>
+                        <th>
+                          <button type="button" className={`data-table-sort-btn ${systemSortBy === 'isActive' ? 'is-active' : ''}`} onClick={() => handleSystemSortChange('isActive')}>
+                            <span>Stato</span>
+                            <Icon name={systemSortBy === 'isActive' ? systemSortDirection === 'asc' ? 'fa-solid fa-arrow-up-wide-short' : 'fa-solid fa-arrow-down-wide-short' : 'fa-solid fa-sort'} />
+                          </button>
+                        </th>
                         <th>Moduli</th>
-                        <th>Azioni</th>
+                        <th aria-label="Azioni" />
                       </tr>
                     </thead>
                     <tbody>
@@ -3068,7 +3508,7 @@ function App() {
                           <td colSpan={5} className="system-empty-cell">Nessuna campagna trovata.</td>
                         </tr>
                       ) : (
-                        systemCampaigns.map((item) => {
+                        sortedSystemCampaigns.map((item) => {
                           const draft = adminCampaignsDrafts[item.id] || {
                             isOpen: item.isOpen,
                             isActive: item.isActive,
@@ -3365,6 +3805,31 @@ function App() {
                       </span>
                     </span>
                   </label>
+                  <label className="switch system-user-switch" aria-label="Creazione campagne utente">
+                    <span className="system-status-copy">
+                      <strong>{adminRealmDraft.allowUserCampaignCreation ? 'USER crea campagne' : 'Solo ADMIN realm'}</strong>
+                      <small>
+                        {adminRealmDraft.allowUserCampaignCreation
+                          ? 'Gli utenti normali possono aprire campagne.'
+                          : 'La creazione campagne richiede ADMIN nel realm.'}
+                      </small>
+                    </span>
+                    <span>
+                      <input
+                        type="checkbox"
+                        checked={adminRealmDraft.allowUserCampaignCreation}
+                        onChange={(event) =>
+                          setAdminRealmDraft((prev) => ({
+                            ...prev,
+                            allowUserCampaignCreation: event.target.checked,
+                          }))
+                        }
+                      />
+                      <span className="switch-track" aria-hidden="true">
+                        <span className="switch-thumb" />
+                      </span>
+                    </span>
+                  </label>
                   <label className="full-span">
                     Host registrati
                     <textarea
@@ -3400,15 +3865,65 @@ function App() {
                   </button>
                 </div>
 
+                <div className="system-filter-bar">
+                  <label>
+                    Cerca realm
+                    <div className="inline-actions">
+                      <input
+                        value={adminRealmsSearch}
+                        placeholder="Nome realm o codice"
+                        onChange={(event) => setAdminRealmsSearch(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault()
+                            void loadAdminRealms(0, adminRealmsSearch)
+                          }
+                        }}
+                      />
+                      <button type="button" className="refresh-btn" disabled={busy} onClick={() => void loadAdminRealms(0, adminRealmsSearch)}>
+                        <Icon name="fa-solid fa-magnifying-glass" />
+                        <span>Cerca</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="refresh-btn"
+                        disabled={busy || !adminRealmsSearch.trim()}
+                        onClick={() => {
+                          setAdminRealmsSearch('')
+                          void loadAdminRealms(0, '')
+                        }}
+                      >
+                        <Icon name="fa-solid fa-xmark" />
+                        <span>Pulisci</span>
+                      </button>
+                    </div>
+                  </label>
+                </div>
+
                 <div className="system-table-wrap">
                   <table className="system-users-table">
                     <thead>
                       <tr>
-                        <th>Realm</th>
+                        <th>
+                          <button type="button" className={`data-table-sort-btn ${systemSortBy === 'name' ? 'is-active' : ''}`} onClick={() => handleSystemSortChange('name')}>
+                            <span>Realm</span>
+                            <Icon name={systemSortBy === 'name' ? systemSortDirection === 'asc' ? 'fa-solid fa-arrow-up-wide-short' : 'fa-solid fa-arrow-down-wide-short' : 'fa-solid fa-sort'} />
+                          </button>
+                        </th>
                         <th>Logo</th>
-                        <th>Tipo</th>
+                        <th>
+                          <button type="button" className={`data-table-sort-btn ${systemSortBy === 'type' ? 'is-active' : ''}`} onClick={() => handleSystemSortChange('type')}>
+                            <span>Tipo</span>
+                            <Icon name={systemSortBy === 'type' ? systemSortDirection === 'asc' ? 'fa-solid fa-arrow-up-wide-short' : 'fa-solid fa-arrow-down-wide-short' : 'fa-solid fa-sort'} />
+                          </button>
+                        </th>
                         <th>Host</th>
-                        <th>Stato</th>
+                        <th>
+                          <button type="button" className={`data-table-sort-btn ${systemSortBy === 'isActive' ? 'is-active' : ''}`} onClick={() => handleSystemSortChange('isActive')}>
+                            <span>Stato</span>
+                            <Icon name={systemSortBy === 'isActive' ? systemSortDirection === 'asc' ? 'fa-solid fa-arrow-up-wide-short' : 'fa-solid fa-arrow-down-wide-short' : 'fa-solid fa-sort'} />
+                          </button>
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
@@ -3421,7 +3936,7 @@ function App() {
                           <td colSpan={5} className="system-empty-cell">Nessun realm trovato.</td>
                         </tr>
                       ) : (
-                        adminRealms.map((item) => (
+                        sortedAdminRealms.map((item) => (
                           <tr
                             key={item.id}
                             className={`is-selectable ${selectedAdminRealmId === item.id ? 'is-selected' : ''}`}
@@ -3461,6 +3976,9 @@ function App() {
                               <span className={`status ${item.isActive ? 'status-success' : 'status-warning'}`}>
                                 {item.isActive ? 'Attivo' : 'Spento'}
                               </span>
+                              <span className={`status ${item.allowUserCampaignCreation ? 'status-success' : 'status-warning'}`}>
+                                {item.allowUserCampaignCreation ? 'USER crea campagne' : 'Solo ADMIN crea campagne'}
+                              </span>
                             </td>
                           </tr>
                         ))
@@ -3468,6 +3986,207 @@ function App() {
                     </tbody>
                   </table>
                 </div>
+
+                <div className="system-pagination">
+                  <p className="muted">
+                    Mostrati {adminRealms.length} realm su {systemRealmsTotal}
+                  </p>
+                  <div className="system-pagination-controls">
+                    <button
+                      type="button"
+                      className="refresh-btn"
+                      disabled={busy || !adminRealmsPage || adminRealmsPage.first}
+                      onClick={() => void loadAdminRealms(Math.max(adminRealmsPageIndex - 1, 0), adminRealmsSearch)}
+                    >
+                      <Icon name="fa-solid fa-chevron-left" />
+                      <span>Precedente</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="refresh-btn"
+                      disabled={busy || !adminRealmsPage || adminRealmsPage.last}
+                      onClick={() => void loadAdminRealms(adminRealmsPageIndex + 1, adminRealmsSearch)}
+                    >
+                      <span>Successiva</span>
+                      <Icon name="fa-solid fa-chevron-right" />
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : systemAdminView === 'realmAccess' ? (
+              <>
+                <div className="system-panel-head">
+                  <div>
+                    <p className="menu-group-label">Realm operativo</p>
+                    <h3>{selectedRealmAccessRealm?.name || 'Seleziona un realm'}</h3>
+                    <p className="muted">Il ruolo qui vale solo nel realm selezionato. Non modifica il ruolo piattaforma.</p>
+                  </div>
+                  <div className="system-panel-meta">
+                    <select
+                      className="system-inline-select"
+                      value={selectedRealmAccessRealm?.id || ''}
+                      onChange={(event) => {
+                        const nextRealmId = event.target.value
+                        setSelectedRealmAccessRealmId(nextRealmId)
+                        void loadAdminRealmUserRoles(nextRealmId)
+                      }}
+                    >
+                      {adminRealms.map((realm) => (
+                        <option key={realm.id} value={realm.id}>
+                          {realm.name} ({realm.code})
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="refresh-btn"
+                      disabled={busy || !selectedRealmAccessRealm}
+                      onClick={() => selectedRealmAccessRealm && void loadAdminRealmUserRoles(selectedRealmAccessRealm.id)}
+                    >
+                      <Icon name="fa-solid fa-rotate" />
+                      <span>Aggiorna</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="form-grid two-cols">
+                  <label className="full-span">
+                    Cerca profilo
+                    <div className="inline-actions">
+                      <input
+                        value={realmAccessSearch}
+                        placeholder="Nome profilo o username"
+                        onChange={(event) => setRealmAccessSearch(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault()
+                            void searchRealmAccessUser()
+                          }
+                        }}
+                      />
+                      <button type="button" className="refresh-btn" disabled={busy} onClick={() => void searchRealmAccessUser()}>
+                        <Icon name="fa-solid fa-magnifying-glass" />
+                        <span>Cerca</span>
+                      </button>
+                    </div>
+                  </label>
+                  {realmAccessSearchMessage && <p className="muted full-span">{realmAccessSearchMessage}</p>}
+                </div>
+
+                <DataTable
+                  columns={[
+                    { key: 'profileName', label: 'Admin realm', sortKey: 'profileName' },
+                    { key: 'username', label: 'Username', sortKey: 'username' },
+                    { key: 'role', label: 'Ruolo' },
+                    { key: 'lastUpdate', label: 'Update', sortKey: 'lastUpdate' },
+                    { key: 'actions', label: '' },
+                  ]}
+                  rows={activeRealmAdminRows}
+                  getRowKey={(item) => item.id}
+                  emptyMessage={selectedRealmAccessRealm ? 'Nessun admin attivo su questo realm.' : 'Nessun realm disponibile.'}
+                  sortBy={systemSortBy}
+                  sortDirection={systemSortDirection}
+                  onSortChange={handleSystemSortChange}
+                  renderRow={(assignment) => {
+                    const key = `${assignment.realmId}:${assignment.userId}`
+                    const draftRole = adminRealmRoleDrafts[key] || assignment.role
+                    const isDirty = draftRole !== assignment.role
+                    return (
+                      <tr>
+                        <td>{assignment.profileName}</td>
+                        <td>@{assignment.username}</td>
+                        <td>
+                          <select
+                            className="system-inline-select"
+                            value={draftRole}
+                            onChange={(event) =>
+                              setAdminRealmRoleDrafts((prev) => ({
+                                ...prev,
+                                [key]: event.target.value as RealmRole,
+                              }))
+                            }
+                          >
+                            <option value="USER">USER</option>
+                            <option value="ADMIN">ADMIN</option>
+                          </select>
+                        </td>
+                        <td>{formatShortDate(assignment.lastUpdate)}</td>
+                        <td>
+                          <button
+                            type="button"
+                            className="refresh-btn"
+                            disabled={busy || !isDirty}
+                            onClick={() => void saveAdminRealmUserRole(assignment.realmId, assignment.userId)}
+                          >
+                            <Icon name="fa-solid fa-floppy-disk" />
+                            <span>Salva</span>
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  }}
+                />
+
+                {realmAccessSearchResults.length > 0 && selectedRealmAccessRealm && (
+                  <DataTable
+                    columns={[
+                      { key: 'profileName', label: 'Profilo', sortKey: 'profileName' },
+                      { key: 'username', label: 'Username', sortKey: 'username' },
+                      { key: 'platformRole', label: 'Globale' },
+                      { key: 'realmRole', label: 'Ruolo realm' },
+                      { key: 'actions', label: '' },
+                    ]}
+                    rows={sortedRealmAccessSearchResults}
+                    getRowKey={(item) => item.id}
+                    emptyMessage="Nessun profilo trovato."
+                    sortBy={systemSortBy}
+                    sortDirection={systemSortDirection}
+                    onSortChange={handleSystemSortChange}
+                    renderRow={(item) => {
+                      const key = `${selectedRealmAccessRealm.id}:${item.id}`
+                      const assignment = adminRealmRoleByKey[key]
+                      const currentRole = assignment?.isPrivilegeActive ? assignment.role : 'USER'
+                      const draftRole = adminRealmRoleDrafts[key] || currentRole
+                      const isDirty = draftRole !== currentRole
+                      return (
+                        <tr>
+                          <td>{item.profileName}</td>
+                          <td>@{item.username}</td>
+                          <td>{platformRoleLabel(item.platformRole)}</td>
+                          <td>
+                            <select
+                              className="system-inline-select"
+                              value={draftRole}
+                              onChange={(event) =>
+                                setAdminRealmRoleDrafts((prev) => ({
+                                  ...prev,
+                                  [key]: event.target.value as RealmRole,
+                                }))
+                              }
+                            >
+                              <option value="USER">USER</option>
+                              <option value="ADMIN">ADMIN</option>
+                            </select>
+                            <span className={`status ${assignment?.isPrivilegeActive ? 'status-success' : assignment ? 'status-warning' : 'status-neutral'}`}>
+                              {assignment?.isPrivilegeActive ? 'Admin attivo' : assignment ? 'Disattivato' : 'Default USER'}
+                            </span>
+                          </td>
+                          <td>
+                            <button
+                              type="button"
+                              className="refresh-btn"
+                              disabled={busy || !isDirty}
+                              onClick={() => void saveAdminRealmUserRole(selectedRealmAccessRealm.id, item.id)}
+                            >
+                              <Icon name="fa-solid fa-floppy-disk" />
+                              <span>Salva</span>
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    }}
+                  />
+                )}
               </>
             ) : (
               <SystemCatalogsPage
@@ -3489,6 +4208,7 @@ function App() {
 
   return (
     <div className="app-shell">
+      {realmWelcomeNotice}
       {isSidebarOpen && (
         <button
           type="button"
@@ -3664,6 +4384,7 @@ function App() {
               await applyInviteAccess(inviteValue)
             })}
             onCreateCampaign={() => setScreen('Crea Campagna')}
+            canCreateCampaign={canCreateCampaignInRealm}
             activeCampaignName={campaign?.name || activeCampaignMembership?.campaignName || campaignId || ''}
           />
         )}
@@ -4243,6 +4964,7 @@ function CampaignListPage({
   onApplyInviteAccess,
   onPreviewInviteAccess,
   onCreateCampaign,
+  canCreateCampaign,
   activeCampaignName,
 }: {
   campaigns: CampaignDiscoverResponse[]
@@ -4255,6 +4977,7 @@ function CampaignListPage({
   onApplyInviteAccess: (inviteValue: string) => Promise<void>
   onPreviewInviteAccess: (inviteValue: string) => Promise<InviteAccessPreview>
   onCreateCampaign: () => void
+  canCreateCampaign: boolean
   activeCampaignName: string
 }) {
   const [membershipFilter, setMembershipFilter] = useState<'all' | 'inside' | 'outside' | 'pending' | 'blocked'>('all')
@@ -4330,7 +5053,13 @@ function CampaignListPage({
           <button type="button" className="secondary-btn" onClick={onDiscover}>
             Cerca campagne
           </button>
-          <button type="button" className="primary-btn" onClick={onCreateCampaign}>
+          <button
+            type="button"
+            className="primary-btn"
+            onClick={onCreateCampaign}
+            disabled={!canCreateCampaign}
+            title={canCreateCampaign ? 'Crea campagna' : 'Creazione campagne disabilitata per il tuo ruolo in questo realm'}
+          >
             Crea campagna
           </button>
         </div>

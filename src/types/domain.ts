@@ -18,6 +18,7 @@ export type MissionStatusReason =
 export type MissionParticipationType = 'TITOLARE' | 'NON_TITOLARE'
 export type RoomType = 'ROLEPLAY' | 'SPAM'
 export type PlatformRole = 'USER' | 'ADMIN' | 'SYSTEM'
+export type RealmRole = 'USER' | 'ADMIN'
 export type SheetEntityType = 'CHARACTER' | 'ARMY' | 'DECK'
 export type InviteCapability = 'AUTOJOIN'
 export type InviteResourceType = 'CAMPAIGN'
@@ -157,9 +158,22 @@ export interface AdminRealmListItem {
   type: RealmType
   isActive: boolean
   logoUrl: string | null
+  allowUserCampaignCreation: boolean
   hosts: RealmDomainResponse[]
   createdAt: string
   updatedAt: string
+}
+
+export interface AdminRealmPage {
+  items: AdminRealmListItem[]
+  page: number
+  size: number
+  totalElements: number
+  totalPages: number
+  first: boolean
+  last: boolean
+  hasNext: boolean
+  hasPrevious: boolean
 }
 
 export interface AdminRealmCreateRequest {
@@ -168,6 +182,7 @@ export interface AdminRealmCreateRequest {
   type: RealmType
   isActive: boolean
   logoUrl?: string | null
+  allowUserCampaignCreation: boolean
   hosts: string[]
 }
 
@@ -177,6 +192,7 @@ export interface AdminRealmUpdateRequest {
   type: RealmType
   isActive: boolean
   logoUrl?: string | null
+  allowUserCampaignCreation: boolean
 }
 
 export interface PublicRealmBrandingResponse {
@@ -184,6 +200,44 @@ export interface PublicRealmBrandingResponse {
   name: string
   type: RealmType
   logoUrl: string | null
+  allowUserCampaignCreation: boolean
+}
+
+export interface RealmPermissionFlags {
+  createCampaign: boolean
+  manageRealm: boolean
+  manageRealmUsers: boolean
+  viewRealmAdmin: boolean
+}
+
+export interface CurrentRealmPermissionsResponse {
+  realmId: string
+  realmCode: string
+  platformRole: PlatformRole
+  realmRole: RealmRole
+  explicitRealmAccess: boolean
+  permissions: RealmPermissionFlags
+}
+
+export interface AdminRealmUserRoleResponse {
+  id: string
+  realmId: string
+  realmCode: string
+  realmName: string
+  userId: string
+  username: string
+  profileName: string
+  role: RealmRole
+  isPrivilegeActive: boolean
+  lastUpdate: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AdminRealmUserRoleUpsertRequest {
+  realmId: string
+  userId: string
+  role: RealmRole
 }
 
 export interface Character {

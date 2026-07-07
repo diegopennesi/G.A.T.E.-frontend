@@ -112,7 +112,7 @@ export async function refreshSession() {
 export async function apiRequest<T>(
   path: string,
   options?: {
-    method?: 'GET' | 'POST' | 'PATCH'
+    method?: 'GET' | 'POST' | 'PUT' | 'PATCH'
     body?: unknown
     auth?: boolean
     retryOn401?: boolean

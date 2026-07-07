@@ -8,6 +8,9 @@ function toMessage(error: unknown): string {
   return 'Errore imprevisto'
 }
 
+const normalizeUsernameInput = (value: string) => value.toLowerCase().replace(/[^a-z0-9._-]/g, '')
+const USERNAME_PATTERN = '^[a-z0-9._-]+$'
+
 export function AuthScreen({
   onAuth,
   initialMode = 'login',
@@ -65,18 +68,26 @@ export function AuthScreen({
     setInfo('')
     setBusy(true)
     try {
+      const normalizedUsername = normalizeUsernameInput(username)
+      if ((mode === 'login' || mode === 'register' || recoveryStep === 'request') && normalizedUsername !== username) {
+        setUsername(normalizedUsername)
+      }
+      if ((mode === 'login' || mode === 'register' || recoveryStep === 'request') && normalizedUsername.length < 3) {
+        throw new Error('Username minimo 3 caratteri')
+      }
+
       if (mode === 'login') {
-        await onAuth(await login(username, password))
+        await onAuth(await login(normalizedUsername, password))
         return
       }
 
       if (mode === 'register') {
-        await onAuth(await register({ username, password, profileName, bio }))
+        await onAuth(await register({ username: normalizedUsername, password, profileName, bio }))
         return
       }
 
       if (recoveryStep === 'request') {
-        const response = await requestPasswordReset(username)
+        const response = await requestPasswordReset(normalizedUsername)
         setResetSeed(response.resetSeed)
         setResetExpiresAt(response.expiresAt)
         setRecoveryStep('confirm')
@@ -144,7 +155,15 @@ export function AuthScreen({
           {mode !== 'recover' && (
             <label>
               Username
-              <input required value={username} placeholder="Il tuo username" onChange={(event) => setUsername(event.target.value)} />
+              <input
+                required
+                minLength={3}
+                maxLength={50}
+                pattern={USERNAME_PATTERN}
+                value={username}
+                placeholder="username"
+                onChange={(event) => setUsername(normalizeUsernameInput(event.target.value))}
+              />
             </label>
           )}
           {mode === 'login' && (
@@ -174,7 +193,15 @@ export function AuthScreen({
               {recoveryStep === 'request' ? (
                 <label>
                   Username
-                  <input required value={username} placeholder="Username dell'account" onChange={(event) => setUsername(event.target.value)} />
+                  <input
+                    required
+                    minLength={3}
+                    maxLength={50}
+                    pattern={USERNAME_PATTERN}
+                    value={username}
+                    placeholder="username"
+                    onChange={(event) => setUsername(normalizeUsernameInput(event.target.value))}
+                  />
                 </label>
               ) : (
                 <>
