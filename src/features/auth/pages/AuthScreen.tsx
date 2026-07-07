@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { confirmPasswordReset, login, register, requestPasswordReset } from '../../../services/gateApi'
 import type { AuthSession } from '../../../types/domain'
@@ -11,12 +11,14 @@ function toMessage(error: unknown): string {
 export function AuthScreen({
   onAuth,
   initialMode = 'login',
+  onModeChange,
   realmCode = 'gate',
   realmName = 'Taverna del Codice',
   logoUrl = null,
 }: {
   onAuth: (session: AuthSession) => Promise<void>
   initialMode?: 'login' | 'register' | 'recover'
+  onModeChange?: (mode: 'login' | 'register' | 'recover') => void
   realmCode?: string
   realmName?: string
   logoUrl?: string | null
@@ -35,6 +37,10 @@ export function AuthScreen({
   const [info, setInfo] = useState('')
   const [busy, setBusy] = useState(false)
 
+  useEffect(() => {
+    setMode(initialMode)
+  }, [initialMode])
+
   const resetRecoveryState = () => {
     setResetSeed('')
     setResetExpiresAt('')
@@ -46,6 +52,7 @@ export function AuthScreen({
 
   const switchMode = (nextMode: typeof mode) => {
     setMode(nextMode)
+    onModeChange?.(nextMode)
     setError('')
     if (nextMode !== 'recover') {
       resetRecoveryState()

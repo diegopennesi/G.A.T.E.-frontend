@@ -156,18 +156,66 @@ const DEFAULT_REALM_CODE = 'gate'
 
 type AuthMode = 'login' | 'register' | 'recover'
 
-function resolveRealmContextFromPath(pathname: string): { realmCode: string; authMode: AuthMode } {
+const SCREEN_PATH_SEGMENTS: Record<Screen, string> = {
+  Profilo: 'profilo',
+  'Modifica Profilo': 'profilo-modifica',
+  'Lista Campagne': 'campagne',
+  'Crea Campagna': 'campagne-nuova',
+  'Scheda Campagna': 'campagna',
+  'Approvazione Accessi': 'campagna-accessi',
+  Missioni: 'missioni',
+  Stanze: 'stanze',
+  Log: 'log',
+  'Gestione Personaggi': 'personaggi',
+  'Scheda PG': 'personaggio',
+  'Gestione Campagna': 'campagna-gestione',
+  'Profilo Membro Campagna': 'membro',
+  'Seleziona PG': 'personaggi-seleziona',
+  'Crea Personaggio': 'personaggi-nuovo',
+}
+
+const SCREEN_BY_PATH_SEGMENT = Object.fromEntries(
+  Object.entries(SCREEN_PATH_SEGMENTS).map(([screen, segment]) => [segment, screen as Screen]),
+) as Record<string, Screen>
+
+function resolveRealmContextFromPath(pathname: string): { realmCode: string; authMode: AuthMode; screen: Screen | null } {
   const segments = pathname.split('/').filter(Boolean)
   if (segments[0] === 'homepage' && segments[1]) {
+    if (segments[2] === 'app') {
+      return {
+        realmCode: segments[1].trim().toLowerCase(),
+        authMode: 'login',
+        screen: (segments[3] && SCREEN_BY_PATH_SEGMENT[segments[3]]) || 'Profilo',
+      }
+    }
     const nextSegment = segments[2]
     const authMode: AuthMode =
       nextSegment === 'register' || nextSegment === 'recover' || nextSegment === 'login' ? nextSegment : 'login'
     return {
       realmCode: segments[1].trim().toLowerCase(),
       authMode,
+      screen: null,
     }
   }
-  return { realmCode: DEFAULT_REALM_CODE, authMode: 'login' }
+  return { realmCode: DEFAULT_REALM_CODE, authMode: 'login', screen: null }
+}
+
+function buildPathForState({
+  realmCode,
+  authMode,
+  screen,
+  isAuthenticated,
+}: {
+  realmCode: string
+  authMode: AuthMode
+  screen: Screen
+  isAuthenticated: boolean
+}) {
+  const normalizedRealmCode = realmCode.trim().toLowerCase() || DEFAULT_REALM_CODE
+  if (!isAuthenticated) {
+    return `/homepage/${encodeURIComponent(normalizedRealmCode)}/${authMode}`
+  }
+  return `/homepage/${encodeURIComponent(normalizedRealmCode)}/app/${SCREEN_PATH_SEGMENTS[screen]}`
 }
 
 function formatRealmCodeLabel(realmCode: string) {
@@ -409,7 +457,7 @@ const MODULE_REQUIRED_BY_SCREEN: Partial<Record<Screen, string>> = {
 
 function App() {
   const initialRealmContext = useMemo(() => resolveRealmContextFromPath(window.location.pathname), [])
-  const [screen, setScreen] = useState<Screen>('Profilo')
+  const [screen, setScreen] = useState<Screen>(initialRealmContext.screen || 'Profilo')
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -503,12 +551,27 @@ function App() {
       const resolved = resolveRealmContextFromPath(window.location.pathname)
       setRealmCodeState(resolved.realmCode)
       setAuthMode(resolved.authMode)
+      if (resolved.screen) {
+        setScreen(resolved.screen)
+      }
     }
 
     syncRealmFromLocation()
     window.addEventListener('popstate', syncRealmFromLocation)
     return () => window.removeEventListener('popstate', syncRealmFromLocation)
   }, [])
+
+  useEffect(() => {
+    const nextPath = buildPathForState({
+      realmCode,
+      authMode,
+      screen,
+      isAuthenticated: Boolean(profile),
+    })
+    if (window.location.pathname !== nextPath) {
+      window.history.replaceState(window.history.state, '', nextPath)
+    }
+  }, [authMode, profile, realmCode, screen])
 
   useEffect(() => {
     let cancelled = false
@@ -2034,6 +2097,8 @@ function App() {
   function handleLogout() {
     logout()
     setProfile(null)
+    setAuthMode('login')
+    setScreen('Profilo')
     setCampaignId('')
     setKnownCampaignIds([])
     setKnownCampaignMeta([])
@@ -2339,6 +2404,7 @@ function App() {
       <AuthScreen
         onAuth={handleAuth}
         initialMode={authMode}
+        onModeChange={setAuthMode}
         realmCode={realmCode}
         realmName={brandTitle}
         logoUrl={brandLogoUrl}
