@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { FieldLabel, Icon } from '../../../shared/components'
 import type { UserProfile } from '../../../types/domain'
+import { toMessage } from '../../../shared/utils'
 
 export type ProfileDraft = {
   profileName: string
@@ -20,10 +21,6 @@ function profileToDraft(profile: UserProfile): ProfileDraft {
   }
 }
 
-function toMessage(error: unknown): string {
-  if (error instanceof Error) return error.message
-  return 'Errore imprevisto'
-}
 
 export function ProfilePage({
   profile,

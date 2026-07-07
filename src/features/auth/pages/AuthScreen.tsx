@@ -2,11 +2,7 @@ import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { confirmPasswordReset, login, register, requestPasswordReset } from '../../../services/gateApi'
 import type { AuthSession } from '../../../types/domain'
-
-function toMessage(error: unknown): string {
-  if (error instanceof Error) return error.message
-  return 'Errore imprevisto'
-}
+import { toMessage } from '../../../shared/utils'
 
 const normalizeUsernameInput = (value: string) => value.toLowerCase().replace(/[^a-z0-9._-]/g, '')
 const USERNAME_PATTERN = '^[a-z0-9._-]+$'

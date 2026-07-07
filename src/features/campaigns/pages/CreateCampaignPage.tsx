@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { DataTable, FieldLabel, Icon } from '../../../shared/components'
 import type { CampaignCatalogEntry } from '../../../types/domain'
+import { CAMPAIGN_TONE_OPTIONS, catalogEntryDescription } from '../../../shared/utils'
 
 type CreateCampaignPayload = {
   name: string
@@ -17,26 +18,6 @@ type CreateCampaignPayload = {
   allowedModules: string[]
 }
 
-const CAMPAIGN_TONE_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: 'EPIC_FANTASY', label: 'Fantasy Epico' },
-  { value: 'HEROIC', label: 'Eroico' },
-  { value: 'DARK', label: 'Dark' },
-  { value: 'MYSTERY', label: 'Mistero' },
-  { value: 'HORROR', label: 'Horror' },
-  { value: 'POLITICAL_INTRIGUE', label: 'Intrigo Politico' },
-  { value: 'ADVENTURE', label: 'Avventura' },
-  { value: 'LIGHTHEARTED', label: 'Leggero' },
-]
-
-const catalogEntryByCode = (entries: CampaignCatalogEntry[], code: string | null | undefined): CampaignCatalogEntry | null => {
-  if (!code) return null
-  return entries.find((entry) => entry.code === code) || null
-}
-
-const catalogEntryDescription = (entries: CampaignCatalogEntry[], code: string | null | undefined): string | null => {
-  if (!code) return null
-  return catalogEntryByCode(entries, code)?.description || null
-}
 
 function campaignModuleIconName(module: CampaignCatalogEntry): string {
   const token = `${module.code} ${module.label}`.toLowerCase()
