@@ -49,13 +49,13 @@ export function clearTokens() {
   localStorage.removeItem(REFRESH_TOKEN_KEY)
 }
 
-const buildHeaders = (token?: string, hasBody = false) => {
+const buildHeaders = (token?: string, hasBody = false, includeRealm = true) => {
   const headers: Record<string, string> = {}
   const realmCode = getRealmCode()?.trim()
   if (token) {
     headers.Authorization = `Bearer ${token}`
   }
-  if (realmCode) {
+  if (includeRealm && realmCode) {
     headers['X-GATE-Realm-Code'] = realmCode
   }
   if (hasBody) {
@@ -116,24 +116,26 @@ export async function apiRequest<T>(
     body?: unknown
     auth?: boolean
     retryOn401?: boolean
+    realm?: boolean
   },
 ): Promise<T> {
   const method = options?.method ?? 'GET'
   const auth = options?.auth ?? true
   const retryOn401 = options?.retryOn401 ?? true
+  const realm = options?.realm ?? true
   const token = auth ? getAccessToken() || undefined : undefined
   const hasBody = options?.body !== undefined
 
   const response = await fetch(`${BASE_URL}${path}`, {
     method,
-    headers: buildHeaders(token, hasBody),
+    headers: buildHeaders(token, hasBody, realm),
     body: hasBody ? JSON.stringify(options?.body) : undefined,
   })
 
   if (!response.ok) {
     if (response.status === 401 && auth && retryOn401 && getRefreshToken()) {
       await ensureRefreshed()
-      return apiRequest<T>(path, { ...options, retryOn401: false })
+      return apiRequest<T>(path, { ...options, retryOn401: false, realm })
     }
     throw await parseError(response)
   }

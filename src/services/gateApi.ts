@@ -161,7 +161,7 @@ export async function getPublicProfile(userId: string): Promise<UserProfile> {
 export async function listAdminUsers(page = 0, query?: string): Promise<AdminUserPage> {
   const params = new URLSearchParams({ page: String(page) })
   if (query?.trim()) params.set('q', query.trim())
-  return apiRequest<AdminUserPage>(`/admin/users?${params.toString()}`)
+  return apiRequest<AdminUserPage>(`/admin/users?${params.toString()}`, { realm: false })
 }
 
 export async function updateAdminUser(
@@ -171,17 +171,18 @@ export async function updateAdminUser(
   return apiRequest<AdminUserPage['items'][number]>(`/admin/users/${userId}`, {
     method: 'PATCH',
     body: payload,
+    realm: false,
   })
 }
 
 export async function listAdminCampaigns(page = 0): Promise<AdminCampaignPage> {
-  return apiRequest<AdminCampaignPage>(`/admin/campaigns?page=${page}`)
+  return apiRequest<AdminCampaignPage>(`/admin/campaigns?page=${page}`, { realm: false })
 }
 
 export async function listAdminRealms(page = 0, query?: string): Promise<AdminRealmPage> {
   const params = new URLSearchParams({ page: String(page) })
   if (query?.trim()) params.set('q', query.trim())
-  const response = await apiRequest<AdminRealmPage | AdminRealmListItem[]>(`/admin/realms?${params.toString()}`)
+  const response = await apiRequest<AdminRealmPage | AdminRealmListItem[]>(`/admin/realms?${params.toString()}`, { realm: false })
   if (Array.isArray(response)) {
     return {
       items: response,
@@ -202,6 +203,7 @@ export async function createAdminRealm(payload: AdminRealmCreateRequest): Promis
   return apiRequest<AdminRealmListItem>('/admin/realms', {
     method: 'POST',
     body: payload,
+    realm: false,
   })
 }
 
@@ -209,6 +211,7 @@ export async function updateAdminRealm(realmId: string, payload: AdminRealmUpdat
   return apiRequest<AdminRealmListItem>(`/admin/realms/${realmId}`, {
     method: 'PATCH',
     body: payload,
+    realm: false,
   })
 }
 
@@ -220,7 +223,7 @@ export async function listAdminRealmUserRoles(params?: {
   if (params?.realmId) query.set('realmId', params.realmId)
   if (params?.userId) query.set('userId', params.userId)
   const suffix = query.toString() ? `?${query.toString()}` : ''
-  return apiRequest<AdminRealmUserRoleResponse[]>(`/admin/realm-user-roles${suffix}`)
+  return apiRequest<AdminRealmUserRoleResponse[]>(`/admin/realm-user-roles${suffix}`, { realm: false })
 }
 
 export async function upsertAdminRealmUserRole(
@@ -229,6 +232,7 @@ export async function upsertAdminRealmUserRole(
   return apiRequest<AdminRealmUserRoleResponse>('/admin/realm-user-roles', {
     method: 'PUT',
     body: payload,
+    realm: false,
   })
 }
 
@@ -249,11 +253,12 @@ export async function updateAdminCampaign(
   return apiRequest<CampaignResponse>(`/admin/campaigns/${campaignId}`, {
     method: 'PATCH',
     body: payload,
+    realm: false,
   })
 }
 
 export async function listAdminGameSystems(): Promise<CampaignCatalogEntry[]> {
-  return apiRequest<CampaignCatalogEntry[]>('/admin/catalogs/game-systems')
+  return apiRequest<CampaignCatalogEntry[]>('/admin/catalogs/game-systems', { realm: false })
 }
 
 export async function createAdminGameSystem(
@@ -262,6 +267,7 @@ export async function createAdminGameSystem(
   return apiRequest<CampaignCatalogEntry>('/admin/catalogs/game-systems', {
     method: 'POST',
     body: payload,
+    realm: false,
   })
 }
 
@@ -272,11 +278,12 @@ export async function updateAdminGameSystem(
   return apiRequest<CampaignCatalogEntry>(`/admin/catalogs/game-systems/${encodeURIComponent(code)}`, {
     method: 'PATCH',
     body: payload,
+    realm: false,
   })
 }
 
 export async function listAdminSheetTypes(): Promise<SheetTypeCatalogEntry[]> {
-  return apiRequest<SheetTypeCatalogEntry[]>('/admin/catalogs/sheet-types')
+  return apiRequest<SheetTypeCatalogEntry[]>('/admin/catalogs/sheet-types', { realm: false })
 }
 
 export async function createAdminSheetType(
@@ -285,6 +292,7 @@ export async function createAdminSheetType(
   return apiRequest<SheetTypeCatalogEntry>('/admin/catalogs/sheet-types', {
     method: 'POST',
     body: payload,
+    realm: false,
   })
 }
 
@@ -295,6 +303,7 @@ export async function updateAdminSheetType(
   return apiRequest<SheetTypeCatalogEntry>(`/admin/catalogs/sheet-types/${encodeURIComponent(code)}`, {
     method: 'PATCH',
     body: payload,
+    realm: false,
   })
 }
 

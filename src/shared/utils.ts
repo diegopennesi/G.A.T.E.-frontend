@@ -1,6 +1,10 @@
 import { ApiError } from '../services/apiClient'
 import type { CampaignCatalogEntry, Character, SheetSchemaBlock, SheetSchemaField } from '../types/domain'
 
+export function isUnauthorized(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 401
+}
+
 export function toMessage(error: unknown): string {
   if (error instanceof ApiError) {
     const fields = error.payload?.fields

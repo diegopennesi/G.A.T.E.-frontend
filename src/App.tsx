@@ -1,8 +1,8 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import { AuthScreen } from './features/auth'
 import {
-  ApprovalPage, CampaignAccessBadge, CampaignOpenBadge, CampaignStatusBadge, CreateCampaignPage,
+  ApprovalPage, CreateCampaignPage,
   CampaignListPage, CampaignDetailPage, CampaignManagementPage, CampaignMemberProfilePage,
   CampaignPickerModal, LeaveCampaignModal,
 } from './features/campaigns'
@@ -12,13 +12,14 @@ import { LogPage } from './features/notifications'
 import { EditProfilePage, ProfilePage } from './features/profile'
 import { RoomsPage } from './features/rooms'
 import { SystemCatalogsPage } from './features/admin'
-import { DataTable, FieldLabel, Icon } from './shared/components'
+import { DataTable, Icon, RealmStatusScreen } from './shared/components'
+import { resolveRealmContextFromPath, buildPathForState } from './shared/routing'
 import { ApiError, getAccessToken, setRealmCode } from './services/apiClient'
 import {
   toMessage,
+  isUnauthorized,
   catalogEntryLabel,
   catalogEntryDescription,
-  campaignToneLabel,
   formatShortDate,
   compareSortableValues,
   scopedStorageKey,
@@ -26,8 +27,8 @@ import {
   platformRoleLabel,
 } from './shared/utils'
 import type { SortDirection } from './shared/utils'
-import type { Screen, AuthMode, UiEvent, BreadcrumbItem, ThemeMode, EffectiveThemeMode, CampaignPickerCampaign, LeaveCampaignContext, InviteAccessPreview } from './types/ui'
-import { SCREEN_LABELS, SCREEN_ICONS, SCREEN_PATH_SEGMENTS, NAVIGATION_SECTIONS } from './types/ui'
+import type { Screen, AuthMode, UiEvent, BreadcrumbItem, ThemeMode, EffectiveThemeMode, CampaignPickerCampaign, InviteAccessPreview } from './types/ui'
+import { SCREEN_LABELS, SCREEN_ICONS, NAVIGATION_SECTIONS } from './types/ui'
 import {
   createAdminRealm,
   createAdminGameSystem,
@@ -114,14 +115,12 @@ import type {
   CampaignApplicationResponse,
   CampaignCatalogEntry,
   CampaignDiscoverResponse,
-  CampaignMemberStatus,
   CampaignMembershipResponse,
   CampaignPermissionResponse,
   CampaignRole,
   CampaignResponse,
   Character,
   CharacterSheetResponse,
-  CharacterStatus,
   MyCampaignMembershipResponse,
   MissionParticipantResponse,
   MissionParticipationType,
@@ -133,19 +132,13 @@ import type {
   PublicRealmBrandingResponse,
   RealmRole,
   RealmType,
-  SheetEntityType,
-  SheetSchemaBlock,
-  SheetSchemaField,
   SheetTypeCatalogEntry,
   UserProfile,
   AdminGameSystemUpsertRequest,
   AdminSheetTypeUpsertRequest,
   CampaignInvitePreviewResponse,
-  CreateInviteTokenRequest,
   CurrentRealmPermissionsResponse,
-  InviteCapability,
   InviteTokenPreviewResponse,
-  InviteTokenResponse,
 } from './types/domain'
 import type { ResourceInvalidationPayload } from './types/realtime'
 
@@ -154,79 +147,6 @@ const KNOWN_CAMPAIGNS_KEY = 'gate_known_campaign_ids'
 const KNOWN_CAMPAIGN_META_KEY = 'gate_known_campaign_meta'
 const THEME_KEY = 'gate_theme'
 const PENDING_APPLICATIONS_CACHE_KEY = 'gate_pending_applications_cache'
-const DEFAULT_REALM_CODE = 'gate'
-
-const SCREEN_BY_PATH_SEGMENT = Object.fromEntries(
-  Object.entries(SCREEN_PATH_SEGMENTS).map(([screen, segment]) => [segment, screen as Screen]),
-) as Record<string, Screen>
-
-function resolveRealmContextFromPath(pathname: string): { realmCode: string; authMode: AuthMode; screen: Screen | null } {
-  const segments = pathname.split('/').filter(Boolean)
-  if (segments[0] === 'homepage' && segments[1]) {
-    if (segments[2] === 'app') {
-      return {
-        realmCode: segments[1].trim().toLowerCase(),
-        authMode: 'login',
-        screen: (segments[3] && SCREEN_BY_PATH_SEGMENT[segments[3]]) || 'Profilo',
-      }
-    }
-    const nextSegment = segments[2]
-    const authMode: AuthMode =
-      nextSegment === 'register' || nextSegment === 'recover' || nextSegment === 'login' ? nextSegment : 'login'
-    return {
-      realmCode: segments[1].trim().toLowerCase(),
-      authMode,
-      screen: null,
-    }
-  }
-  return { realmCode: DEFAULT_REALM_CODE, authMode: 'login', screen: null }
-}
-
-function buildPathForState({
-  realmCode,
-  authMode,
-  screen,
-  isAuthenticated,
-}: {
-  realmCode: string
-  authMode: AuthMode
-  screen: Screen
-  isAuthenticated: boolean
-}) {
-  const normalizedRealmCode = realmCode.trim().toLowerCase() || DEFAULT_REALM_CODE
-  if (!isAuthenticated) {
-    return `/homepage/${encodeURIComponent(normalizedRealmCode)}/${authMode}`
-  }
-  return `/homepage/${encodeURIComponent(normalizedRealmCode)}/app/${SCREEN_PATH_SEGMENTS[screen]}`
-}
-
-function RealmStatusScreen({
-  realmCode,
-  state,
-  message,
-}: {
-  realmCode: string
-  state: 'loading' | 'unavailable'
-  message?: string
-}) {
-  return (
-    <div className="realm-status-screen">
-      <section className="realm-status-panel" aria-live="polite">
-        <div className={`realm-status-icon ${state === 'loading' ? 'is-loading' : ''}`}>
-          <Icon name={state === 'loading' ? 'fa-solid fa-circle-notch' : 'fa-solid fa-ban'} />
-        </div>
-        <p className="menu-group-label">Realm {realmCode}</p>
-        <h1>{state === 'loading' ? 'Caricamento realm' : 'Realm non disponibile'}</h1>
-        <p className="muted">
-          {message ||
-            (state === 'loading'
-              ? 'Verifica configurazione e stato del realm.'
-              : 'Il realm richiesto non esiste, e spento oppure non e abilitato alla navigazione.')}
-        </p>
-      </section>
-    </div>
-  )
-}
 
 const DEFAULT_APP_TITLE = 'Taverna del Codice'
 const DEFAULT_FAVICON_URL = '/favicon.svg'
@@ -4751,10 +4671,6 @@ function App() {
       </main>
     </div>
   )
-}
-
-function isUnauthorized(error: unknown): boolean {
-  return error instanceof ApiError && error.status === 401
 }
 
 export default App
