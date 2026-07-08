@@ -1,13 +1,8 @@
+import { useUiContext } from '../../../context'
 import { DataTable } from '../../../shared/components'
 
-type UiEvent = {
-  id: string
-  ts: string
-  text: string
-  level: 'info' | 'ok' | 'error'
-}
-
-export function LogPage({ events }: { events: UiEvent[] }) {
+export function LogPage() {
+  const { events } = useUiContext()
   return (
     <section className="panel">
       <h2>Log</h2>

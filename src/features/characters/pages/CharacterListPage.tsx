@@ -1,27 +1,20 @@
 import { useMemo, useState } from 'react'
+import { useCharacterContext } from '../../../context'
 import { DataTable, FilterChipGroup, Icon } from '../../../shared/components'
 import { statusTone } from '../../../shared/utils'
-import type { Character, CharacterStatus } from '../../../types/domain'
+import type { CharacterStatus } from '../../../types/domain'
 
-export function CharacterListPage({
-  characters,
-  selectedCharacterId,
-  onSelectCharacter,
-  canOpenCharacterSheet,
-  ownerProfileLabel,
-  campaignNameForCharacter,
-  onCreateScreen,
-  onReload,
-}: {
-  characters: Character[]
-  selectedCharacterId: string
-  onSelectCharacter: (character: Character) => void
-  canOpenCharacterSheet: (character: Character) => boolean
-  ownerProfileLabel: (userId: string | null, ownerProfileName?: string | null) => string
-  campaignNameForCharacter: (character: Character) => string
-  onCreateScreen: () => void
-  onReload: () => void
-}) {
+export function CharacterListPage() {
+  const {
+    characters,
+    selectedCharacterId,
+    selectCharacter: onSelectCharacter,
+    canOpenCharacterSheet,
+    ownerProfileLabel,
+    campaignNameForCharacter,
+    openCreateCharacter: onCreateScreen,
+    reloadCharacters: onReload,
+  } = useCharacterContext()
   const [typeFilters, setTypeFilters] = useState<Array<'NPC' | 'PG'>>(['NPC', 'PG'])
   const [statusFilters, setStatusFilters] = useState<CharacterStatus[]>(['ACTIVE', 'RETIRED', 'DEAD'])
   const [searchText, setSearchText] = useState('')

@@ -1,16 +1,9 @@
 import { useState } from 'react'
+import { useCampaignContext } from '../../../context'
 import { DataTable, FieldLabel, Icon } from '../../../shared/components'
-import type { RoomResponse } from '../../../types/domain'
 
-export function RoomsPage({
-  rooms,
-  canCreateRoom,
-  onCreate,
-}: {
-  rooms: RoomResponse[]
-  canCreateRoom: boolean
-  onCreate: (payload: { name: string; type: 'ROLEPLAY' | 'SPAM'; ttlHours: number; slowmodeSeconds: number }) => void
-}) {
+export function RoomsPage() {
+  const { rooms, canCreateRoom, createRoom: onCreate } = useCampaignContext()
   const [name, setName] = useState('Piazza Centrale')
   const [type, setType] = useState<'ROLEPLAY' | 'SPAM'>('ROLEPLAY')
   const [ttlHours, setTtlHours] = useState(72)

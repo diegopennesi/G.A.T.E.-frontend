@@ -1,23 +1,8 @@
 import { useMemo, useState } from 'react'
+import { useCampaignContext } from '../../../context'
 import { DataTable, FieldLabel, Icon } from '../../../shared/components'
 import type { CampaignCatalogEntry } from '../../../types/domain'
 import { CAMPAIGN_TONE_OPTIONS, catalogEntryDescription } from '../../../shared/utils'
-
-type CreateCampaignPayload = {
-  name: string
-  description: string
-  summary: string
-  setting: string
-  tone: string
-  rules: string
-  requirements: string
-  coverImageUrl: string
-  isOpen: boolean
-  isSearchable: boolean
-  gameSystem: string
-  allowedModules: string[]
-}
-
 
 function campaignModuleIconName(module: CampaignCatalogEntry): string {
   const token = `${module.code} ${module.label}`.toLowerCase()
@@ -146,15 +131,8 @@ function CreateCampaignToggleSettingsTable({
   )
 }
 
-export function CreateCampaignPage({
-  availableModules,
-  availableGameSystems,
-  onCreate,
-}: {
-  availableModules: CampaignCatalogEntry[]
-  availableGameSystems: CampaignCatalogEntry[]
-  onCreate: (payload: CreateCampaignPayload) => void
-}) {
+export function CreateCampaignPage() {
+  const { availableModules, availableGameSystems, createCampaign: onCreate } = useCampaignContext()
   const [name, setName] = useState('Nuova Campagna')
   const [description, setDescription] = useState('')
   const [summary, setSummary] = useState('')

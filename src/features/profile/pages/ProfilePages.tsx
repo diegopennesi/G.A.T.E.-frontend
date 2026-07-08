@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useProfileContext, useUiContext } from '../../../context'
 import { FieldLabel, Icon } from '../../../shared/components'
 import type { UserProfile } from '../../../types/domain'
 import { toMessage } from '../../../shared/utils'
@@ -9,6 +10,18 @@ export type ProfileDraft = {
   whatsapp: string
   instagram: string
   otherSocial: string
+}
+
+const EMPTY_PROFILE: UserProfile = {
+  id: '',
+  username: '',
+  platformRole: 'USER',
+  profileName: '',
+  bio: '',
+  avatarUrl: null,
+  whatsapp: '',
+  socialLinks: {},
+  createdAt: '',
 }
 
 function profileToDraft(profile: UserProfile): ProfileDraft {
@@ -22,13 +35,10 @@ function profileToDraft(profile: UserProfile): ProfileDraft {
 }
 
 
-export function ProfilePage({
-  profile,
-  onGoEdit,
-}: {
-  profile: UserProfile
-  onGoEdit: () => void
-}) {
+export function ProfilePage() {
+  const { profile } = useProfileContext()
+  const { goToScreen } = useUiContext()
+  if (!profile) return null
   const displayValue = (value: string | null | undefined) => (value && value.trim() ? value : 'Non impostato')
   const avatarLabel = profile.profileName?.trim() || profile.username?.trim() || 'U'
   return (
@@ -43,7 +53,7 @@ export function ProfilePage({
           <p className="muted">{displayValue(profile.username ? `@${profile.username}` : null)}</p>
         </div>
         <div className="profile-header-actions">
-          <button type="button" className="primary-btn" onClick={onGoEdit}>
+          <button type="button" className="primary-btn" onClick={() => goToScreen('Modifica Profilo')}>
             <Icon name="fa-solid fa-pen-to-square" />
             <span>Modifica profilo</span>
           </button>
@@ -105,22 +115,18 @@ export function ProfilePage({
   )
 }
 
-export function EditProfilePage({
-  profile,
-  onSave,
-  onChangePassword,
-}: {
-  profile: UserProfile
-  onSave: (draft: ProfileDraft) => void
-  onChangePassword: (params: { currentPassword: string; newPassword: string }) => Promise<void>
-}) {
-  const [draft, setDraft] = useState<ProfileDraft>(() => profileToDraft(profile))
+export function EditProfilePage() {
+  const { profile, saveProfile: onSave, changePassword: onChangePassword } = useProfileContext()
+  const [draft, setDraft] = useState<ProfileDraft>(() =>
+    profileToDraft(profile || EMPTY_PROFILE),
+  )
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [passwordBusy, setPasswordBusy] = useState(false)
   const [passwordError, setPasswordError] = useState('')
   const [passwordInfo, setPasswordInfo] = useState('')
+  if (!profile) return null
 
   const submitPasswordChange = async () => {
     setPasswordError('')

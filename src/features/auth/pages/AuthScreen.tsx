@@ -1,27 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { FormEvent } from 'react'
+import { useProfileContext, useRealmContext } from '../../../context'
 import { confirmPasswordReset, login, register, requestPasswordReset } from '../../../services/gateApi'
-import type { AuthSession } from '../../../types/domain'
 import { toMessage } from '../../../shared/utils'
 
 const normalizeUsernameInput = (value: string) => value.toLowerCase().replace(/[^a-z0-9._-]/g, '')
 const USERNAME_PATTERN = '^[a-z0-9._-]+$'
 
-export function AuthScreen({
-  onAuth,
-  initialMode = 'login',
-  onModeChange,
-  realmCode = 'gate',
-  realmName = 'Taverna del Codice',
-  logoUrl = null,
-}: {
-  onAuth: (session: AuthSession) => Promise<void>
-  initialMode?: 'login' | 'register' | 'recover'
-  onModeChange?: (mode: 'login' | 'register' | 'recover') => void
-  realmCode?: string
-  realmName?: string
-  logoUrl?: string | null
-}) {
+export function AuthScreen() {
+  const { handleAuth } = useProfileContext()
+  const { authMode: initialMode, setAuthMode: onModeChange, realmCode, realmName, logoUrl } = useRealmContext()
   const [mode, setMode] = useState<'login' | 'register' | 'recover'>(initialMode)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -35,10 +23,6 @@ export function AuthScreen({
   const [error, setError] = useState('')
   const [info, setInfo] = useState('')
   const [busy, setBusy] = useState(false)
-
-  useEffect(() => {
-    setMode(initialMode)
-  }, [initialMode])
 
   const resetRecoveryState = () => {
     setResetSeed('')
@@ -73,12 +57,12 @@ export function AuthScreen({
       }
 
       if (mode === 'login') {
-        await onAuth(await login(normalizedUsername, password))
+        await handleAuth(await login(normalizedUsername, password))
         return
       }
 
       if (mode === 'register') {
-        await onAuth(await register({ username: normalizedUsername, password, profileName, bio }))
+        await handleAuth(await register({ username: normalizedUsername, password, profileName, bio }))
         return
       }
 
@@ -95,7 +79,7 @@ export function AuthScreen({
         throw new Error('La nuova password e la conferma non coincidono')
       }
 
-      await onAuth(
+      await handleAuth(
         await confirmPasswordReset({
           resetSeed,
           newPassword,

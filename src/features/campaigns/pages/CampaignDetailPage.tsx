@@ -1,46 +1,30 @@
 import { useState } from 'react'
+import { useCampaignContext } from '../../../context'
 import { Icon, InfoBlock } from '../../../shared/components'
 import { campaignModuleIconName, campaignModuleTitle, campaignToneLabel, catalogEntryDescription, catalogEntryLabel } from '../../../shared/utils'
-import type { CampaignCatalogEntry, CampaignMemberStatus, CampaignMembershipResponse, CampaignResponse, CampaignRole } from '../../../types/domain'
+import type { CampaignMemberStatus, CampaignMembershipResponse, CampaignRole } from '../../../types/domain'
 import { CampaignStatusBadge } from '../components'
 
-export function CampaignDetailPage({
-  campaign,
-  currentUserId,
-  isActiveCampaign,
-  members,
-  memberNames,
-  availableModules,
-  availableGameSystems,
-  onReload,
-  onOpenMember,
-  onOpenManagement,
-  onOpenCharacters,
-  canManageMembers,
-  onApply,
-  onActivate,
-  onLeaveCampaign,
-  membershipStatus,
-  membershipRole,
-}: {
-  campaign: CampaignResponse | null
-  currentUserId: string
-  isActiveCampaign: boolean
-  members: CampaignMembershipResponse[]
-  memberNames: Record<string, string>
-  availableModules: CampaignCatalogEntry[]
-  availableGameSystems: CampaignCatalogEntry[]
-  onReload: () => void
-  onOpenMember: (member: CampaignMembershipResponse) => void
-  onOpenManagement: () => void
-  onOpenCharacters: () => void
-  canManageMembers: boolean
-  onApply: () => void
-  onActivate: () => void
-  onLeaveCampaign: () => void
-  membershipStatus: CampaignMemberStatus | null
-  membershipRole: CampaignRole | null
-}) {
+export function CampaignDetailPage() {
+  const {
+    campaign,
+    currentUserId,
+    isActiveCampaign,
+    members,
+    memberNames,
+    availableModules,
+    availableGameSystems,
+    reloadCampaign: onReload,
+    openMember: onOpenMember,
+    openManagement: onOpenManagement,
+    openCharacters: onOpenCharacters,
+    canManageMembers,
+    applyCurrentCampaign: onApply,
+    activateCurrentCampaign: onActivate,
+    leaveCurrentCampaign: onLeaveCampaign,
+    membershipStatus,
+    membershipRole,
+  } = useCampaignContext()
   const [memberQuery, setMemberQuery] = useState('')
   const [statusFilters, setStatusFilters] = useState<CampaignMemberStatus[]>([
     'APPROVED', 'PENDING', 'BLOCKED', 'BANNED', 'REJECTED',

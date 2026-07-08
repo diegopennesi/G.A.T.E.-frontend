@@ -1,37 +1,26 @@
 import { useMemo, useState } from 'react'
+import { useCampaignContext } from '../../../context'
 import { DataTable, FieldLabel, Icon } from '../../../shared/components'
 import { toMessage } from '../../../shared/utils'
 import type { InviteAccessPreview } from '../../../types/ui'
-import type { CampaignApplicationResponse, CampaignDiscoverResponse, CampaignRole } from '../../../types/domain'
+import type { CampaignRole } from '../../../types/domain'
 import { CampaignAccessBadge, CampaignOpenBadge, CampaignStatusBadge } from '../components'
 
-export function CampaignListPage({
-  campaigns,
-  founderNames,
-  missionAlertsByCampaign,
-  pendingApplicationsByCampaignId,
-  onDiscover,
-  onOpenCampaign,
-  onApplyCampaign,
-  onApplyInviteAccess,
-  onPreviewInviteAccess,
-  onCreateCampaign,
-  canCreateCampaign,
-  activeCampaignName,
-}: {
-  campaigns: CampaignDiscoverResponse[]
-  founderNames: Record<string, string>
-  missionAlertsByCampaign: Record<string, number>
-  pendingApplicationsByCampaignId: Record<string, CampaignApplicationResponse[]>
-  onDiscover: () => void
-  onOpenCampaign: (campaignId: string) => void
-  onApplyCampaign: (campaignId: string) => void
-  onApplyInviteAccess: (inviteValue: string) => Promise<void>
-  onPreviewInviteAccess: (inviteValue: string) => Promise<InviteAccessPreview>
-  onCreateCampaign: () => void
-  canCreateCampaign: boolean
-  activeCampaignName: string
-}) {
+export function CampaignListPage() {
+  const {
+    campaigns,
+    founderNames,
+    missionAlertsByCampaign,
+    pendingApplicationsByCampaignId,
+    discoverCampaigns: onDiscover,
+    openCampaign: onOpenCampaign,
+    applyCampaign: onApplyCampaign,
+    applyInviteAccess: onApplyInviteAccess,
+    previewInviteAccess: onPreviewInviteAccess,
+    openCreateCampaign: onCreateCampaign,
+    canCreateCampaign,
+    activeCampaignName,
+  } = useCampaignContext()
   const [membershipFilter, setMembershipFilter] = useState<'all' | 'inside' | 'outside' | 'pending' | 'blocked'>('all')
   const [roleFilter, setRoleFilter] = useState<'all' | CampaignRole>('all')
   const [inviteValue, setInviteValue] = useState('')

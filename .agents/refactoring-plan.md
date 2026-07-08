@@ -1,525 +1,196 @@
 # GATE Frontend — Refactoring Plan
 
-**Target codebase:** `gate/fe/src/`
-**Primary stack:** React 18, TypeScript, Vite
-**Current branch:** `dev-user-frontend-realm`
+**Target codebase:** `gate/fe/src/` + `gate/` (backend)
+**Primary stack:** React 18, TypeScript, Vite / Spring Boot, Kotlin
+**Branch:** `dev-user-frontend-realm`
+**Last updated:** 2026-07-08
 
 ---
 
-## Context
-
-The codebase was partially refactored by moving page components into feature folders
-(`features/auth`, `features/campaigns`, `features/missions`, etc.) to reduce `App.tsx` size.
-However, `App.tsx` remains a ~312KB god component holding all global state and data-loading logic.
-Additionally, several utility functions and constants were duplicated across files during
-the extraction instead of being shared.
-
-This document lists all changes that need to be made, in priority order.
+## Legend
+- ✅ DONE
+- 🔲 TODO
+- ⚠️ PARTIAL
+- 🧪 TEST TO RUN
+- OK VERIFIED
 
 ---
 
-## Priority 0 — Fix Code Duplication (highest urgency)
+## Priority 0 — Fix Code Duplication ✅ DONE
 
-### 0.1 — Create `src/shared/utils.ts`
+### 0.1 ✅ Created `src/shared/utils.ts`
+Exports: `toMessage`, `isUnauthorized`, `catalogEntryByCode/Label/Description`,
+`CAMPAIGN_TONE_OPTIONS`, `campaignToneLabel`, `scopedStorageKey`, `readStoredJson`,
+`SortDirection`, `compareSortableValues`, `formatShortDate`,
+`campaignModuleIconName/Title/Description/Unavailable`, `CAMPAIGN_MODULE_*`,
+`statusTone`, `platformRoleLabel`, `getSheetBlocks`, `sheetFieldPath`,
+`getSheetOptionValue/Label`, `sheetValueAsText`, `parseSheetValue`
 
-Create this file. It does not exist yet. It should export all shared utility functions.
+### 0.2 ✅ Removed duplicate `toMessage` from `AuthScreen.tsx`
+### 0.3 ✅ Removed duplicate `toMessage` from `ProfilePages.tsx`
+### 0.4 ✅ Removed duplicates from `CreateCampaignPage.tsx`
+`CAMPAIGN_TONE_OPTIONS`, `catalogEntryByCode`, `catalogEntryDescription` rimossi.
 
-**File to create:** `src/shared/utils.ts`
-
-```typescript
-import { ApiError } from '../services/apiClient'
-import type { CampaignCatalogEntry } from '../types/domain'
-
-/**
- * Convert any thrown value to a user-readable string.
- * Handles ApiError (with optional field-level validation details),
- * generic Error, and unknown thrown values.
- *
- * NOTE: This is the canonical version. The simplified copies in
- * AuthScreen.tsx and ProfilePages.tsx must be removed.
- */
-export function toMessage(error: unknown): string {
-  if (error instanceof ApiError) {
-    const fields = error.payload?.fields
-      ? ` (${Object.entries(error.payload.fields)
-          .map(([key, value]) => `${key}:${value}`)
-          .join(', ')})`
-      : ''
-    return `${error.message}${fields}`
-  }
-  if (error instanceof Error) return error.message
-  return 'Errore non gestito'
-}
-
-/**
- * Catalog entry helpers.
- * Used in App.tsx (campaign sheet view) and CreateCampaignPage.tsx.
- * Currently duplicated — must be unified here.
- */
-export const catalogEntryByCode = (
-  entries: CampaignCatalogEntry[],
-  code: string | null | undefined,
-): CampaignCatalogEntry | null => {
-  if (!code) return null
-  return entries.find((entry) => entry.code === code) || null
-}
-
-export const catalogEntryLabel = (
-  entries: CampaignCatalogEntry[],
-  code: string | null | undefined,
-): string | null => {
-  return catalogEntryByCode(entries, code)?.label || code || null
-}
-
-export const catalogEntryDescription = (
-  entries: CampaignCatalogEntry[],
-  code: string | null | undefined,
-): string | null => {
-  if (!code) return null
-  return catalogEntryByCode(entries, code)?.description || null
-}
-
-/**
- * Campaign tone options.
- * Currently duplicated in App.tsx:318 and CreateCampaignPage.tsx:20.
- * Single source of truth goes here.
- */
-export const CAMPAIGN_TONE_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: 'EPIC_FANTASY', label: 'Fantasy Epico' },
-  { value: 'HEROIC', label: 'Eroico' },
-  { value: 'DARK', label: 'Dark' },
-  { value: 'MYSTERY', label: 'Mistero' },
-  { value: 'HORROR', label: 'Horror' },
-  { value: 'POLITICAL_INTRIGUE', label: 'Intrigo Politico' },
-  { value: 'ADVENTURE', label: 'Avventura' },
-  { value: 'LIGHTHEARTED', label: 'Leggero' },
-]
-
-export const campaignToneLabel = (value: string | null | undefined): string | null => {
-  if (!value) return null
-  const match = CAMPAIGN_TONE_OPTIONS.find((opt) => opt.value === value)
-  return match?.label || value
-}
-
-/**
- * Generic localStorage/sessionStorage helpers.
- * Currently private in App.tsx. Needed by multiple future features.
- */
-export function scopedStorageKey(baseKey: string, userId?: string | null): string {
-  return userId ? `${baseKey}:${userId}` : baseKey
-}
-
-export function readStoredJson<T>(storage: Storage, key: string, fallback: T): T {
-  const raw = storage.getItem(key)
-  if (!raw) return fallback
-  try {
-    return JSON.parse(raw) as T
-  } catch {
-    return fallback
-  }
-}
-
-/**
- * Generic sort comparator used by admin tables.
- * Currently private in App.tsx:377.
- */
-export type SortDirection = 'asc' | 'desc'
-
-export const compareSortableValues = (
-  left: unknown,
-  right: unknown,
-  direction: SortDirection,
-): number => {
-  const factor = direction === 'asc' ? 1 : -1
-  const normalize = (value: unknown) => {
-    if (typeof value === 'boolean') return value ? 1 : 0
-    if (typeof value === 'number') return value
-    return String(value ?? '').toLowerCase()
-  }
-  const a = normalize(left)
-  const b = normalize(right)
-  if (typeof a === 'number' && typeof b === 'number') return (a - b) * factor
-  return String(a).localeCompare(String(b), 'it') * factor
-}
-
-/**
- * Short date formatter (italian locale).
- * Currently private in App.tsx:366.
- */
-export const formatShortDate = (value: string | null | undefined): string => {
-  if (!value) return ''
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  return new Intl.DateTimeFormat('it-IT', {
-    day: '2-digit',
-    month: '2-digit',
-    year: '2-digit',
-  }).format(date)
-}
-```
+### 0.5 ✅ Removed duplicates from `App.tsx`
+7 blocchi rimossi (CAMPAIGN_TONE_OPTIONS, campaignToneLabel, catalogEntry*, formatShortDate,
+compareSortableValues, scopedStorageKey, readStoredJson, toMessage, SortDirection).
 
 ---
 
-### 0.2 — Remove duplicate `toMessage` from `AuthScreen.tsx`
+## Priority 1 — Break Up App.tsx ✅ DONE
 
-**File:** `src/features/auth/pages/AuthScreen.tsx`
+App.tsx: 7989 → 4685 righe (-41%).
 
-Remove lines 6–9:
-```typescript
-// DELETE THESE LINES:
-function toMessage(error: unknown): string {
-  if (error instanceof Error) return error.message
-  return 'Errore imprevisto'
-}
-```
+### 1.1 ✅ Created `src/types/ui.ts`
+`Screen`, `AuthMode`, `UiEvent`, `BreadcrumbItem`, `ThemeMode`, `EffectiveThemeMode`,
+`CampaignPickerCampaign`, `LeaveCampaignContext`, `InviteAccessPreview`,
+`NavigationSection`, `SCREEN_LABELS`, `SCREEN_ICONS`, `SCREEN_PATH_SEGMENTS`,
+`NAVIGATION_SECTIONS`
 
-Add import at top of file:
-```typescript
-import { toMessage } from '../../../shared/utils'
-```
+### 1.2 ✅ Created `src/shared/routing.ts`
+`resolveRealmContextFromPath`, `buildPathForState`, `DEFAULT_REALM_CODE`
 
-> **Warning:** The version in AuthScreen is simplified (no ApiError handling).
-> After switching to the shared version, API field-level validation errors will also
-> be shown in the auth flow. This is an improvement, not a regression.
-
----
-
-### 0.3 — Remove duplicate `toMessage` from `ProfilePages.tsx`
-
-**File:** `src/features/profile/pages/ProfilePages.tsx`
-
-Remove lines 23–26:
-```typescript
-// DELETE THESE LINES:
-function toMessage(error: unknown): string {
-  if (error instanceof Error) return error.message
-  return 'Errore imprevisto'
-}
-```
-
-Add import at top of file:
-```typescript
-import { toMessage } from '../../../shared/utils'
-```
-
----
-
-### 0.4 — Remove duplicates from `CreateCampaignPage.tsx`
-
-**File:** `src/features/campaigns/pages/CreateCampaignPage.tsx`
-
-Remove lines 20–38 (the local definitions of `CAMPAIGN_TONE_OPTIONS`, `catalogEntryByCode`,
-`catalogEntryDescription`):
-```typescript
-// DELETE ALL OF THIS:
-const CAMPAIGN_TONE_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: 'EPIC_FANTASY', label: 'Fantasy Epico' },
-  // ...all 8 entries...
-]
-
-const catalogEntryByCode = (entries: CampaignCatalogEntry[], code: string | null | undefined): CampaignCatalogEntry | null => {
-  if (!code) return null
-  return entries.find((entry) => entry.code === code) || null
-}
-
-const catalogEntryDescription = (entries: CampaignCatalogEntry[], code: string | null | undefined): string | null => {
-  if (!code) return null
-  return catalogEntryByCode(entries, code)?.description || null
-}
-```
-
-Add import at top of file:
-```typescript
-import { CAMPAIGN_TONE_OPTIONS, catalogEntryDescription } from '../../../shared/utils'
-```
-
-> Note: `catalogEntryByCode` is used only internally by `catalogEntryDescription` in this file.
-> After removing both and importing `catalogEntryDescription` from shared, `catalogEntryByCode`
-> does not need to be imported separately here.
-
----
-
-### 0.5 — Remove duplicates from `App.tsx`
-
-**File:** `src/App.tsx`
-
-Remove the following blocks and replace with imports from `'./shared/utils'`:
-
-| Lines to remove | Symbol(s) |
-|---|---|
-| `318–333` | `CAMPAIGN_TONE_OPTIONS` + `campaignToneLabel` |
-| `335–348` | `catalogEntryByCode`, `catalogEntryLabel`, `catalogEntryDescription` |
-| `366–375` | `formatShortDate` |
-| `377–388` | `compareSortableValues` + local `SortDirection` type alias |
-| `259–261` | `scopedStorageKey` |
-| `263–272` | `readStoredJson` |
-| `7972–7983` | `toMessage` |
-
-Add at top of `App.tsx` (after existing imports):
-```typescript
-import {
-  toMessage,
-  catalogEntryByCode,
-  catalogEntryLabel,
-  catalogEntryDescription,
-  campaignToneLabel,
-  CAMPAIGN_TONE_OPTIONS,
-  formatShortDate,
-  compareSortableValues,
-  scopedStorageKey,
-  readStoredJson,
-} from './shared/utils'
-import type { SortDirection } from './shared/utils'
-```
-
-> **Note:** `SortDirection` is currently defined locally in App.tsx as
-> `type SortDirection = 'asc' | 'desc'` (line ~393). Remove the local type definition
-> and import from shared/utils instead.
-
----
-
-## Priority 1 — Break Up App.tsx
-
-App.tsx is 311.9KB and contains ~80+ `useState` hooks in a single `function App()`.
-The feature page components were extracted but the state and data-loading remain
-centralized in App.tsx, so the extraction did not reduce actual complexity —
-it only moved JSX rendering out.
-
-### 1.1 — Extract domain state into custom hooks
-
-Create a `src/hooks/` directory. Split App's state by domain:
-
-#### `src/hooks/useCampaignState.ts`
-
-Manage:
-- `campaignId`, `knownCampaignIds`, `knownCampaignMeta`
-- `myCampaigns`, `discoverableCampaigns`, `campaignDetailsById`
-- `campaign`, `members`, `memberNames`, `campaignMembersForManagement`
-- `permissions`, `campaignModules`, `campaignGameSystems`
-- `pendingApplications`, `pendingApplicationsByCampaignId`
-- `campaignFounderNames`, `canManageCampaignMembers`
-
-Expose: state + setters + async data loaders (e.g. `loadCampaign(id)`, `loadMembers()`)
-
-#### `src/hooks/useMissionState.ts`
-
-Manage:
-- `missions`, `selectedMissionId`
-- `missionParticipantsById`, `myMissionParticipationById`
-- `missionParticipantCharacterLabelById`
-- `selectedMissionChatContext`, `missionChat`, `missionChatBusy`, `missionChatError`
-
-Expose: state + async loaders + chat send action
-
-#### `src/hooks/useCharacterState.ts`
-
-Manage:
-- `characters`, `selectedCharacterId`
-- `characterDetail`, `characterSheetDetail`
-
-#### `src/hooks/useRealmState.ts`
-
-Manage:
-- `realmCode`, `realmBranding`, `realmAvailability`, `realmAvailabilityMessage`
-- `realmPermissions`, `realmWelcome`
-- `authMode`
-
-#### `src/hooks/useAdminState.ts`
-
-Manage all `adminUsers*`, `adminCampaigns*`, `adminRealms*`, `adminGameSystems`,
-`adminSheetTypes`, `systemAdminView`, sort/search state.
-
-#### `src/hooks/useProfileState.ts`
-
-Manage:
-- `profile`, `rooms`
-- `selectedCampaignMember`, `selectedCampaignMemberProfile`
-
-#### `src/hooks/useUiState.ts`
-
-Manage:
-- `screen`, `busy`, `error`, `events`
-- `isSidebarOpen`, `isCampaignPickerOpen`, `campaignPickerTarget`
-- `isLeaveCampaignOpen`, `theme`
-
----
-
-### 1.2 — Reduce App component to orchestration only
-
-After custom hooks are in place, `App` should:
-1. Call the hooks
-2. Compute derived values (memoized)
-3. Render layout + route to screen
-
-All `async` data-loading functions currently inlined in App (e.g. `loadCampaignBlock`,
-`refreshMissions`) should live inside their respective custom hooks.
-
----
-
-### 1.3 — Share state via React Context
-
-Each custom hook should be wrapped in a Context provider so that feature screens
-can access state without prop drilling.
-
-**Example pattern:**
-
-```tsx
-// src/context/CampaignContext.tsx
-import { createContext, useContext, type ReactNode } from 'react'
-import { useCampaignState } from '../hooks/useCampaignState'
-
-const CampaignContext = createContext<ReturnType<typeof useCampaignState> | null>(null)
-
-export function CampaignProvider({ children }: { children: ReactNode }) {
-  const state = useCampaignState()
-  return <CampaignContext.Provider value={state}>{children}</CampaignContext.Provider>
-}
-
-export function useCampaign() {
-  const ctx = useContext(CampaignContext)
-  if (!ctx) throw new Error('useCampaign used outside CampaignProvider')
-  return ctx
-}
-```
-
-Root composition in `main.tsx`:
-```tsx
-<RealmProvider>
-  <ProfileProvider>
-    <CampaignProvider>
-      <MissionProvider>
-        <App />
-      </MissionProvider>
-    </CampaignProvider>
-  </ProfileProvider>
-</RealmProvider>
-```
-
----
-
-### 1.4 — Make feature screens independently data-aware
-
-Currently feature screens receive all data and callbacks as props from App.tsx.
-
-**Before (current pattern):**
-```tsx
-// App.tsx passes 20+ props:
-<MissionsPage
-  missions={missions}
-  campaignId={campaignId}
-  profile={profile}
-  onJoin={handleJoinMission}
-  onLeave={handleLeaveMission}
-  // ... 15+ more props
-/>
-```
-
-**After (target pattern):**
-```tsx
-// MissionsPage.tsx uses hooks directly:
-import { useMission } from '../../../context/MissionContext'
-import { useCampaign } from '../../../context/CampaignContext'
-
-export function MissionsPage() {
-  const { missions, joinMission, leaveMission } = useMission()
-  const { campaignId } = useCampaign()
-  // ...
-}
-```
-
----
-
-## Priority 2 — Minor Issues
-
-### 2.1 — `isUnauthorized` helper not shared
-
-`App.tsx:7985` defines:
-```typescript
-function isUnauthorized(error: unknown): boolean {
-  return error instanceof ApiError && error.status === 401
-}
-```
-Used only in App.tsx currently. If auth error handling spreads to feature screens,
-move this to `shared/utils.ts`.
-
-### 2.2 — `RealmStatusScreen` component belongs in a feature or shared folder
-
-`App.tsx:228` defines a `RealmStatusScreen` component (loading/unavailable state).
-It uses `Icon` from shared components. Extract to either:
-- `src/features/realm/components/RealmStatusScreen.tsx`
+### 1.3 ✅ Extracted shared components
+- `src/shared/components/InfoBlock.tsx`
+- `src/shared/components/FilterChipGroup.tsx`
 - `src/shared/components/RealmStatusScreen.tsx`
 
-### 2.3 — URL routing is ad-hoc
+### 1.4 ✅ Extracted campaign feature components
+- `src/features/campaigns/components/LeaveCampaignModal.tsx`
+- `src/features/campaigns/components/CampaignPickerModal.tsx`
 
-`resolveRealmContextFromPath` and `buildPathForState` in App.tsx implement a manual
-URL router using `window.history.replaceState`. Consider documenting this as an
-intentional architectural decision (no router library installed), or migrate to
-`react-router-dom` in a separate dedicated task.
+### 1.5 ✅ Extracted campaign feature pages
+- `src/features/campaigns/pages/CampaignListPage.tsx`
+- `src/features/campaigns/pages/CampaignDetailPage.tsx`
+- `src/features/campaigns/pages/CampaignManagementPage.tsx` (include CampaignToggleSettingsTable)
+- `src/features/campaigns/pages/CampaignMemberProfilePage.tsx`
 
-### 2.4 — `LeaveCampaignContext` type is local to App.tsx
+### 1.6 ✅ Extracted character feature pages
+- `src/features/characters/pages/CharacterListPage.tsx`
+- `src/features/characters/pages/CharacterDetailPage.tsx`
 
-```typescript
-type LeaveCampaignContext = {
-  campaignName: string
-  characterWillBeRetired: boolean
-}
-```
-If leave-campaign logic is extracted to a feature or hook, move this type with it.
+### 1.7 ✅ Created admin feature
+- `src/features/admin/pages/SystemCatalogsPage.tsx`
+- `src/features/admin/index.ts`
 
----
-
-## File Change Summary
-
-| File | Action | Reason |
-|---|---|---|
-| `src/shared/utils.ts` | **CREATE** | Central home for all shared utility functions |
-| `src/features/auth/pages/AuthScreen.tsx` | **EDIT** | Remove local `toMessage`, import from shared |
-| `src/features/profile/pages/ProfilePages.tsx` | **EDIT** | Remove local `toMessage`, import from shared |
-| `src/features/campaigns/pages/CreateCampaignPage.tsx` | **EDIT** | Remove `CAMPAIGN_TONE_OPTIONS`, `catalogEntryByCode`, `catalogEntryDescription`; import from shared |
-| `src/App.tsx` | **EDIT** | Remove 7 duplicated functions/constants/types, import from shared |
-| `src/hooks/useCampaignState.ts` | **CREATE** | Extract campaign state + loaders from App |
-| `src/hooks/useMissionState.ts` | **CREATE** | Extract mission state + loaders from App |
-| `src/hooks/useCharacterState.ts` | **CREATE** | Extract character state from App |
-| `src/hooks/useRealmState.ts` | **CREATE** | Extract realm/auth state from App |
-| `src/hooks/useAdminState.ts` | **CREATE** | Extract admin state from App |
-| `src/hooks/useProfileState.ts` | **CREATE** | Extract profile state from App |
-| `src/hooks/useUiState.ts` | **CREATE** | Extract UI state from App |
-| `src/context/CampaignContext.tsx` | **CREATE** | Context provider wrapping campaign hook |
-| `src/context/MissionContext.tsx` | **CREATE** | Context provider wrapping mission hook |
-| `src/context/RealmContext.tsx` | **CREATE** | Context provider wrapping realm hook |
-| `src/features/missions/pages/MissionsPage.tsx` | **EDIT** | Use context hooks instead of props (after P1 done) |
-| `src/features/campaigns/pages/CreateCampaignPage.tsx` | **EDIT** | Use context hooks instead of props (after P1 done) |
-| `src/features/profile/pages/ProfilePages.tsx` | **EDIT** | Use context hooks instead of props (after P1 done) |
+### 1.8 ✅ Cleaned up App.tsx imports
+Rimossi tutti gli import inutilizzati dopo l'estrazione.
 
 ---
 
-## Constraints and Notes for the Agent
+## Priority 2 — Minor Issues ⚠️ PARTIAL
 
-1. **Do not change any API endpoint URLs** in `gateApi.ts`. The service layer is correct as-is.
+### 2.1 ✅ `isUnauthorized` spostato in `src/shared/utils.ts`
 
-2. **Do not modify `types/domain.ts`**. All domain types are correct and centralized.
+### 2.2 ✅ `RealmStatusScreen` estratto in `src/shared/components/RealmStatusScreen.tsx`
 
-3. **Do not modify `services/apiClient.ts`**. Token refresh, realm header injection,
-   and error parsing logic are correct.
+### 2.3 ✅ URL routing ad-hoc documentato
+`resolveRealmContextFromPath` e `buildPathForState` in `src/shared/routing.ts` implementano
+un router manuale senza `react-router-dom` (non installato).
+Aggiungere commento architetturale che documenta questa scelta intenzionale.
 
-4. **The `toMessage` in App.tsx (line 7972) is the canonical version.**
-   It handles `ApiError` with field-level error details. The copies in `AuthScreen.tsx`
-   and `ProfilePages.tsx` are degraded (they only handle `Error`, not `ApiError`).
-   Always use the App.tsx version as the source of truth when creating `shared/utils.ts`.
+### 2.4 ✅ `LeaveCampaignContext` spostato in `src/types/ui.ts`
 
-5. **Start with Priority 0 only.** Priority 1 changes are large and must be done
-   incrementally. Do not attempt the full P1 refactor in a single pass — it will
-   break the application.
+---
 
-6. **All imports use relative paths.** No path aliases are configured in `tsconfig.json`
-   or `vite.config.ts`. Maintain this convention when adding new imports.
+## Priority 3 — App.tsx State Extraction ✅ DONE
 
-7. **No testing framework is configured.** There are no tests to update or write.
+App.tsx era ancora carico di `useState` e data loader inline.
+L'estrazione e' stata eseguita con custom hooks + React Context.
 
-8. **TypeScript strict mode is active.** All new code must be fully type-safe.
+### 3.1 ✅ Creato `src/hooks/`
+- `useCampaignState.ts`
+- `useMissionState.ts`
+- `useCharacterState.ts`
+- `useRealmState.ts`
+- `useAdminState.ts`
+- `useProfileState.ts`
+- `useUiState.ts`
 
-9. **No CSS changes needed.** All class names exist in `App.css`. Do not touch CSS files.
+### 3.2 ✅ Creato `src/context/`
+Context providers per ogni hook, così i feature screen possono consumare
+stato senza prop drilling.
 
-10. **No router library is installed.** Navigation is managed via `window.history.replaceState`
-    and `window.location.pathname` in App.tsx. Do not introduce `react-router-dom`
-    as part of this refactoring.
+Context aggiunti:
+- `CampaignContext.tsx`
+- `MissionContext.tsx`
+- `CharacterContext.tsx`
+- `RealmContext.tsx`
+- `AdminContext.tsx`
+- `ProfileContext.tsx`
+- `UiContext.tsx`
+
+### 3.3 ✅ Ridotto App a orchestratore
+App chiama hooks, computa derived values, renderizza layout.
+Feature screens importano context hooks direttamente.
+
+Page migrate a consumo diretto dei context:
+- `AuthScreen.tsx`
+- `CampaignListPage.tsx`
+- `CampaignDetailPage.tsx`
+- `ApprovalPage.tsx`
+- `CreateCampaignPage.tsx`
+- `CampaignManagementPage.tsx`
+- `CampaignMemberProfilePage.tsx`
+- `CharacterListPage.tsx`
+- `CharacterDetailPage.tsx`
+- `CharacterQuickPages.tsx`
+- `MissionsPage.tsx`
+- `RoomsPage.tsx`
+- `ProfilePages.tsx`
+- `NotificationsPage.tsx`
+- `SystemCatalogsPage.tsx`
+
+### 3.4 OK VERIFIED Build
+- `npm run build` → OK VERIFIED
+
+### 3.5 OK VERIFIED Lint
+- `npm run lint` → OK VERIFIED
+- note: restano warning `react-hooks/exhaustive-deps` storici in `App.tsx` e un warning analogo in alcune page; non bloccano la build e non falliscono il comando.
+
+### 3.6 ✅ Admin campaigns view refit
+- La vista campagne admin ora usa una tabella con riga espandibile.
+- Colonne summary: nome campagna, realm di provenienza, stato, numero moduli, azione `Modifica`.
+- Nel dettaglio espanso i parametri configurabili sono mostrati come lista tabellare, non come cards.
+- I moduli campagna restano in una tabella separata dentro il dettaglio, così la UI scala meglio quando il numero di moduli cresce.
+- Backend admin campaigns list aggiornata per esporre `realmId`, `realmCode`, `realmName`.
+- Verifica eseguita:
+  - `npm run build` → OK VERIFIED
+  - `npm run lint` → OK VERIFIED
+  - `smoke-campaign-create.spec.ts` → 🧪 da riallineare al flusso auth corrente, non usato come verifica del refit campagne
+
+---
+
+## Backend — Admin Realm Scoping ✅ DONE
+
+### B.1 ✅ Frontend: `realm: false` su tutte le 14 funzioni admin in `gateApi.ts`
+`src/services/apiClient.ts` — aggiunto param `realm?: boolean` (default `true`).
+Quando `false`, non invia `X-GATE-Realm-Code` header.
+
+Funzioni aggiornate: `listAdminUsers`, `updateAdminUser`, `listAdminCampaigns`,
+`updateAdminCampaign`, `listAdminRealms`, `createAdminRealm`, `updateAdminRealm`,
+`listAdminRealmUserRoles`, `upsertAdminRealmUserRole`, `listAdminGameSystems`,
+`createAdminGameSystem`, `updateAdminGameSystem`, `listAdminSheetTypes`,
+`createAdminSheetType`, `updateAdminSheetType`.
+
+### B.2 ✅ Backend: `listAdminCampaigns` de-realm-scopato
+`gate/src/main/kotlin/com/gate/campaign/CampaignService.kt`
+`findByRealmId(currentRealm.id, pageable)` → `findAll(pageable)`.
+Ora restituisce tutte le campagne di tutti i realm.
+
+### B.3 ✅ Backend: `updateAdminCampaign` de-realm-scopato
+`gate/src/main/kotlin/com/gate/campaign/CampaignService.kt`
+`findCampaignInCurrentRealm(campaignId)` → `campaignRepository.findById(campaignId)`.
+Ora modifica qualsiasi campagna indipendentemente dal realm.
+
+---
+
+## Constraints (immutabili)
+
+1. No modifiche a URL endpoint in `gateApi.ts`
+2. No modifiche a `types/domain.ts`
+3. No CSS changes
+4. No router library (react-router non installato — intenzionale)
+5. Import con path relativi (nessun alias)
+6. TypeScript strict mode attivo
+7. No testing framework configurato

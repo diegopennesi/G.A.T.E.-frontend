@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef } from 'react'
 import './App.css'
 import { AuthScreen } from './features/auth'
 import {
   ApprovalPage, CreateCampaignPage,
   CampaignListPage, CampaignDetailPage, CampaignManagementPage, CampaignMemberProfilePage,
-  CampaignPickerModal, LeaveCampaignModal,
+  LeaveCampaignModal,
 } from './features/campaigns'
 import { CreateCharacterPage, SelectCharacterPage, CharacterListPage, CharacterDetailPage } from './features/characters'
 import { MissionsPage } from './features/missions'
@@ -12,7 +12,23 @@ import { LogPage } from './features/notifications'
 import { EditProfilePage, ProfilePage } from './features/profile'
 import { RoomsPage } from './features/rooms'
 import { SystemCatalogsPage } from './features/admin'
-import { DataTable, Icon, RealmStatusScreen } from './shared/components'
+import {
+  AdminProvider,
+  CampaignProvider,
+  CharacterProvider,
+  MissionProvider,
+  ProfileProvider,
+  RealmProvider,
+  UiProvider,
+} from './context'
+import { useAdminState } from './hooks/useAdminState'
+import { useCampaignState } from './hooks/useCampaignState'
+import { useCharacterState } from './hooks/useCharacterState'
+import { useMissionState } from './hooks/useMissionState'
+import { useProfileState } from './hooks/useProfileState'
+import { useRealmState } from './hooks/useRealmState'
+import { useUiState } from './hooks/useUiState'
+import { DataTable, Icon, RealmStatusScreen, SearchableSelect } from './shared/components'
 import { resolveRealmContextFromPath, buildPathForState } from './shared/routing'
 import { ApiError, getAccessToken, setRealmCode } from './services/apiClient'
 import {
@@ -26,8 +42,7 @@ import {
   readStoredJson,
   platformRoleLabel,
 } from './shared/utils'
-import type { SortDirection } from './shared/utils'
-import type { Screen, AuthMode, UiEvent, BreadcrumbItem, ThemeMode, EffectiveThemeMode, CampaignPickerCampaign, InviteAccessPreview } from './types/ui'
+import type { Screen, BreadcrumbItem, EffectiveThemeMode, InviteAccessPreview } from './types/ui'
 import { SCREEN_LABELS, SCREEN_ICONS, NAVIGATION_SECTIONS } from './types/ui'
 import {
   createAdminRealm,
@@ -104,40 +119,29 @@ import {
 import { connectResourceInvalidationStream } from './services/realtime'
 import type {
   AdminCampaignPage,
-  AdminCampaignUpdateRequest,
-  AdminRealmCreateRequest,
   AdminRealmListItem,
-  AdminRealmPage,
   AdminRealmUserRoleResponse,
   AdminUserPage,
-  AdminUserUpdateRequest,
   AuthSession,
   CampaignApplicationResponse,
-  CampaignCatalogEntry,
   CampaignDiscoverResponse,
   CampaignMembershipResponse,
-  CampaignPermissionResponse,
   CampaignRole,
   CampaignResponse,
   Character,
-  CharacterSheetResponse,
+  CharacterStatus,
+  CreateInviteTokenRequest,
   MyCampaignMembershipResponse,
   MissionParticipantResponse,
   MissionParticipationType,
-  MissionChatResponse,
-  MissionResponse,
   MissionStatus,
-  RoomResponse,
   PlatformRole,
   PublicRealmBrandingResponse,
   RealmRole,
   RealmType,
-  SheetTypeCatalogEntry,
-  UserProfile,
   AdminGameSystemUpsertRequest,
   AdminSheetTypeUpsertRequest,
   CampaignInvitePreviewResponse,
-  CurrentRealmPermissionsResponse,
   InviteTokenPreviewResponse,
 } from './types/domain'
 import type { ResourceInvalidationPayload } from './types/realtime'
@@ -195,7 +199,6 @@ function isLegacyInviteCode(value: string) {
 const ADMIN_PLATFORM_ROLES: PlatformRole[] = ['USER', 'ADMIN', 'SYSTEM']
 const REALM_TYPE_OPTIONS: RealmType[] = ['STORE', 'ASSOCIATION', 'PRIVATE_GROUP', 'EVENT']
 type SystemAdminView = 'users' | 'campaigns' | 'realms' | 'realmAccess' | 'sheets'
-type RealmAvailability = 'loading' | 'ready' | 'unavailable'
 
 type RealtimeActionMap = {
   refreshProfile: () => Promise<void>
@@ -232,99 +235,167 @@ const MODULE_REQUIRED_BY_SCREEN: Partial<Record<Screen, string>> = {
 
 function App() {
   const initialRealmContext = useMemo(() => resolveRealmContextFromPath(window.location.pathname), [])
-  const [screen, setScreen] = useState<Screen>(initialRealmContext.screen || 'Profilo')
-  const [profile, setProfile] = useState<UserProfile | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  const [events, setEvents] = useState<UiEvent[]>([])
-  const [realmCode, setRealmCodeState] = useState(initialRealmContext.realmCode)
-  const [authMode, setAuthMode] = useState<AuthMode>(initialRealmContext.authMode)
-  const [realmBranding, setRealmBranding] = useState<PublicRealmBrandingResponse | null>(null)
-  const [realmAvailability, setRealmAvailability] = useState<RealmAvailability>('loading')
-  const [realmAvailabilityMessage, setRealmAvailabilityMessage] = useState('')
-  const [realmPermissions, setRealmPermissions] = useState<CurrentRealmPermissionsResponse | null>(null)
-  const [realmWelcome, setRealmWelcome] = useState<{ key: string; realmName: string; realmCode: string } | null>(null)
-
-  const [campaignId, setCampaignId] = useState('')
-  const [knownCampaignIds, setKnownCampaignIds] = useState<string[]>([])
-  const [knownCampaignMeta, setKnownCampaignMeta] = useState<KnownCampaignMeta[]>([])
-  const [myCampaigns, setMyCampaigns] = useState<MyCampaignMembershipResponse[]>([])
-  const [discoverableCampaigns, setDiscoverableCampaigns] = useState<CampaignDiscoverResponse[]>([])
-  const [campaignDetailsById, setCampaignDetailsById] = useState<Record<string, CampaignResponse>>({})
-  const [pendingApplications, setPendingApplications] = useState<CampaignApplicationResponse[]>([])
-  const [campaign, setCampaign] = useState<CampaignResponse | null>(null)
-  const [members, setMembers] = useState<CampaignMembershipResponse[]>([])
-  const [memberNames, setMemberNames] = useState<Record<string, string>>({})
-  const [campaignMembersForManagement, setCampaignMembersForManagement] = useState<CampaignMembershipResponse[]>([])
-  const [canManageCampaignMembers, setCanManageCampaignMembers] = useState(false)
-  const [campaignFounderNames, setCampaignFounderNames] = useState<Record<string, string>>({})
-  const [permissions, setPermissions] = useState<CampaignPermissionResponse[]>([])
-  const [campaignModules, setCampaignModules] = useState<CampaignCatalogEntry[]>([])
-  const [campaignGameSystems, setCampaignGameSystems] = useState<CampaignCatalogEntry[]>([])
-  const [adminUsersPage, setAdminUsersPage] = useState<AdminUserPage | null>(null)
-  const [adminUsersPageIndex, setAdminUsersPageIndex] = useState(0)
-  const [adminUsersSearch, setAdminUsersSearch] = useState('')
-  const [adminUsersDrafts, setAdminUsersDrafts] = useState<Record<string, AdminUserUpdateRequest>>({})
-  const [adminCampaignsPage, setAdminCampaignsPage] = useState<AdminCampaignPage | null>(null)
-  const [adminCampaignsPageIndex, setAdminCampaignsPageIndex] = useState(0)
-  const [adminCampaignsDrafts, setAdminCampaignsDrafts] = useState<Record<string, AdminCampaignUpdateRequest>>({})
-  const [adminRealmsPage, setAdminRealmsPage] = useState<AdminRealmPage | null>(null)
-  const [adminRealmsPageIndex, setAdminRealmsPageIndex] = useState(0)
-  const [adminRealmsSearch, setAdminRealmsSearch] = useState('')
-  const [adminRealms, setAdminRealms] = useState<AdminRealmListItem[]>([])
-  const [adminRealmUserRoles, setAdminRealmUserRoles] = useState<AdminRealmUserRoleResponse[]>([])
-  const [adminRealmRoleDrafts, setAdminRealmRoleDrafts] = useState<Record<string, RealmRole>>({})
-  const [selectedRealmAccessRealmId, setSelectedRealmAccessRealmId] = useState('')
-  const [realmAccessSearch, setRealmAccessSearch] = useState('')
-  const [realmAccessSearchResults, setRealmAccessSearchResults] = useState<AdminUserPage['items']>([])
-  const [realmAccessSearchMessage, setRealmAccessSearchMessage] = useState('')
-  const [systemSortBy, setSystemSortBy] = useState('profileName')
-  const [systemSortDirection, setSystemSortDirection] = useState<SortDirection>('asc')
-  const [selectedAdminRealmId, setSelectedAdminRealmId] = useState('')
-  const [adminRealmDraft, setAdminRealmDraft] = useState<AdminRealmCreateRequest>({
-    code: '',
-    name: '',
-    type: 'STORE',
-    isActive: true,
-    logoUrl: '',
-    allowUserCampaignCreation: true,
-    hosts: [],
-  })
-  const [adminRealmHostsInput, setAdminRealmHostsInput] = useState('')
-  const [adminGameSystems, setAdminGameSystems] = useState<CampaignCatalogEntry[]>([])
-  const [adminSheetTypes, setAdminSheetTypes] = useState<SheetTypeCatalogEntry[]>([])
-  const [adminSheetCatalogsLoaded, setAdminSheetCatalogsLoaded] = useState(false)
-  const [systemAdminView, setSystemAdminView] = useState<SystemAdminView>('users')
-
-  const [characters, setCharacters] = useState<Character[]>([])
-  const [selectedCharacterId, setSelectedCharacterId] = useState('')
-  const [characterDetail, setCharacterDetail] = useState<Character | null>(null)
-  const [characterSheetDetail, setCharacterSheetDetail] = useState<CharacterSheetResponse | null>(null)
-  const [pendingApplicationsByCampaignId, setPendingApplicationsByCampaignId] = useState<
-    Record<string, CampaignApplicationResponse[]>
-  >({})
-
-  const [missions, setMissions] = useState<MissionResponse[]>([])
-  const [selectedMissionId, setSelectedMissionId] = useState('')
-  const [missionParticipantsById, setMissionParticipantsById] = useState<Record<string, MissionParticipantResponse[]>>({})
-  const [myMissionParticipationById, setMyMissionParticipationById] = useState<Record<string, MissionParticipationType>>({})
-  const [missionParticipantCharacterLabelById, setMissionParticipantCharacterLabelById] = useState<Record<string, string>>({})
-  const [selectedMissionChatContext, setSelectedMissionChatContext] = useState<{ campaignId: string; missionId: string } | null>(null)
-  const [missionChat, setMissionChat] = useState<MissionChatResponse | null>(null)
-  const [missionChatBusy, setMissionChatBusy] = useState(false)
-  const [missionChatError, setMissionChatError] = useState('')
-
-  const [rooms, setRooms] = useState<RoomResponse[]>([])
-  const [selectedCampaignMember, setSelectedCampaignMember] = useState<CampaignMembershipResponse | null>(null)
-  const [selectedCampaignMemberProfile, setSelectedCampaignMemberProfile] = useState<UserProfile | null>(null)
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
-  const [isCampaignPickerOpen, setIsCampaignPickerOpen] = useState(false)
-  const [campaignPickerTarget, setCampaignPickerTarget] = useState<Screen | null>(null)
-  const [isLeaveCampaignOpen, setIsLeaveCampaignOpen] = useState(false)
-  const [theme, setTheme] = useState<ThemeMode>(() => {
-    const saved = localStorage.getItem(THEME_KEY)
-    return saved === 'dark' || saved === 'light' ? (saved as ThemeMode) : 'light'
-  })
+  const {
+    screen,
+    setScreen,
+    busy,
+    setBusy,
+    error,
+    setError,
+    events,
+    isSidebarOpen,
+    setIsSidebarOpen,
+    theme,
+    setTheme,
+    addEvent,
+  } = useUiState(initialRealmContext.screen || 'Profilo')
+  const { profile, setProfile } = useProfileState()
+  const {
+    realmCode,
+    setRealmCodeState,
+    authMode,
+    setAuthMode,
+    realmBranding,
+    setRealmBranding,
+    realmAvailability,
+    setRealmAvailability,
+    realmAvailabilityMessage,
+    setRealmAvailabilityMessage,
+    realmPermissions,
+    setRealmPermissions,
+    realmWelcome,
+    setRealmWelcome,
+  } = useRealmState(initialRealmContext)
+  const {
+    campaignId,
+    setCampaignId,
+    knownCampaignIds,
+    setKnownCampaignIds,
+    knownCampaignMeta,
+    setKnownCampaignMeta,
+    myCampaigns,
+    setMyCampaigns,
+    discoverableCampaigns,
+    setDiscoverableCampaigns,
+    campaignDetailsById,
+    setCampaignDetailsById,
+    pendingApplications,
+    setPendingApplications,
+    campaign,
+    setCampaign,
+    members,
+    setMembers,
+    memberNames,
+    setMemberNames,
+    campaignMembersForManagement,
+    setCampaignMembersForManagement,
+    canManageCampaignMembers,
+    setCanManageCampaignMembers,
+    campaignFounderNames,
+    setCampaignFounderNames,
+    permissions,
+    setPermissions,
+    campaignModules,
+    setCampaignModules,
+    campaignGameSystems,
+    setCampaignGameSystems,
+    pendingApplicationsByCampaignId,
+    setPendingApplicationsByCampaignId,
+    selectedCampaignMember,
+    setSelectedCampaignMember,
+    selectedCampaignMemberProfile,
+    setSelectedCampaignMemberProfile,
+    rooms,
+    setRooms,
+    isLeaveCampaignOpen,
+    setIsLeaveCampaignOpen,
+  } = useCampaignState()
+  const {
+    adminUsersPage,
+    setAdminUsersPage,
+    adminUsersPageIndex,
+    setAdminUsersPageIndex,
+    adminUsersSearch,
+    setAdminUsersSearch,
+    adminUsersDrafts,
+    setAdminUsersDrafts,
+    adminCampaignsPage,
+    setAdminCampaignsPage,
+    adminCampaignsPageIndex,
+    setAdminCampaignsPageIndex,
+    adminCampaignsDrafts,
+    setAdminCampaignsDrafts,
+    expandedAdminCampaignId,
+    setExpandedAdminCampaignId,
+    adminRealmsPage,
+    setAdminRealmsPage,
+    adminRealmsPageIndex,
+    setAdminRealmsPageIndex,
+    adminRealmsSearch,
+    setAdminRealmsSearch,
+    adminRealms,
+    setAdminRealms,
+    adminRealmUserRoles,
+    setAdminRealmUserRoles,
+    adminRealmRoleDrafts,
+    setAdminRealmRoleDrafts,
+    selectedRealmAccessRealmId,
+    setSelectedRealmAccessRealmId,
+    realmAccessSearch,
+    setRealmAccessSearch,
+    realmAccessSearchResults,
+    setRealmAccessSearchResults,
+    realmAccessSearchMessage,
+    setRealmAccessSearchMessage,
+    systemSortBy,
+    setSystemSortBy,
+    systemSortDirection,
+    setSystemSortDirection,
+    selectedAdminRealmId,
+    setSelectedAdminRealmId,
+    adminRealmDraft,
+    setAdminRealmDraft,
+    adminRealmHostsInput,
+    setAdminRealmHostsInput,
+    adminGameSystems,
+    setAdminGameSystems,
+    adminSheetTypes,
+    setAdminSheetTypes,
+    adminSheetCatalogsLoaded,
+    setAdminSheetCatalogsLoaded,
+    systemAdminView,
+    setSystemAdminView,
+  } = useAdminState()
+  const {
+    characters,
+    setCharacters,
+    selectedCharacterId,
+    setSelectedCharacterId,
+    characterDetail,
+    setCharacterDetail,
+    characterSheetDetail,
+    setCharacterSheetDetail,
+  } = useCharacterState()
+  const {
+    missions,
+    setMissions,
+    selectedMissionId,
+    setSelectedMissionId,
+    missionParticipantsById,
+    setMissionParticipantsById,
+    myMissionParticipationById,
+    setMyMissionParticipationById,
+    missionParticipantCharacterLabelById,
+    setMissionParticipantCharacterLabelById,
+    selectedMissionChatContext,
+    setSelectedMissionChatContext,
+    missionChat,
+    setMissionChat,
+    missionChatBusy,
+    setMissionChatBusy,
+    missionChatError,
+    setMissionChatError,
+  } = useMissionState()
   const isSystemRole = profile?.platformRole === 'SYSTEM'
   const isSystemSession = isSystemRole
   const effectiveTheme: EffectiveThemeMode = isSystemRole ? 'sysadmin' : theme
@@ -554,55 +625,8 @@ function App() {
     }
     return map
   }, [missions])
-  const selectableCampaigns = useMemo<CampaignPickerCampaign[]>(() => {
-    const campaignIsActiveForCurrentUser = (campaignToCheck: string) => {
-      if (isSystemRole) return true
-      const visibleCampaign = campaignsForList.find((item) => item.id === campaignToCheck)
-      return visibleCampaign?.isActive === true
-    }
-    const canShowCampaignInNavbar = (role: CampaignRole | null | undefined) => {
-      if (isSystemRole) return true
-      return role === 'CO_MASTER' || role === 'MASTER' || role === 'SUPER_MASTER'
-    }
-    const byId = new Map<string, CampaignPickerCampaign>()
-    for (const item of myCampaigns) {
-      if (item.memberStatus === 'APPROVED' && canShowCampaignInNavbar(item.role)) {
-        byId.set(item.campaignId, {
-          campaignId: item.campaignId,
-          campaignName: item.campaignName,
-          role: item.role,
-          isActive: campaignIsActiveForCurrentUser(item.campaignId),
-          disabled: !isSystemRole && !campaignIsActiveForCurrentUser(item.campaignId),
-        })
-      }
-    }
-    for (const item of campaignsForList) {
-      if (item.membershipStatus === 'APPROVED' && item.membershipRole && canShowCampaignInNavbar(item.membershipRole) && !byId.has(item.id)) {
-        byId.set(item.id, {
-          campaignId: item.id,
-          campaignName: item.name,
-          role: item.membershipRole,
-          isActive: item.isActive,
-          disabled: !isSystemRole && !item.isActive,
-        })
-      }
-    }
-    return Array.from(byId.values()).sort((left, right) => {
-      if (left.campaignId === campaignId) return -1
-      if (right.campaignId === campaignId) return 1
-      return left.campaignName.localeCompare(right.campaignName, 'it')
-    })
-  }, [campaignsForList, myCampaigns, isSystemRole, campaignId])
   const isCharacterScope = (value: Screen) =>
     value === 'Gestione Personaggi' || value === 'Scheda PG' || value === 'Crea Personaggio'
-
-  const addEvent = (text: string, level: UiEvent['level']) => {
-    const id = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-      ? crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
-
-    setEvents((prev) => [{ id, ts: new Date().toISOString(), text, level }, ...prev].slice(0, 50))
-  }
 
   const requiresCampaignSelection = (value: Screen) => CAMPAIGN_ACTIVE_REQUIRED_SCREENS.includes(value)
 
@@ -1267,22 +1291,6 @@ function App() {
     setAdminRealmHostsInput('')
   }
 
-  const openCampaignPicker = (target: Screen | null) => {
-    setCampaignPickerTarget(target)
-    setIsCampaignPickerOpen(true)
-    setIsSidebarOpen(false)
-  }
-
-  const closeCampaignPicker = () => {
-    setIsCampaignPickerOpen(false)
-    setCampaignPickerTarget(null)
-  }
-
-  const closeCampaignPickerAndGoHome = () => {
-    closeCampaignPicker()
-    setScreen('Lista Campagne')
-  }
-
   const openLeaveCampaignModal = () => {
     setIsLeaveCampaignOpen(true)
   }
@@ -1318,14 +1326,6 @@ function App() {
     setRooms([])
     setSelectedCampaignMember(null)
     setSelectedCampaignMemberProfile(null)
-  }
-
-  const activateCampaignFromPicker = async (item: CampaignPickerCampaign) => {
-    await run('Campagna attivata', async () => {
-      const targetScreen = campaignPickerTarget || 'Scheda Campagna'
-      await activateCampaignAndNavigate(item.campaignId, targetScreen)
-      closeCampaignPicker()
-    })
   }
 
   const activateCampaignAndNavigate = async (targetCampaignId: string, targetScreen: Screen) => {
@@ -1857,12 +1857,11 @@ function App() {
   }, [activeCampaignIsEnabled, activeCampaignListEntry?.isActive, campaign?.isActive, campaignId, isSystemRole, screen])
   useEffect(() => {
     if (hasActiveCampaign) return
-    if (screen !== 'Scheda Campagna' && screen !== 'Gestione Campagna' && screen !== 'Stanze') return
-    if (isCampaignPickerOpen && campaignPickerTarget === screen) return
-    // Navigation guard: prompt for an active campaign before entering campaign-scoped screens.
+    if (!CAMPAIGN_ACTIVE_REQUIRED_SCREENS.includes(screen)) return
+    // Navigation guard: keep campaign-scoped screens behind an active campaign.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    openCampaignPicker(screen)
-  }, [screen, hasActiveCampaign, isCampaignPickerOpen, campaignPickerTarget])
+    setScreen('Lista Campagne')
+  }, [screen, hasActiveCampaign])
 
   useEffect(() => {
     if (screen !== 'Approvazione Accessi') return
@@ -2391,14 +2390,30 @@ function App() {
 
   if (!profile) {
     return (
-      <AuthScreen
-        onAuth={handleAuth}
-        initialMode={authMode}
-        onModeChange={setAuthMode}
-        realmCode={realmCode}
-        realmName={brandTitle}
-        logoUrl={brandLogoUrl}
-      />
+      <RealmProvider
+        value={{
+          realmCode,
+          authMode,
+          setAuthMode,
+          realmName: brandTitle,
+          logoUrl: brandLogoUrl,
+          availability: realmAvailability,
+          availabilityMessage: realmAvailabilityMessage,
+          realmPermissions,
+        }}
+      >
+        <ProfileProvider
+          value={{
+            profile,
+            handleAuth,
+            saveProfile: async () => undefined,
+            changePassword: async () => undefined,
+            logout: handleLogout,
+          }}
+        >
+          <AuthScreen key={`${realmCode}:${authMode}`} />
+        </ProfileProvider>
+      </RealmProvider>
     )
   }
 
@@ -2742,6 +2757,479 @@ function App() {
     setIsSidebarOpen(false)
   }
 
+  const uiContextValue = {
+    screen,
+    setScreen,
+    goToScreen,
+    busy,
+    error,
+    events,
+    isSidebarOpen,
+    setIsSidebarOpen,
+    theme,
+    setTheme,
+  }
+
+  const profileContextValue = {
+    profile,
+    handleAuth,
+    saveProfile: (draft: Parameters<typeof updateMe>[0]) =>
+      run('Profilo aggiornato', async () => {
+        const updated = await updateMe(draft)
+        setProfile(updated)
+        setScreen('Profilo')
+      }),
+    changePassword: (params: { currentPassword: string; newPassword: string }) =>
+      run('Password aggiornata', async () => {
+        const session = await changePassword(params)
+        setProfile(session.user)
+      }),
+    logout: handleLogout,
+  }
+
+  const campaignContextValue = {
+    campaigns: campaignsForList,
+    founderNames: campaignFounderNames,
+    missionAlertsByCampaign,
+    pendingApplicationsByCampaignId,
+    discoverCampaigns: () =>
+      void run('Campagne disponibili caricate', async () => {
+        const list = await discoverCampaigns(false)
+        setDiscoverableCampaigns(list)
+      }),
+    openCampaign: (targetCampaignId: string) => void activateCampaignAndNavigate(targetCampaignId, 'Scheda Campagna'),
+    applyCampaign: (targetCampaignId: string) =>
+      void run('Richiesta accesso inviata', async () => {
+        await applyToCampaign(targetCampaignId)
+        const [discover, mine] = await Promise.all([discoverCampaigns(false), listMyCampaignMemberships()])
+        setDiscoverableCampaigns(discover)
+        setMyCampaigns(mine)
+      }),
+    applyInviteAccess: (inviteValue: string) => run('Richiesta accesso invito inviata', async () => applyInviteAccess(inviteValue)),
+    previewInviteAccess,
+    openCreateCampaign: () => setScreen('Crea Campagna'),
+    canCreateCampaign: canCreateCampaignInRealm,
+    activeCampaignName: campaign?.name || activeCampaignMembership?.campaignName || campaignId || '',
+    campaign,
+    currentUserId: profile?.id || '',
+    isActiveCampaign: campaign?.id === campaignId,
+    members: campaignMembersForManagement.length > 0 ? campaignMembersForManagement : members,
+    memberNames,
+    availableModules: campaignModules,
+    availableGameSystems: campaignGameSystems,
+    reloadCampaign: () => void refreshCampaignBlock(),
+    openMember: (member: CampaignMembershipResponse) =>
+      void run('Profilo membro caricato', async () => {
+        if (!campaignId.trim()) return
+        if (member.memberStatus === 'PENDING') {
+          await loadPendingForActiveCampaign()
+          setScreen('Approvazione Accessi')
+          return
+        }
+        const [membership, profileValue] = await Promise.all([
+          getCampaignMember(campaignId, member.userId),
+          getPublicProfile(member.userId),
+        ])
+        setSelectedCampaignMember(membership)
+        setSelectedCampaignMemberProfile(profileValue)
+        setScreen('Profilo Membro Campagna')
+      }),
+    openManagement: () => {
+      if (campaign?.id) void activateCampaignAndNavigate(campaign.id, 'Gestione Campagna')
+    },
+    openCharacters: () => {
+      if (campaign?.id) void activateCampaignAndNavigate(campaign.id, 'Gestione Personaggi')
+    },
+    canManageMembers: canManageCampaignMembers,
+    applyCurrentCampaign: () => {
+      if (!campaign?.id) return
+      void run('Apply campagna inviato', async () => {
+        await applyToCampaign(campaign.id)
+        const [discover, mine] = await Promise.all([discoverCampaigns(false), listMyCampaignMemberships()])
+        setDiscoverableCampaigns(discover)
+        setMyCampaigns(mine)
+      })
+    },
+    activateCurrentCampaign: () => {
+      if (campaign?.id) void activateCampaignAndNavigate(campaign.id, 'Scheda Campagna')
+    },
+    leaveCurrentCampaign: openLeaveCampaignModal,
+    membershipStatus: campaign?.id ? campaignsForList.find((item) => item.id === campaign.id)?.membershipStatus || null : null,
+    membershipRole: campaign?.id ? campaignsForList.find((item) => item.id === campaign.id)?.membershipRole || null : null,
+    pendingApplications,
+    loadPendingApplications: () =>
+      void run('Richieste pending caricate', async () => {
+        await loadPendingForActiveCampaign()
+      }),
+    approvePendingApplication: (userId: string) =>
+      void run('Approvazione utente completata', async () => {
+        await approvePendingForActiveCampaign(userId)
+      }),
+    rejectPendingApplication: (userId: string) =>
+      void run('Rifiuto utente completato', async () => {
+        await rejectPendingForActiveCampaign(userId)
+      }),
+    createCampaign: (payload: Parameters<typeof createCampaign>[0]) =>
+      void run('Campagna creata', async () => {
+        const created = await createCampaign(payload)
+        rememberCampaignId(created.id)
+        rememberCampaignMeta(created.id, created.name)
+        setMyCampaigns((prev) => [
+          {
+            campaignId: created.id,
+            campaignName: created.name,
+            role: 'SUPER_MASTER',
+            memberStatus: 'APPROVED',
+            characterStatus: null,
+            moderationReason: null,
+            isFounder: true,
+          },
+          ...prev.filter((item) => item.campaignId !== created.id),
+        ])
+        setCampaign(created)
+        setCanManageCampaignMembers(true)
+        setScreen('Scheda Campagna')
+      }),
+    permissions,
+    saveCampaign: (payload: Parameters<typeof updateCampaign>[1]) => {
+      if (!campaign?.id) return
+      void run('Campagna aggiornata', async () => {
+        const updated = await updateCampaign(campaign.id, payload)
+        setCampaign(updated)
+        setCampaignDetailsById((prev) => ({ ...prev, [updated.id]: updated }))
+        rememberCampaignMeta(updated.id, updated.name)
+        setMyCampaigns((prev) => prev.map((item) => (item.campaignId === updated.id ? { ...item, campaignName: updated.name } : item)))
+        setDiscoverableCampaigns((prev) =>
+          prev.map((item) => (item.id === updated.id ? { ...item, name: updated.name, summary: updated.summary, description: updated.description } : item)),
+        )
+        setScreen('Lista Campagne')
+      })
+    },
+    refreshPermissionChecklist: () =>
+      void run('Checklist permessi aggiornata', async () => {
+        const actions = ['CREATE_ROOM', 'APPROVE_OR_REJECT_APPLICATIONS', 'TRANSFER_OWNERSHIP', 'MANAGE_CAMPAIGN_SETTINGS']
+        const settled = await Promise.all(actions.map(async (actionValue) => checkPermission(campaignId, actionValue)))
+        setPermissions(settled)
+      }),
+    transferCampaignOwnership: (newOwnerId: string) =>
+      void run('Ownership trasferita', async () => {
+        const updated = await transferOwnership(campaignId, newOwnerId)
+        setCampaign(updated)
+        setCampaignDetailsById((prev) => ({ ...prev, [updated.id]: updated }))
+      }),
+    createCampaignInviteToken: (payload: CreateInviteTokenRequest) =>
+      runResult('Token invito creato', async () => {
+        if (!campaignId.trim()) {
+          throw new Error('Campagna non attiva.')
+        }
+        return createInviteToken(campaignId, payload)
+      }),
+    selectedCampaignMember,
+    selectedCampaignMemberProfile,
+    refreshSelectedCampaignMember: () =>
+      void run('Profilo membro aggiornato', async () => {
+        if (!campaignId.trim() || !selectedCampaignMember) return
+        const [membership, allMembers] = await Promise.all([
+          getCampaignMember(campaignId, selectedCampaignMember.userId),
+          listCampaignMembersForManagement(campaignId).catch(() => campaignMembersForManagement),
+        ])
+        setSelectedCampaignMember(membership)
+        setCampaignMembersForManagement(allMembers)
+      }),
+    updateSelectedMemberRole: (role: CampaignRole) =>
+      void run('Ruolo membro aggiornato', async () => {
+        if (!campaignId.trim() || !selectedCampaignMember) return
+        const [updated, approvedMembers, allMembers] = await Promise.all([
+          updateCampaignMemberRole(campaignId, selectedCampaignMember.userId, role),
+          getCampaignMembers(campaignId),
+          listCampaignMembersForManagement(campaignId).catch(() => campaignMembersForManagement),
+        ])
+        setSelectedCampaignMember(updated)
+        setMembers(approvedMembers)
+        setCampaignMembersForManagement(allMembers)
+      }),
+    banSelectedMember: (reason: string) =>
+      void run('Membro bannato', async () => {
+        if (!campaignId.trim() || !selectedCampaignMember) return
+        const [updated, approvedMembers, allMembers] = await Promise.all([
+          banCampaignMember(campaignId, selectedCampaignMember.userId, reason),
+          getCampaignMembers(campaignId),
+          listCampaignMembersForManagement(campaignId).catch(() => campaignMembersForManagement),
+        ])
+        setSelectedCampaignMember(updated)
+        setMembers(approvedMembers)
+        setCampaignMembersForManagement(allMembers)
+      }),
+    suspendSelectedMember: (reason: string) =>
+      void run('Membro sospeso', async () => {
+        if (!campaignId.trim() || !selectedCampaignMember) return
+        const [updated, approvedMembers, allMembers] = await Promise.all([
+          suspendCampaignMember(campaignId, selectedCampaignMember.userId, reason),
+          getCampaignMembers(campaignId),
+          listCampaignMembersForManagement(campaignId).catch(() => campaignMembersForManagement),
+        ])
+        setSelectedCampaignMember(updated)
+        setMembers(approvedMembers)
+        setCampaignMembersForManagement(allMembers)
+      }),
+    unsuspendSelectedMember: () =>
+      void run('Membro riattivato', async () => {
+        if (!campaignId.trim() || !selectedCampaignMember) return
+        const [updated, approvedMembers, allMembers] = await Promise.all([
+          unsuspendCampaignMember(campaignId, selectedCampaignMember.userId),
+          getCampaignMembers(campaignId),
+          listCampaignMembersForManagement(campaignId).catch(() => campaignMembersForManagement),
+        ])
+        setSelectedCampaignMember(updated)
+        setMembers(approvedMembers)
+        setCampaignMembersForManagement(allMembers)
+      }),
+    unbanSelectedMember: () =>
+      void run('Membro sbloccato', async () => {
+        if (!campaignId.trim() || !selectedCampaignMember) return
+        const [updated, approvedMembers, allMembers] = await Promise.all([
+          unbanCampaignMember(campaignId, selectedCampaignMember.userId),
+          getCampaignMembers(campaignId),
+          listCampaignMembersForManagement(campaignId).catch(() => campaignMembersForManagement),
+        ])
+        setSelectedCampaignMember(updated)
+        setMembers(approvedMembers)
+        setCampaignMembersForManagement(allMembers)
+      }),
+    approveSelectedMember: () =>
+      void run('Membro approvato', async () => {
+        if (!campaignId.trim() || !selectedCampaignMember) return
+        const [updated, approvedMembers, allMembers] = await Promise.all([
+          approveCampaignMember(campaignId, selectedCampaignMember.userId),
+          getCampaignMembers(campaignId),
+          listCampaignMembersForManagement(campaignId).catch(() => campaignMembersForManagement),
+        ])
+        setSelectedCampaignMember(updated)
+        setMembers(approvedMembers)
+        setCampaignMembersForManagement(allMembers)
+      }),
+    rooms,
+    canCreateRoom,
+    createRoom: (payload: { name: string; type: 'ROLEPLAY' | 'SPAM'; ttlHours: number; slowmodeSeconds: number }) =>
+      void run('Stanza creata', async () => {
+        const created = await createRoom(campaignId, payload)
+        setRooms((prev) => [created, ...prev])
+      }),
+    hasActiveCampaign,
+    isLeaveCampaignOpen,
+    leaveCampaignContext: {
+      campaignName: activeCampaignLabel,
+      characterWillBeRetired: activeCampaignMembership?.characterStatus === 'ACTIVE',
+    },
+    closeLeaveCampaignModal,
+    confirmLeaveCampaign: () => void leaveActiveCampaign(),
+  }
+
+  const characterContextValue = {
+    characters,
+    selectedCharacterId,
+    selectCharacter: (character: Character) => {
+      if (!canOpenCharacterSheet(character)) {
+        setError('Permesso negato: puoi aprire solo PG/NPC tuoi o con ruolo adeguato.')
+        addEvent('Accesso Scheda PG negato per permessi', 'error')
+        return
+      }
+      setSelectedCharacterId(character.id)
+      setCharacterDetail(null)
+      setCharacterSheetDetail(null)
+      setScreen('Scheda PG')
+    },
+    canOpenCharacterSheet,
+    ownerProfileLabel,
+    campaignNameForCharacter,
+    openCreateCharacter: () => setScreen('Crea Personaggio'),
+    reloadCharacters: () =>
+      void run('Lista personaggi caricata', async () => {
+        await loadCharactersForManagement()
+      }),
+    selectedCharacter,
+    characterDetail,
+    characterSheetDetail,
+    refreshCharacterDetail: () => void refreshCharacterBlock(),
+    saveCharacterSheet: (dataJson: Record<string, unknown>) =>
+      run('Scheda personaggio salvata', async () => {
+        if (!selectedCharacterId) return
+        const detailCampaignId = selectedCharacter?.campaignId || campaignId
+        if (!detailCampaignId) return
+        const updated = await updateCharacterSheet(detailCampaignId, selectedCharacterId, { dataJson })
+        setCharacterSheetDetail(updated)
+      }),
+    canMarkCharacterDead,
+    canReactivateCharacter,
+    updateCharacterStatus: (status: CharacterStatus) =>
+      void run('Stato personaggio aggiornato', async () => {
+        if (!selectedCharacter) return
+        const targetCampaignId = selectedCharacter.campaignId || campaignId
+        if (!targetCampaignId) return
+        const updated = await updateCharacterStatus(targetCampaignId, selectedCharacter.id, status)
+        setCharacters((prev) => prev.map((item) => (item.id === updated.id ? updated : item)))
+        setCharacterDetail(updated)
+        await refreshMissions()
+      }),
+    preferredCharacterId: activeCampaignCharacterId,
+    applyCharacterToCampaign: (characterId: string) =>
+      void run('Apply con personaggio inviato', async () => {
+        await applyToCampaign(campaignId, characterId)
+      }),
+    hasActiveCampaign,
+    canCreatePlayerCharacter,
+    canCreateNpc,
+    createCharacter: (payload: { name: string; nickname?: string; portraitUrl?: string; isNpc?: boolean }) =>
+      void run('Personaggio creato', async () => {
+        const created = await createCharacter(campaignId, payload)
+        setCharacters((prev) => [created, ...prev])
+        setSelectedCharacterId(created.id)
+        setScreen('Gestione Personaggi')
+      }),
+  }
+
+  const missionContextValue = {
+    missions,
+    selectedMission,
+    canCreateMissions,
+    activeCampaignId: campaignId.trim(),
+    activeCampaignRole,
+    activeCampaignCharacterId: selectedMissionCharacterId,
+    campaignNameById,
+    campaignGameSystemById,
+    campaignCanBeOpenedById,
+    missionParticipantsById,
+    missionParticipantLabelByUserId: {
+      ...memberNames,
+      ...(profile?.id ? { [profile.id]: profile.profileName || profile.username || profile.id } : {}),
+    },
+    missionParticipantCharacterLabelById,
+    myMissionParticipationById,
+    currentUserId: profile?.id || '',
+    selectedMissionChatId: selectedMissionChatContext?.missionId || null,
+    missionChat,
+    missionChatBusy,
+    missionChatError,
+    createMission: (payload: Parameters<typeof createMission>[1]) =>
+      void run('Missione creata', async () => {
+        const created = await createMission(campaignId, payload)
+        setSelectedMissionId(created.id)
+        await refreshMissions()
+      }),
+    selectMission: setSelectedMissionId,
+    openMissionChat: (targetCampaignId: string, missionId: string) =>
+      void run('Chat missione caricata', async () => {
+        await loadMissionChat(targetCampaignId, missionId)
+      }),
+    closeMissionChat: () => {
+      setSelectedMissionChatContext(null)
+      setMissionChat(null)
+      setMissionChatError('')
+    },
+    sendMissionChatMessage: (body: string) =>
+      run('Messaggio missione inviato', async () => {
+        if (!selectedMissionChatContext) return
+        await sendMissionChatMessage(selectedMissionChatContext.campaignId, selectedMissionChatContext.missionId, body)
+        await refreshMissionChat()
+      }),
+    joinMission: (missionId: string, participationType: MissionParticipationType) =>
+      void run('Partecipazione missione aggiornata', async () => {
+        if (!selectedMission) {
+          throw new Error('Seleziona prima una missione.')
+        }
+        if (!campaignId.trim()) {
+          throw new Error('Campagna non attiva.')
+        }
+        if (!selectedMissionCharacterId) {
+          throw new Error('Nessun personaggio attivo disponibile.')
+        }
+        let participant: MissionParticipantResponse
+        try {
+          participant = await joinMission(campaignId, missionId, {
+            characterId: selectedMissionCharacterId,
+            participationType,
+          })
+        } catch {
+          participant = await updateMissionParticipationType(campaignId, missionId, {
+            participationType,
+          })
+        }
+        setMyMissionParticipationById((prev) => ({ ...prev, [missionId]: participant.participationType }))
+        setMissionParticipantsById((prev) => {
+          const current = prev[missionId] || []
+          const withoutCurrentUser = current.filter((item) => item.userId !== participant.userId)
+          return { ...prev, [missionId]: [...withoutCurrentUser, participant] }
+        })
+        await refreshMissions({ clearSelection: false })
+        setSelectedMissionId(missionId)
+      }),
+    leaveMission: (missionId: string) =>
+      void run('Uscita missione completata', async () => {
+        if (!campaignId.trim()) {
+          throw new Error('Campagna non attiva.')
+        }
+        const participant = await leaveMission(campaignId, missionId)
+        setMyMissionParticipationById((prev) => {
+          const next = { ...prev }
+          delete next[missionId]
+          return next
+        })
+        setMissionParticipantsById((prev) => {
+          const current = prev[missionId] || []
+          return { ...prev, [missionId]: current.filter((item) => item.userId !== participant.userId) }
+        })
+        await refreshMissions()
+      }),
+    openMissionCampaign: (targetCampaignId: string) => void activateCampaignAndNavigate(targetCampaignId, 'Missioni'),
+    browseCampaigns: () => setScreen('Lista Campagne'),
+    openCreateCharacter: () => setScreen('Crea Personaggio'),
+    updateMission: (missionId: string, payload: Parameters<typeof updateMission>[2]) =>
+      void run('Missione aggiornata', async () => {
+        if (!selectedMission) {
+          throw new Error('Seleziona prima una missione.')
+        }
+        if (!campaignId.trim()) {
+          throw new Error('Campagna non attiva.')
+        }
+        const wasConfirmedBelowQuorum =
+          selectedMission.status === 'CONFIRMED' &&
+          typeof selectedMission.quorum === 'number' &&
+          selectedMission.participantCount < selectedMission.quorum
+        await updateMission(campaignId, missionId, payload)
+        if (payload.autoReopenOnDrop === true && wasConfirmedBelowQuorum) {
+          await reopenMission(campaignId, missionId)
+        }
+        await refreshMissions()
+      }),
+    completeMission: (missionId: string) =>
+      void run('Missione completata', async () => {
+        if (!campaignId.trim()) {
+          throw new Error('Campagna non attiva.')
+        }
+        await completeMission(campaignId, missionId)
+        await refreshMissions()
+      }),
+    cancelMission: (missionId: string) =>
+      void run('Missione cancellata', async () => {
+        if (!campaignId.trim()) {
+          throw new Error('Campagna non attiva.')
+        }
+        await cancelMission(campaignId, missionId)
+        await refreshMissions()
+      }),
+  }
+
+  const adminContextValue = {
+    busy,
+    gameSystems: adminGameSystems,
+    sheetTypes: adminSheetTypes,
+    refreshSystemCatalogs: () => void loadAdminSheetCatalogs(),
+    createGameSystem: createAdminGameSystemEntry,
+    saveGameSystem: saveAdminGameSystem,
+    createSheetType: createAdminSheetTypeEntry,
+    saveSheetType: saveAdminSheetType,
+  }
+
   const systemUsers = adminUsersPage?.items ?? []
   const systemUsersTotal = adminUsersPage?.totalElements ?? 0
   const systemUsersPageLabel = adminUsersPage
@@ -2789,10 +3277,12 @@ function App() {
   const sortedSystemCampaigns = [...systemCampaigns].sort((left, right) => {
     const value = (item: AdminCampaignPage['items'][number]) => {
       switch (systemSortBy) {
-        case 'gameSystem':
-          return item.gameSystem
+        case 'realm':
+          return `${item.realmName} ${item.realmCode}`
         case 'isActive':
           return item.isActive
+        case 'isSearchable':
+          return item.isSearchable
         case 'isOpen':
           return item.isOpen
         case 'createdAt':
@@ -3203,9 +3693,9 @@ function App() {
                           </button>
                         </th>
                         <th>
-                          <button type="button" className={`data-table-sort-btn ${systemSortBy === 'gameSystem' ? 'is-active' : ''}`} onClick={() => handleSystemSortChange('gameSystem')}>
-                            <span>Sistema</span>
-                            <Icon name={systemSortBy === 'gameSystem' ? systemSortDirection === 'asc' ? 'fa-solid fa-arrow-up-wide-short' : 'fa-solid fa-arrow-down-wide-short' : 'fa-solid fa-sort'} />
+                          <button type="button" className={`data-table-sort-btn ${systemSortBy === 'realm' ? 'is-active' : ''}`} onClick={() => handleSystemSortChange('realm')}>
+                            <span>Realm</span>
+                            <Icon name={systemSortBy === 'realm' ? systemSortDirection === 'asc' ? 'fa-solid fa-arrow-up-wide-short' : 'fa-solid fa-arrow-down-wide-short' : 'fa-solid fa-sort'} />
                           </button>
                         </th>
                         <th>
@@ -3244,166 +3734,247 @@ function App() {
                             draft.isSearchable !== item.isSearchable ||
                             draft.gameSystem !== item.gameSystem ||
                             draftModules !== itemModules
+                          const isExpanded = expandedAdminCampaignId === item.id
+                          const visibleModules =
+                            campaignModules.length > 0
+                              ? campaignModules
+                              : item.allowedModules.map((code) => ({ code, label: code, description: null, active: true, sortOrder: 0 }))
 
                           return (
-                            <tr key={item.id}>
-                              <td>
-                                <div className="system-user-primary">
-                                  <span className="system-user-username">{item.name}</span>
-                                  <span className="system-user-id">{item.id}</span>
-                                  <span className="system-user-id">Founder {item.founderProfileName}</span>
-                                </div>
-                              </td>
-                              <td>
-                                <select
-                                  className="system-inline-select"
-                                  value={draft.gameSystem}
-                                  onChange={(event) =>
-                                    setAdminCampaignsDrafts((prev) => ({
-                                      ...prev,
-                                      [item.id]: {
-                                        ...draft,
-                                        gameSystem: event.target.value,
-                                      },
-                                    }))
-                                  }
-                                >
-                                  {(campaignGameSystems.length > 0 ? campaignGameSystems : [{ code: item.gameSystem, label: item.gameSystem, description: null, active: true, sortOrder: 0 }]).map((system) => (
-                                    <option key={system.code} value={system.code}>
-                                      {catalogEntryLabel(campaignGameSystems, system.code) || system.label || system.code}
-                                    </option>
-                                  ))}
-                                </select>
-                              </td>
-                              <td>
-                                <div className="system-campaign-statuses">
-                                  <div className="system-status-option">
-                                    <span className="system-status-copy">
-                                      <strong>Aperta</strong>
-                                      <small>Può ricevere applicazioni e accessi.</small>
-                                    </span>
+                            <Fragment key={item.id}>
+                              <tr key={item.id} className={isExpanded ? 'is-selected' : ''}>
+                                <td>
+                                  <div className="system-user-primary">
+                                    <span className="system-user-username">{item.name}</span>
+                                    <span className="system-user-id">Founder {item.founderProfileName}</span>
+                                  </div>
+                                </td>
+                                <td>
+                                  <div className="system-user-secondary">
+                                    <span>{item.realmName}</span>
+                                    <span className="system-user-id">{item.realmCode}</span>
+                                  </div>
+                                </td>
+                                <td>
+                                  <div className="inline-actions">
+                                    <span className={`status ${item.isOpen ? 'status-success' : 'status-neutral'}`}>{item.isOpen ? 'Aperta' : 'Chiusa'}</span>
+                                    <span className={`status ${item.isActive ? 'status-success' : 'status-warning'}`}>{item.isActive ? 'Attiva' : 'Spenta'}</span>
+                                    <span className={`status ${item.isSearchable ? 'status-success' : 'status-neutral'}`}>{item.isSearchable ? 'Ricercabile' : 'Nascosta'}</span>
+                                  </div>
+                                </td>
+                                <td>
+                                  <span className="status status-info">{item.allowedModules.length} moduli</span>
+                                </td>
+                                <td>
+                                  <div className="system-row-actions">
                                     <button
                                       type="button"
-                                      className={`segmented-btn system-status-toggle-btn ${draft.isOpen ? 'is-active' : ''}`}
-                                      aria-pressed={draft.isOpen}
+                                      className="refresh-btn"
                                       onClick={() =>
-                                        setAdminCampaignsDrafts((prev) => ({
-                                          ...prev,
-                                          [item.id]: {
-                                            ...draft,
-                                            isOpen: !draft.isOpen,
-                                          },
-                                        }))
+                                        setExpandedAdminCampaignId((prev) => (prev === item.id ? '' : item.id))
                                       }
                                     >
-                                      <Icon name={draft.isOpen ? 'fa-solid fa-toggle-on' : 'fa-solid fa-toggle-off'} />
-                                      <span>{draft.isOpen ? 'Aperta' : 'Chiusa'}</span>
+                                      <Icon name={isExpanded ? 'fa-solid fa-chevron-up' : 'fa-solid fa-pen-to-square'} />
+                                      <span>{isExpanded ? 'Chiudi' : 'Modifica'}</span>
                                     </button>
-                                  </div>
-                                  <div className="system-status-option">
-                                    <span className="system-status-copy">
-                                      <strong>Attiva</strong>
-                                      <small>Campagna abilitata nel sistema.</small>
+                                    <span className={`status ${isDirty ? 'status-warning' : 'status-neutral'}`}>
+                                      {isDirty ? 'Da salvare' : 'Salvato'}
                                     </span>
-                                    <button
-                                      type="button"
-                                      className={`segmented-btn system-status-toggle-btn ${draft.isActive ? 'is-active' : ''}`}
-                                      aria-pressed={draft.isActive}
-                                      onClick={() =>
-                                        setAdminCampaignsDrafts((prev) => ({
-                                          ...prev,
-                                          [item.id]: {
-                                            ...draft,
-                                            isActive: !draft.isActive,
-                                          },
-                                        }))
-                                      }
-                                    >
-                                      <Icon name={draft.isActive ? 'fa-solid fa-toggle-on' : 'fa-solid fa-toggle-off'} />
-                                      <span>{draft.isActive ? 'Attiva' : 'Spenta'}</span>
-                                    </button>
                                   </div>
-                                  <div className="system-status-option">
-                                    <span className="system-status-copy">
-                                      <strong>Cercabile</strong>
-                                      <small>Compare nei cataloghi e nelle ricerche.</small>
-                                    </span>
-                                    <button
-                                      type="button"
-                                      className={`segmented-btn system-status-toggle-btn ${draft.isSearchable ? 'is-active' : ''}`}
-                                      aria-pressed={draft.isSearchable}
-                                      onClick={() =>
-                                        setAdminCampaignsDrafts((prev) => ({
-                                          ...prev,
-                                          [item.id]: {
-                                            ...draft,
-                                            isSearchable: !draft.isSearchable,
-                                          },
-                                        }))
-                                      }
-                                    >
-                                      <Icon name={draft.isSearchable ? 'fa-solid fa-toggle-on' : 'fa-solid fa-toggle-off'} />
-                                      <span>{draft.isSearchable ? 'Ricercabile' : 'Nascosta'}</span>
-                                    </button>
-                                  </div>
-                                </div>
-                              </td>
-                              <td>
-                                <div className="system-campaign-addon-list">
-                                  {(campaignModules.length > 0 ? campaignModules : item.allowedModules.map((code) => ({ code, label: code, description: null, active: true, sortOrder: 0 }))).map((module) => {
-                                    const enabled = draft.allowedModules.includes(module.code)
-                                    return (
-                                      <div key={module.code} className="system-campaign-addon-row" aria-label={`${module.code} ${enabled ? 'attivo' : 'disattivo'}`}>
-                                        <span className="system-campaign-addon-text">
-                                          <span>{catalogEntryLabel(campaignModules, module.code) || module.label || module.code}</span>
-                                          <small>{catalogEntryDescription(campaignModules, module.code) || module.description || 'Addon campagna'}</small>
-                                        </span>
-                                        <label className="switch system-user-switch">
-                                          <input
-                                            type="checkbox"
-                                            checked={enabled}
-                                            onChange={(event) =>
-                                              setAdminCampaignsDrafts((prev) => {
-                                                const current = prev[item.id] || draft
-                                                const nextModules = event.target.checked
-                                                  ? Array.from(new Set([...current.allowedModules, module.code]))
-                                                  : current.allowedModules.filter((code) => code !== module.code)
-                                                return {
-                                                  ...prev,
-                                                  [item.id]: {
-                                                    ...current,
-                                                    allowedModules: nextModules,
-                                                  },
-                                                }
-                                              })
-                                            }
-                                          />
-                                          <span className="switch-track" aria-hidden="true">
-                                            <span className="switch-thumb" />
-                                          </span>
-                                        </label>
+                                </td>
+                              </tr>
+                              {isExpanded && (
+                                <tr>
+                                  <td colSpan={5} className="system-detail-cell">
+                                    <div className="system-campaign-detail">
+                                      <div className="system-campaign-detail-head">
+                                        <div>
+                                          <p className="menu-group-label">Dettaglio campagna</p>
+                                          <h4>{item.name}</h4>
+                                          <p className="muted">
+                                            Realm {item.realmName} · {item.realmCode} · Founder {item.founderProfileName}
+                                          </p>
+                                        </div>
+                                        <div className="system-row-actions">
+                                          <button
+                                            type="button"
+                                            className="refresh-btn"
+                                            disabled={busy || !isDirty}
+                                            onClick={() => void saveAdminCampaign(item.id)}
+                                          >
+                                            <Icon name="fa-solid fa-floppy-disk" />
+                                            <span>Salva modifiche</span>
+                                          </button>
+                                        </div>
                                       </div>
-                                    )
-                                  })}
-                                </div>
-                              </td>
-                              <td>
-                                <div className="system-row-actions">
-                                  <span className={`status ${isDirty ? 'status-warning' : 'status-neutral'}`}>
-                                    {isDirty ? 'Da salvare' : 'Salvato'}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    className="refresh-btn"
-                                    disabled={busy || !isDirty}
-                                    onClick={() => void saveAdminCampaign(item.id)}
-                                  >
-                                    <Icon name="fa-solid fa-floppy-disk" />
-                                    <span>Salva</span>
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
+
+                                      <table className="system-users-table system-campaign-config-table">
+                                        <thead>
+                                          <tr>
+                                            <th>Parametro</th>
+                                            <th>Valore</th>
+                                            <th>Dettaglio</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          <tr>
+                                            <td>Sistema di gioco</td>
+                                            <td>
+                                              <select
+                                                className="system-inline-select"
+                                                value={draft.gameSystem}
+                                                onChange={(event) =>
+                                                  setAdminCampaignsDrafts((prev) => ({
+                                                    ...prev,
+                                                    [item.id]: {
+                                                      ...draft,
+                                                      gameSystem: event.target.value,
+                                                    },
+                                                  }))
+                                                }
+                                              >
+                                                {(campaignGameSystems.length > 0 ? campaignGameSystems : [{ code: item.gameSystem, label: item.gameSystem, description: null, active: true, sortOrder: 0 }]).map((system) => (
+                                                  <option key={system.code} value={system.code}>
+                                                    {catalogEntryLabel(campaignGameSystems, system.code) || system.label || system.code}
+                                                  </option>
+                                                ))}
+                                              </select>
+                                            </td>
+                                            <td className="data-table-secondary">Definisce il template scheda e le regole base.</td>
+                                          </tr>
+                                          <tr>
+                                            <td>Aperta</td>
+                                            <td>
+                                              <button
+                                                type="button"
+                                                className={`segmented-btn system-status-toggle-btn ${draft.isOpen ? 'is-active' : ''}`}
+                                                aria-pressed={draft.isOpen}
+                                                onClick={() =>
+                                                  setAdminCampaignsDrafts((prev) => ({
+                                                    ...prev,
+                                                    [item.id]: {
+                                                      ...draft,
+                                                      isOpen: !draft.isOpen,
+                                                    },
+                                                  }))
+                                                }
+                                              >
+                                                <Icon name={draft.isOpen ? 'fa-solid fa-toggle-on' : 'fa-solid fa-toggle-off'} />
+                                                <span>{draft.isOpen ? 'Aperta' : 'Chiusa'}</span>
+                                              </button>
+                                            </td>
+                                            <td className="data-table-secondary">Può ricevere applicazioni e accessi.</td>
+                                          </tr>
+                                          <tr>
+                                            <td>Attiva</td>
+                                            <td>
+                                              <button
+                                                type="button"
+                                                className={`segmented-btn system-status-toggle-btn ${draft.isActive ? 'is-active' : ''}`}
+                                                aria-pressed={draft.isActive}
+                                                onClick={() =>
+                                                  setAdminCampaignsDrafts((prev) => ({
+                                                    ...prev,
+                                                    [item.id]: {
+                                                      ...draft,
+                                                      isActive: !draft.isActive,
+                                                    },
+                                                  }))
+                                                }
+                                              >
+                                                <Icon name={draft.isActive ? 'fa-solid fa-toggle-on' : 'fa-solid fa-toggle-off'} />
+                                                <span>{draft.isActive ? 'Attiva' : 'Spenta'}</span>
+                                              </button>
+                                            </td>
+                                            <td className="data-table-secondary">Controlla se la campagna è disponibile nel sistema.</td>
+                                          </tr>
+                                          <tr>
+                                            <td>Cercabile</td>
+                                            <td>
+                                              <button
+                                                type="button"
+                                                className={`segmented-btn system-status-toggle-btn ${draft.isSearchable ? 'is-active' : ''}`}
+                                                aria-pressed={draft.isSearchable}
+                                                onClick={() =>
+                                                  setAdminCampaignsDrafts((prev) => ({
+                                                    ...prev,
+                                                    [item.id]: {
+                                                      ...draft,
+                                                      isSearchable: !draft.isSearchable,
+                                                    },
+                                                  }))
+                                                }
+                                              >
+                                                <Icon name={draft.isSearchable ? 'fa-solid fa-toggle-on' : 'fa-solid fa-toggle-off'} />
+                                                <span>{draft.isSearchable ? 'Ricercabile' : 'Nascosta'}</span>
+                                              </button>
+                                            </td>
+                                            <td className="data-table-secondary">Visibile nelle ricerche e nei cataloghi pubblici.</td>
+                                          </tr>
+                                        </tbody>
+                                      </table>
+
+                                      <div className="divider" />
+                                      <div className="row-between">
+                                        <div>
+                                          <p className="section-title">Moduli campagna</p>
+                                          <p className="muted">Lista espandibile di configurazioni. La struttura resta scalabile quando i moduli aumentano.</p>
+                                        </div>
+                                        <span className="readonly-chip">{draft.allowedModules.length}/{visibleModules.length} attivi</span>
+                                      </div>
+                                      <table className="system-users-table system-campaign-modules-table">
+                                        <thead>
+                                          <tr>
+                                            <th>Modulo</th>
+                                            <th>Descrizione</th>
+                                            <th>Stato</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {visibleModules.map((module) => {
+                                            const enabled = draft.allowedModules.includes(module.code)
+                                            return (
+                                              <tr key={module.code}>
+                                                <td>{catalogEntryLabel(campaignModules, module.code) || module.label || module.code}</td>
+                                                <td className="data-table-secondary">
+                                                  {catalogEntryDescription(campaignModules, module.code) || module.description || 'Addon campagna'}
+                                                </td>
+                                                <td>
+                                                  <label className="switch system-user-switch" aria-label={`${module.code} ${enabled ? 'attivo' : 'disattivo'}`}>
+                                                    <input
+                                                      type="checkbox"
+                                                      checked={enabled}
+                                                      onChange={(event) =>
+                                                        setAdminCampaignsDrafts((prev) => {
+                                                          const current = prev[item.id] || draft
+                                                          const nextModules = event.target.checked
+                                                            ? Array.from(new Set([...current.allowedModules, module.code]))
+                                                            : current.allowedModules.filter((code) => code !== module.code)
+                                                          return {
+                                                            ...prev,
+                                                            [item.id]: {
+                                                              ...current,
+                                                              allowedModules: nextModules,
+                                                            },
+                                                          }
+                                                        })
+                                                      }
+                                                    />
+                                                    <span className="switch-track" aria-hidden="true">
+                                                      <span className="switch-thumb" />
+                                                    </span>
+                                                  </label>
+                                                </td>
+                                              </tr>
+                                            )
+                                          })}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </Fragment>
                           )
                         })
                       )}
@@ -3742,21 +4313,22 @@ function App() {
                     <p className="muted">Il ruolo qui vale solo nel realm selezionato. Non modifica il ruolo piattaforma.</p>
                   </div>
                   <div className="system-panel-meta">
-                    <select
-                      className="system-inline-select"
+                    <SearchableSelect
+                      key={`${selectedRealmAccessRealm?.id || 'empty'}-${adminRealms.length}`}
+                      className="system-panel-searchable-select"
                       value={selectedRealmAccessRealm?.id || ''}
-                      onChange={(event) => {
-                        const nextRealmId = event.target.value
+                      placeholder="Cerca realm"
+                      minQueryLength={3}
+                      options={adminRealms.map((realm) => ({
+                        value: realm.id,
+                        label: `${realm.name} (${realm.code})`,
+                        description: realm.type,
+                      }))}
+                      onChange={(nextRealmId) => {
                         setSelectedRealmAccessRealmId(nextRealmId)
                         void loadAdminRealmUserRoles(nextRealmId)
                       }}
-                    >
-                      {adminRealms.map((realm) => (
-                        <option key={realm.id} value={realm.id}>
-                          {realm.name} ({realm.code})
-                        </option>
-                      ))}
-                    </select>
+                    />
                     <button
                       type="button"
                       className="refresh-btn"
@@ -3909,16 +4481,9 @@ function App() {
                 )}
               </>
             ) : (
-              <SystemCatalogsPage
-                busy={busy}
-                gameSystems={adminGameSystems}
-                sheetTypes={adminSheetTypes}
-                onRefresh={() => void loadAdminSheetCatalogs()}
-                onCreateGameSystem={createAdminGameSystemEntry}
-                onSaveGameSystem={saveAdminGameSystem}
-                onCreateSheetType={createAdminSheetTypeEntry}
-                onSaveSheetType={saveAdminSheetType}
-              />
+              <AdminProvider value={adminContextValue}>
+                <SystemCatalogsPage />
+              </AdminProvider>
             )}
           </section>
         </main>
@@ -3988,10 +4553,6 @@ function App() {
                           if (!itemState.enabled) return
                           if (item === 'Lista Campagne' && hasActiveCampaign) {
                             goToScreen('Scheda Campagna')
-                            return
-                          }
-                          if (requiresCampaignSelection(item) && !hasActiveCampaign) {
-                            openCampaignPicker(item)
                             return
                           }
                           goToScreen(item)
@@ -4077,586 +4638,96 @@ function App() {
         {error && <section className="panel error">{error}</section>}
 
         {screen === 'Lista Campagne' && (
-          <CampaignListPage
-            campaigns={campaignsForList}
-            founderNames={campaignFounderNames}
-            missionAlertsByCampaign={missionAlertsByCampaign}
-            pendingApplicationsByCampaignId={pendingApplicationsByCampaignId}
-            onDiscover={() =>
-              run('Campagne disponibili caricate', async () => {
-                const list = await discoverCampaigns(false)
-                setDiscoverableCampaigns(list)
-              })
-            }
-            onOpenCampaign={(targetCampaignId) =>
-              void activateCampaignAndNavigate(targetCampaignId, 'Scheda Campagna')
-            }
-            onApplyCampaign={(targetCampaignId) =>
-              run('Richiesta accesso inviata', async () => {
-                await applyToCampaign(targetCampaignId)
-                const [discover, mine] = await Promise.all([discoverCampaigns(false), listMyCampaignMemberships()])
-                setDiscoverableCampaigns(discover)
-                setMyCampaigns(mine)
-              })
-            }
-            onPreviewInviteAccess={(inviteValue) => previewInviteAccess(inviteValue)}
-            onApplyInviteAccess={(inviteValue) => run('Richiesta accesso invito inviata', async () => {
-              await applyInviteAccess(inviteValue)
-            })}
-            onCreateCampaign={() => setScreen('Crea Campagna')}
-            canCreateCampaign={canCreateCampaignInRealm}
-            activeCampaignName={campaign?.name || activeCampaignMembership?.campaignName || campaignId || ''}
-          />
+          <CampaignProvider value={campaignContextValue}>
+            <CampaignListPage />
+          </CampaignProvider>
         )}
 
         {screen === 'Crea Campagna' && (
-          <CreateCampaignPage
-            availableModules={campaignModules}
-            availableGameSystems={campaignGameSystems}
-            onCreate={(payload) =>
-              run('Campagna creata', async () => {
-                const created = await createCampaign(payload)
-                rememberCampaignId(created.id)
-                rememberCampaignMeta(created.id, created.name)
-                setMyCampaigns((prev) => [
-                  {
-                    campaignId: created.id,
-                    campaignName: created.name,
-                    role: 'SUPER_MASTER',
-                    memberStatus: 'APPROVED',
-                    characterStatus: null,
-                    moderationReason: null,
-                    isFounder: true,
-                  },
-                  ...prev.filter((item) => item.campaignId !== created.id),
-                ])
-                setCampaign(created)
-                setCanManageCampaignMembers(true)
-                setScreen('Scheda Campagna')
-              })
-            }
-          />
+          <CampaignProvider value={campaignContextValue}>
+            <CreateCampaignPage />
+          </CampaignProvider>
         )}
 
         {screen === 'Scheda Campagna' && (
-          <CampaignDetailPage
-            campaign={campaign}
-            isActiveCampaign={campaign?.id === campaignId}
-            currentUserId={profile.id}
-            members={campaignMembersForManagement.length > 0 ? campaignMembersForManagement : members}
-            memberNames={memberNames}
-            availableModules={campaignModules}
-            availableGameSystems={campaignGameSystems}
-            onReload={() => void refreshCampaignBlock()}
-            onOpenMember={(member) =>
-              run('Profilo membro caricato', async () => {
-                if (!campaignId.trim()) return
-                if (member.memberStatus === 'PENDING') {
-                  await loadPendingForActiveCampaign()
-                  setScreen('Approvazione Accessi')
-                  return
-                }
-                const [membership, profileValue] = await Promise.all([
-                  getCampaignMember(campaignId, member.userId),
-                  getPublicProfile(member.userId),
-                ])
-                setSelectedCampaignMember(membership)
-                setSelectedCampaignMemberProfile(profileValue)
-                setScreen('Profilo Membro Campagna')
-              })
-            }
-            onOpenManagement={() =>
-              campaign?.id && void activateCampaignAndNavigate(campaign.id, 'Gestione Campagna')
-            }
-            onOpenCharacters={() =>
-              campaign?.id && void activateCampaignAndNavigate(campaign.id, 'Gestione Personaggi')
-            }
-            canManageMembers={canManageCampaignMembers}
-            onApply={() =>
-              campaign?.id &&
-              run('Apply campagna inviato', async () => {
-                await applyToCampaign(campaign.id)
-                const [discover, mine] = await Promise.all([discoverCampaigns(false), listMyCampaignMemberships()])
-                setDiscoverableCampaigns(discover)
-                setMyCampaigns(mine)
-              })
-            }
-            onActivate={() =>
-              campaign?.id && void activateCampaignAndNavigate(campaign.id, 'Scheda Campagna')
-            }
-            onLeaveCampaign={openLeaveCampaignModal}
-            membershipStatus={campaign?.id ? campaignsForList.find((item) => item.id === campaign.id)?.membershipStatus || null : null}
-            membershipRole={campaign?.id ? campaignsForList.find((item) => item.id === campaign.id)?.membershipRole || null : null}
-          />
+          <CampaignProvider value={campaignContextValue}>
+            <CampaignDetailPage />
+          </CampaignProvider>
         )}
 
         {screen === 'Approvazione Accessi' && (
-          <ApprovalPage
-            pendingApplications={pendingApplications}
-            onLoadPending={() =>
-              run('Richieste pending caricate', async () => {
-                await loadPendingForActiveCampaign()
-              })
-            }
-            onApprove={(userId) =>
-              run('Approvazione utente completata', async () => {
-                await approvePendingForActiveCampaign(userId)
-              })
-            }
-            onReject={(userId) =>
-              run('Rifiuto utente completato', async () => {
-                await rejectPendingForActiveCampaign(userId)
-              })
-            }
-          />
+          <CampaignProvider value={campaignContextValue}>
+            <ApprovalPage />
+          </CampaignProvider>
         )}
 
         {screen === 'Missioni' && (
-          <MissionsPage
-            missions={missions}
-            selectedMission={selectedMission}
-            canCreateMissions={canCreateMissions}
-            activeCampaignId={campaignId.trim()}
-            activeCampaignRole={activeCampaignRole}
-            activeCampaignCharacterId={selectedMissionCharacterId}
-            campaignNameById={campaignNameById}
-            campaignGameSystemById={campaignGameSystemById}
-            campaignCanBeOpenedById={campaignCanBeOpenedById}
-            missionParticipantsById={missionParticipantsById}
-            missionParticipantLabelByUserId={{
-              ...memberNames,
-              ...(profile?.id ? { [profile.id]: profile.profileName || profile.username || profile.id } : {}),
-            }}
-            missionParticipantCharacterLabelById={missionParticipantCharacterLabelById}
-            myMissionParticipationById={myMissionParticipationById}
-            currentUserId={profile.id}
-            selectedMissionChatId={selectedMissionChatContext?.missionId || null}
-            missionChat={missionChat}
-            missionChatBusy={missionChatBusy}
-            missionChatError={missionChatError}
-            onOpenMissionChat={(targetCampaignId, missionId) =>
-              run('Chat missione caricata', async () => {
-                await loadMissionChat(targetCampaignId, missionId)
-              })
-            }
-            onCloseMissionChat={() => {
-              setSelectedMissionChatContext(null)
-              setMissionChat(null)
-              setMissionChatError('')
-            }}
-            onSendMissionChatMessage={(body) =>
-              run('Messaggio missione inviato', async () => {
-                if (!selectedMissionChatContext) return
-                await sendMissionChatMessage(selectedMissionChatContext.campaignId, selectedMissionChatContext.missionId, body)
-                await refreshMissionChat()
-              })
-            }
-            onCreate={(payload) =>
-              run('Missione creata', async () => {
-                const created = await createMission(campaignId, payload)
-                setSelectedMissionId(created.id)
-                await refreshMissions()
-              })
-            }
-            onSelectMission={setSelectedMissionId}
-            onJoinMission={(missionId, participationType) =>
-              run('Partecipazione missione aggiornata', async () => {
-                if (!selectedMission) {
-                  throw new Error('Seleziona prima una missione.')
-                }
-                if (!campaignId.trim()) {
-                  throw new Error('Campagna non attiva.')
-                }
-                if (!selectedMissionCharacterId) {
-                  throw new Error('Nessun personaggio attivo disponibile.')
-                }
-
-                let participant: MissionParticipantResponse
-                try {
-                  participant = await joinMission(campaignId, missionId, {
-                    characterId: selectedMissionCharacterId,
-                    participationType,
-                  })
-                } catch {
-                  participant = await updateMissionParticipationType(campaignId, missionId, {
-                    participationType,
-                  })
-                }
-                setMyMissionParticipationById((prev) => ({ ...prev, [missionId]: participant.participationType }))
-                setMissionParticipantsById((prev) => {
-                  const current = prev[missionId] || []
-                  const withoutCurrentUser = current.filter((item) => item.userId !== participant.userId)
-                  return { ...prev, [missionId]: [...withoutCurrentUser, participant] }
-                })
-                await refreshMissions({ clearSelection: false })
-                setSelectedMissionId(missionId)
-              })
-            }
-            onLeaveMission={(missionId) =>
-              run('Uscita missione completata', async () => {
-                if (!campaignId.trim()) {
-                  throw new Error('Campagna non attiva.')
-                }
-
-                const participant = await leaveMission(campaignId, missionId)
-                setMyMissionParticipationById((prev) => {
-                  const next = { ...prev }
-                  delete next[missionId]
-                  return next
-                })
-                setMissionParticipantsById((prev) => {
-                  const current = prev[missionId] || []
-                  return { ...prev, [missionId]: current.filter((item) => item.userId !== participant.userId) }
-                })
-                await refreshMissions()
-              })
-            }
-            onOpenCampaign={(targetCampaignId) => void activateCampaignAndNavigate(targetCampaignId, 'Missioni')}
-            onBrowseCampaigns={() => setScreen('Lista Campagne')}
-            onCreateCharacter={() => setScreen('Crea Personaggio')}
-            onUpdateMission={(missionId, payload) =>
-              run('Missione aggiornata', async () => {
-                if (!selectedMission) {
-                  throw new Error('Seleziona prima una missione.')
-                }
-                if (!campaignId.trim()) {
-                  throw new Error('Campagna non attiva.')
-                }
-
-                const wasConfirmedBelowQuorum =
-                  selectedMission.status === 'CONFIRMED' &&
-                  typeof selectedMission.quorum === 'number' &&
-                  selectedMission.participantCount < selectedMission.quorum
-
-                await updateMission(campaignId, missionId, payload)
-                if (payload.autoReopenOnDrop === true && wasConfirmedBelowQuorum) {
-                  await reopenMission(campaignId, missionId)
-                }
-                await refreshMissions()
-              })
-            }
-            onCompleteMission={(missionId) =>
-              run('Missione completata', async () => {
-                if (!campaignId.trim()) {
-                  throw new Error('Campagna non attiva.')
-                }
-                await completeMission(campaignId, missionId)
-                await refreshMissions()
-              })
-            }
-            onCancelMission={(missionId) =>
-              run('Missione cancellata', async () => {
-                if (!campaignId.trim()) {
-                  throw new Error('Campagna non attiva.')
-                }
-                await cancelMission(campaignId, missionId)
-                await refreshMissions()
-              })
-            }
-          />
+          <MissionProvider value={missionContextValue}>
+            <MissionsPage />
+          </MissionProvider>
         )}
 
         {screen === 'Stanze' && (
-          <RoomsPage
-            rooms={rooms}
-            canCreateRoom={canCreateRoom}
-            onCreate={(payload) =>
-              run('Stanza creata', async () => {
-                const created = await createRoom(campaignId, payload)
-                setRooms((prev) => [created, ...prev])
-              })
-            }
-          />
+          <CampaignProvider value={campaignContextValue}>
+            <RoomsPage />
+          </CampaignProvider>
         )}
 
-        {screen === 'Log' && <LogPage events={events} />}
+        {screen === 'Log' && (
+          <UiProvider value={uiContextValue}>
+            <LogPage />
+          </UiProvider>
+        )}
 
         {screen === 'Profilo' && (
-          <ProfilePage
-            profile={profile}
-            onGoEdit={() => setScreen('Modifica Profilo')}
-          />
+          <UiProvider value={uiContextValue}>
+            <ProfileProvider value={profileContextValue}>
+              <ProfilePage />
+            </ProfileProvider>
+          </UiProvider>
         )}
 
         {screen === 'Modifica Profilo' && (
-          <EditProfilePage
-            key={profile.id}
-            profile={profile}
-            onSave={(draft) =>
-              run('Profilo aggiornato', async () => {
-                const updated = await updateMe(draft)
-                setProfile(updated)
-                setScreen('Profilo')
-              })
-            }
-            onChangePassword={(payload) =>
-              run('Password aggiornata', async () => {
-                const session = await changePassword(payload)
-                setProfile(session.user)
-              })
-            }
-          />
+          <ProfileProvider value={profileContextValue}>
+            <EditProfilePage key={profile.id} />
+          </ProfileProvider>
         )}
 
         {screen === 'Gestione Personaggi' && (
-          <CharacterListPage
-            characters={characters}
-            selectedCharacterId={selectedCharacterId}
-            canOpenCharacterSheet={canOpenCharacterSheet}
-            ownerProfileLabel={ownerProfileLabel}
-            campaignNameForCharacter={campaignNameForCharacter}
-            onSelectCharacter={(character) => {
-              if (!canOpenCharacterSheet(character)) {
-                setError('Permesso negato: puoi aprire solo PG/NPC tuoi o con ruolo adeguato.')
-                addEvent('Accesso Scheda PG negato per permessi', 'error')
-                return
-              }
-              setSelectedCharacterId(character.id)
-              setCharacterDetail(null)
-              setCharacterSheetDetail(null)
-              setScreen('Scheda PG')
-            }}
-            onCreateScreen={() => setScreen('Crea Personaggio')}
-            onReload={() =>
-              run('Lista personaggi caricata', async () => {
-                await loadCharactersForManagement()
-              })
-            }
-          />
+          <CharacterProvider value={characterContextValue}>
+            <CharacterListPage />
+          </CharacterProvider>
         )}
 
         {screen === 'Scheda PG' && (
-          <CharacterDetailPage
-            key={`${selectedCharacterId || 'no-character'}-${characterSheetDetail?.updatedAt || characterSheetDetail?.schemaVersion || 'no-sheet'}`}
-            character={selectedCharacter}
-            sheet={characterSheetDetail}
-            onRefresh={() => void refreshCharacterBlock()}
-            onSaveSheet={(dataJson) =>
-              run('Scheda personaggio salvata', async () => {
-                if (!selectedCharacterId) return
-                const detailCampaignId = selectedCharacter?.campaignId || campaignId
-                if (!detailCampaignId) return
-                const updated = await updateCharacterSheet(detailCampaignId, selectedCharacterId, { dataJson })
-                setCharacterSheetDetail(updated)
-              })
-            }
-            externalDetail={characterDetail}
-            ownerProfileLabel={ownerProfileLabel}
-            campaignNameForCharacter={campaignNameForCharacter}
-            canMarkCharacterDead={canMarkCharacterDead}
-            canReactivateCharacter={canReactivateCharacter}
-            onUpdateStatus={(status) =>
-              run('Stato personaggio aggiornato', async () => {
-                if (!selectedCharacter) return
-                const targetCampaignId = selectedCharacter.campaignId || campaignId
-                if (!targetCampaignId) return
-                const updated = await updateCharacterStatus(targetCampaignId, selectedCharacter.id, status)
-                setCharacters((prev) => prev.map((item) => (item.id === updated.id ? updated : item)))
-                setCharacterDetail(updated)
-                await refreshMissions()
-              })
-            }
-          />
+          <CharacterProvider value={characterContextValue}>
+            <CharacterDetailPage key={`${selectedCharacterId || 'no-character'}-${characterSheetDetail?.updatedAt || characterSheetDetail?.schemaVersion || 'no-sheet'}`} />
+          </CharacterProvider>
         )}
 
         {screen === 'Gestione Campagna' && (
-          <CampaignManagementPage
-            key={campaign?.id || 'empty-campaign-management'}
-            campaign={campaign}
-            availableModules={campaignModules}
-            availableGameSystems={campaignGameSystems}
-            permissions={permissions}
-            onSave={(payload) =>
-              campaign?.id &&
-              run('Campagna aggiornata', async () => {
-                const updated = await updateCampaign(campaign.id, payload)
-                setCampaign(updated)
-                setCampaignDetailsById((prev) => ({ ...prev, [updated.id]: updated }))
-                rememberCampaignMeta(updated.id, updated.name)
-                setMyCampaigns((prev) =>
-                  prev.map((item) =>
-                    item.campaignId === updated.id
-                      ? { ...item, campaignName: updated.name }
-                      : item,
-                  ),
-                )
-                setDiscoverableCampaigns((prev) =>
-                  prev.map((item) =>
-                    item.id === updated.id
-                      ? { ...item, name: updated.name, summary: updated.summary, description: updated.description }
-                      : item,
-                  ),
-                )
-                setScreen('Lista Campagne')
-              })
-            }
-            onRefreshPermissions={() =>
-              run('Checklist permessi aggiornata', async () => {
-                const actions = ['CREATE_ROOM', 'APPROVE_OR_REJECT_APPLICATIONS', 'TRANSFER_OWNERSHIP', 'MANAGE_CAMPAIGN_SETTINGS']
-                const settled = await Promise.all(actions.map(async (actionValue) => checkPermission(campaignId, actionValue)))
-                setPermissions(settled)
-              })
-            }
-            onTransfer={(newOwnerId) =>
-              run('Ownership trasferita', async () => {
-                const updated = await transferOwnership(campaignId, newOwnerId)
-                setCampaign(updated)
-                setCampaignDetailsById((prev) => ({ ...prev, [updated.id]: updated }))
-              })
-            }
-            onCreateInviteToken={(payload) =>
-              runResult('Token invito creato', async () => {
-                if (!campaignId.trim()) {
-                  throw new Error('Campagna non attiva.')
-                }
-                return createInviteToken(campaignId, payload)
-              })
-            }
-            currentUserId={profile.id}
-            onLeave={openLeaveCampaignModal}
-          />
+          <CampaignProvider value={campaignContextValue}>
+            <CampaignManagementPage key={campaign?.id || 'empty-campaign-management'} />
+          </CampaignProvider>
         )}
 
         {screen === 'Profilo Membro Campagna' && selectedCampaignMember && selectedCampaignMemberProfile && (
-          <CampaignMemberProfilePage
-            key={selectedCampaignMember.userId}
-            membership={selectedCampaignMember}
-            profile={selectedCampaignMemberProfile}
-            onRefresh={() =>
-              run('Profilo membro aggiornato', async () => {
-                if (!campaignId.trim()) return
-                const [membership, allMembers] = await Promise.all([
-                  getCampaignMember(campaignId, selectedCampaignMember.userId),
-                  listCampaignMembersForManagement(campaignId).catch(() => campaignMembersForManagement),
-                ])
-                setSelectedCampaignMember(membership)
-                setCampaignMembersForManagement(allMembers)
-              })
-            }
-            onUpdateRole={(role) =>
-              run('Ruolo membro aggiornato', async () => {
-                if (!campaignId.trim()) return
-                const [updated, approvedMembers, allMembers] = await Promise.all([
-                  updateCampaignMemberRole(campaignId, selectedCampaignMember.userId, role),
-                  getCampaignMembers(campaignId),
-                  listCampaignMembersForManagement(campaignId).catch(() => campaignMembersForManagement),
-                ])
-                setSelectedCampaignMember(updated)
-                setMembers(approvedMembers)
-                setCampaignMembersForManagement(allMembers)
-              })
-            }
-            onBan={(reason) =>
-              run('Membro bannato', async () => {
-                if (!campaignId.trim()) return
-                const [updated, approvedMembers, allMembers] = await Promise.all([
-                  banCampaignMember(campaignId, selectedCampaignMember.userId, reason),
-                  getCampaignMembers(campaignId),
-                  listCampaignMembersForManagement(campaignId).catch(() => campaignMembersForManagement),
-                ])
-                setSelectedCampaignMember(updated)
-                setMembers(approvedMembers)
-                setCampaignMembersForManagement(allMembers)
-              })
-            }
-            onUnban={() =>
-              run('Membro sbloccato', async () => {
-                if (!campaignId.trim()) return
-                const [updated, approvedMembers, allMembers] = await Promise.all([
-                  unbanCampaignMember(campaignId, selectedCampaignMember.userId),
-                  getCampaignMembers(campaignId),
-                  listCampaignMembersForManagement(campaignId).catch(() => campaignMembersForManagement),
-                ])
-                setSelectedCampaignMember(updated)
-                setMembers(approvedMembers)
-                setCampaignMembersForManagement(allMembers)
-              })
-            }
-            onSuspend={(reason) =>
-              run('Membro sospeso', async () => {
-                if (!campaignId.trim()) return
-                const [updated, approvedMembers, allMembers] = await Promise.all([
-                  suspendCampaignMember(campaignId, selectedCampaignMember.userId, reason),
-                  getCampaignMembers(campaignId),
-                  listCampaignMembersForManagement(campaignId).catch(() => campaignMembersForManagement),
-                ])
-                setSelectedCampaignMember(updated)
-                setMembers(approvedMembers)
-                setCampaignMembersForManagement(allMembers)
-              })
-            }
-            onUnsuspend={() =>
-              run('Membro riattivato', async () => {
-                if (!campaignId.trim()) return
-                const [updated, approvedMembers, allMembers] = await Promise.all([
-                  unsuspendCampaignMember(campaignId, selectedCampaignMember.userId),
-                  getCampaignMembers(campaignId),
-                  listCampaignMembersForManagement(campaignId).catch(() => campaignMembersForManagement),
-                ])
-                setSelectedCampaignMember(updated)
-                setMembers(approvedMembers)
-                setCampaignMembersForManagement(allMembers)
-              })
-            }
-            onApprove={() =>
-              run('Membro approvato', async () => {
-                if (!campaignId.trim()) return
-                const [updated, approvedMembers, allMembers] = await Promise.all([
-                  approveCampaignMember(campaignId, selectedCampaignMember.userId),
-                  getCampaignMembers(campaignId),
-                  listCampaignMembersForManagement(campaignId).catch(() => campaignMembersForManagement),
-                ])
-                setSelectedCampaignMember(updated)
-                setMembers(approvedMembers)
-                setCampaignMembersForManagement(allMembers)
-              })
-            }
-          />
+          <CampaignProvider value={campaignContextValue}>
+            <CampaignMemberProfilePage key={selectedCampaignMember.userId} />
+          </CampaignProvider>
         )}
 
         {screen === 'Seleziona PG' && (
-          <SelectCharacterPage
-            key={`${activeCampaignCharacterId || 'no-preferred'}-${characters.map((character) => character.id).join('|')}`}
-            characters={characters}
-            preferredCharacterId={activeCampaignCharacterId}
-            onApply={(characterId) =>
-              run('Apply con personaggio inviato', async () => {
-                await applyToCampaign(campaignId, characterId)
-              })
-            }
-          />
+          <CharacterProvider value={characterContextValue}>
+            <SelectCharacterPage key={`${activeCampaignCharacterId || 'no-preferred'}-${characters.map((character) => character.id).join('|')}`} />
+          </CharacterProvider>
         )}
 
         {screen === 'Crea Personaggio' && (
-          <CreateCharacterPage
-            key={`${canCreatePlayerCharacter}-${canCreateNpc}`}
-            hasActiveCampaign={hasActiveCampaign}
-            canCreatePlayerCharacter={canCreatePlayerCharacter}
-            canCreateNpc={canCreateNpc}
-            onCreate={(payload) =>
-              run('Personaggio creato', async () => {
-                const created = await createCharacter(campaignId, payload)
-                setCharacters((prev) => [created, ...prev])
-                setSelectedCharacterId(created.id)
-                setScreen('Gestione Personaggi')
-              })
-            }
-          />
+          <CharacterProvider value={characterContextValue}>
+            <CreateCharacterPage key={`${canCreatePlayerCharacter}-${canCreateNpc}`} />
+          </CharacterProvider>
         )}
-        {isCampaignPickerOpen && (
-          <CampaignPickerModal
-            campaigns={selectableCampaigns}
-            targetScreen={campaignPickerTarget}
-            busy={busy}
-            onClose={
-              !hasActiveCampaign && (campaignPickerTarget === 'Scheda Campagna' || campaignPickerTarget === 'Gestione Campagna')
-                ? closeCampaignPickerAndGoHome
-                : closeCampaignPicker
-            }
-            onSelect={(campaignItem) => void activateCampaignFromPicker(campaignItem)}
-          />
-        )}
-
         {isLeaveCampaignOpen && (
           <LeaveCampaignModal
             context={{

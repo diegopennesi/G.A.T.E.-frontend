@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useCharacterContext } from '../../../context'
 import { Icon } from '../../../shared/components'
 import {
   getSheetBlocks,
@@ -9,31 +10,21 @@ import {
   sheetValueAsText,
   statusTone,
 } from '../../../shared/utils'
-import type { Character, CharacterSheetResponse, CharacterStatus, SheetSchemaBlock, SheetSchemaField } from '../../../types/domain'
+import type { CharacterStatus, SheetSchemaBlock, SheetSchemaField } from '../../../types/domain'
 
-export function CharacterDetailPage({
-  character,
-  externalDetail,
-  sheet,
-  ownerProfileLabel,
-  campaignNameForCharacter,
-  canMarkCharacterDead,
-  canReactivateCharacter,
-  onRefresh,
-  onUpdateStatus,
-  onSaveSheet,
-}: {
-  character: Character | null
-  externalDetail: Character | null
-  sheet: CharacterSheetResponse | null
-  ownerProfileLabel: (userId: string | null, ownerProfileName?: string | null) => string
-  campaignNameForCharacter: (character: Character) => string
-  canMarkCharacterDead: (character: Character | null) => boolean
-  canReactivateCharacter: (character: Character | null) => boolean
-  onRefresh: () => void
-  onUpdateStatus: (status: CharacterStatus) => void
-  onSaveSheet: (dataJson: Record<string, unknown>) => Promise<void>
-}) {
+export function CharacterDetailPage() {
+  const {
+    selectedCharacter: character,
+    characterDetail: externalDetail,
+    characterSheetDetail: sheet,
+    ownerProfileLabel,
+    campaignNameForCharacter,
+    canMarkCharacterDead,
+    canReactivateCharacter,
+    refreshCharacterDetail: onRefresh,
+    updateCharacterStatus: onUpdateStatus,
+    saveCharacterSheet: onSaveSheet,
+  } = useCharacterContext()
   const value = externalDetail || character
   const [status, setStatus] = useState<CharacterStatus>(value?.characterStatus || 'ACTIVE')
   const [sheetDraft, setSheetDraft] = useState<Record<string, unknown>>(() => sheet?.dataJson || {})

@@ -3,6 +3,10 @@ import { SCREEN_PATH_SEGMENTS } from '../types/ui'
 
 export const DEFAULT_REALM_CODE = 'gate'
 
+// Router manuale intenzionale.
+// Il progetto non usa react-router-dom per scelta architetturale: il path FE
+// rappresenta anche il contesto realm e deve restare controllato da queste
+// funzioni pure, senza introdurre una dipendenza di routing esterna.
 const SCREEN_BY_PATH_SEGMENT = Object.fromEntries(
   Object.entries(SCREEN_PATH_SEGMENTS).map(([screen, segment]) => [segment, screen as Screen]),
 ) as Record<string, Screen>

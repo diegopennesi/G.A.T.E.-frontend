@@ -1,11 +1,9 @@
 import { useMemo, useState } from 'react'
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
+import { useMissionContext } from '../../../context'
 import { MissionChatPanel } from '../../chat'
 import { DataTable, FieldLabel, Icon } from '../../../shared/components'
 import type {
-  CampaignRole,
-  MissionChatResponse,
-  MissionParticipantResponse,
   MissionParticipationType,
   MissionResponse,
   MissionStatusReason,
@@ -301,79 +299,40 @@ function draftFromMission(mission: MissionResponse): MissionDraft {
   }
 }
 
-export function MissionsPage({
-  missions,
-  selectedMission,
-  canCreateMissions,
-  activeCampaignId,
-  activeCampaignRole,
-  activeCampaignCharacterId,
-  campaignNameById,
-  campaignGameSystemById,
-  campaignCanBeOpenedById,
-  missionParticipantsById,
-  missionParticipantLabelByUserId,
-  missionParticipantCharacterLabelById,
-  myMissionParticipationById,
-  currentUserId,
-  selectedMissionChatId,
-  missionChat,
-  missionChatBusy,
-  missionChatError,
-  onCreate,
-  onSelectMission,
-  onOpenMissionChat,
-  onCloseMissionChat,
-  onSendMissionChatMessage,
-  onJoinMission,
-  onLeaveMission,
-  onOpenCampaign,
-  onBrowseCampaigns,
-  onCreateCharacter,
-  onUpdateMission,
-  onCompleteMission,
-  onCancelMission,
-}: {
-  missions: MissionResponse[]
-  selectedMission: MissionResponse | null
-  canCreateMissions: boolean
-  activeCampaignId: string
-  activeCampaignRole: CampaignRole | null
-  activeCampaignCharacterId: string
-  campaignNameById: Record<string, string>
-  campaignGameSystemById: Record<string, string>
-  campaignCanBeOpenedById: Record<string, boolean>
-  missionParticipantsById: Record<string, MissionParticipantResponse[]>
-  missionParticipantLabelByUserId: Record<string, string>
-  missionParticipantCharacterLabelById: Record<string, string>
-  myMissionParticipationById: Record<string, MissionParticipationType>
-  currentUserId: string
-  selectedMissionChatId: string | null
-  missionChat: MissionChatResponse | null
-  missionChatBusy: boolean
-  missionChatError: string
-  onCreate: (payload: Required<Pick<MissionPayload, 'title'>> & {
-    description: string
-    isMultiSession: boolean
-    sessionAt: string
-    closesAt: string
-    quorum: number | null
-    maxParticipants: number | null
-    autoReopenOnDrop: boolean
-  }) => void
-  onSelectMission: (id: string) => void
-  onOpenMissionChat: (campaignId: string, missionId: string) => void
-  onCloseMissionChat: () => void
-  onSendMissionChatMessage: (body: string) => void
-  onJoinMission: (missionId: string, participationType: MissionParticipationType) => void
-  onLeaveMission: (missionId: string) => void
-  onOpenCampaign: (campaignId: string) => void
-  onBrowseCampaigns: () => void
-  onCreateCharacter: () => void
-  onUpdateMission: (missionId: string, payload: MissionPayload) => void
-  onCompleteMission: (missionId: string) => void
-  onCancelMission: (missionId: string) => void
-}) {
+export function MissionsPage() {
+  const {
+    missions,
+    selectedMission,
+    canCreateMissions,
+    activeCampaignId,
+    activeCampaignRole,
+    activeCampaignCharacterId,
+    campaignNameById,
+    campaignGameSystemById,
+    campaignCanBeOpenedById,
+    missionParticipantsById,
+    missionParticipantLabelByUserId,
+    missionParticipantCharacterLabelById,
+    myMissionParticipationById,
+    currentUserId,
+    selectedMissionChatId,
+    missionChat,
+    missionChatBusy,
+    missionChatError,
+    createMission: onCreate,
+    selectMission: onSelectMission,
+    openMissionChat: onOpenMissionChat,
+    closeMissionChat: onCloseMissionChat,
+    sendMissionChatMessage: onSendMissionChatMessage,
+    joinMission: onJoinMission,
+    leaveMission: onLeaveMission,
+    openMissionCampaign: onOpenCampaign,
+    browseCampaigns: onBrowseCampaigns,
+    openCreateCharacter: onCreateCharacter,
+    updateMission: onUpdateMission,
+    completeMission: onCompleteMission,
+    cancelMission: onCancelMission,
+  } = useMissionContext()
   const [mode, setMode] = useState<'browse' | 'create'>('browse')
   const [createDraft, setCreateDraft] = useState<MissionDraft>(defaultDraft)
   const [createError, setCreateError] = useState('')

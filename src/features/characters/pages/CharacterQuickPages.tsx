@@ -1,16 +1,9 @@
 import { useState } from 'react'
+import { useCharacterContext } from '../../../context'
 import { FieldLabel, Icon } from '../../../shared/components'
-import type { Character } from '../../../types/domain'
 
-export function SelectCharacterPage({
-  characters,
-  preferredCharacterId,
-  onApply,
-}: {
-  characters: Character[]
-  preferredCharacterId: string
-  onApply: (characterId: string) => void
-}) {
+export function SelectCharacterPage() {
+  const { characters, preferredCharacterId, applyCharacterToCampaign: onApply } = useCharacterContext()
   const [characterId, setCharacterId] = useState(() => {
     if (preferredCharacterId && characters.some((character) => character.id === preferredCharacterId)) {
       return preferredCharacterId
@@ -38,17 +31,8 @@ export function SelectCharacterPage({
   )
 }
 
-export function CreateCharacterPage({
-  hasActiveCampaign,
-  canCreatePlayerCharacter,
-  canCreateNpc,
-  onCreate,
-}: {
-  hasActiveCampaign: boolean
-  canCreatePlayerCharacter: boolean
-  canCreateNpc: boolean
-  onCreate: (payload: { name: string; nickname?: string; portraitUrl?: string; isNpc?: boolean }) => void
-}) {
+export function CreateCharacterPage() {
+  const { hasActiveCampaign, canCreatePlayerCharacter, canCreateNpc, createCharacter: onCreate } = useCharacterContext()
   const [name, setName] = useState('Nuovo PG')
   const [nickname, setNickname] = useState('')
   const [portraitUrl, setPortraitUrl] = useState('')

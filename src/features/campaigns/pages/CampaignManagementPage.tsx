@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useCampaignContext } from '../../../context'
 import { DataTable, FieldLabel, Icon } from '../../../shared/components'
 import {
   CAMPAIGN_MODULE_HIDDEN_CODES,
@@ -11,8 +12,6 @@ import {
 } from '../../../shared/utils'
 import type {
   CampaignCatalogEntry,
-  CampaignPermissionResponse,
-  CampaignResponse,
   CreateInviteTokenRequest,
   InviteTokenResponse,
 } from '../../../types/domain'
@@ -150,41 +149,19 @@ function CampaignToggleSettingsTable({
   )
 }
 
-export function CampaignManagementPage({
-  campaign,
-  availableModules,
-  availableGameSystems,
-  permissions,
-  onSave,
-  onRefreshPermissions,
-  onTransfer,
-  onCreateInviteToken,
-  currentUserId,
-  onLeave,
-}: {
-  campaign: CampaignResponse | null
-  availableModules: CampaignCatalogEntry[]
-  availableGameSystems: CampaignCatalogEntry[]
-  permissions: CampaignPermissionResponse[]
-  onSave: (payload: {
-    name: string
-    description: string
-    summary: string
-    setting: string
-    tone: string
-    rules: string
-    requirements: string
-    coverImageUrl: string
-    isOpen: boolean
-    isSearchable: boolean
-    allowedModules: string[]
-  }) => void
-  onRefreshPermissions: () => void
-  onTransfer: (newOwnerUserId: string) => void
-  onCreateInviteToken: (payload: CreateInviteTokenRequest) => Promise<InviteTokenResponse>
-  currentUserId: string
-  onLeave: () => void
-}) {
+export function CampaignManagementPage() {
+  const {
+    campaign,
+    availableModules,
+    availableGameSystems,
+    permissions,
+    saveCampaign: onSave,
+    refreshPermissionChecklist: onRefreshPermissions,
+    transferCampaignOwnership: onTransfer,
+    createCampaignInviteToken: onCreateInviteToken,
+    currentUserId,
+    leaveCurrentCampaign: onLeave,
+  } = useCampaignContext()
   const [newOwnerUserId, setNewOwnerUserId] = useState('')
   const [inviteCopyFeedback, setInviteCopyFeedback] = useState('')
   const [inviteTokenAutoJoin, setInviteTokenAutoJoin] = useState(false)

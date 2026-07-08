@@ -1,17 +1,13 @@
+import { useCampaignContext } from '../../../context'
 import { DataTable } from '../../../shared/components'
-import type { CampaignApplicationResponse } from '../../../types/domain'
 
-export function ApprovalPage({
-  pendingApplications,
-  onLoadPending,
-  onApprove,
-  onReject,
-}: {
-  pendingApplications: CampaignApplicationResponse[]
-  onLoadPending: () => void
-  onApprove: (userId: string) => void
-  onReject: (userId: string) => void
-}) {
+export function ApprovalPage() {
+  const {
+    pendingApplications,
+    loadPendingApplications: onLoadPending,
+    approvePendingApplication: onApprove,
+    rejectPendingApplication: onReject,
+  } = useCampaignContext()
   return (
     <section className="panel">
       <h2>Approvazione Accessi</h2>

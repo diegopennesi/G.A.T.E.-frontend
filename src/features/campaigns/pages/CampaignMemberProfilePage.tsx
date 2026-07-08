@@ -1,31 +1,24 @@
 import { useState } from 'react'
+import { useCampaignContext } from '../../../context'
 import { FieldLabel, Icon } from '../../../shared/components'
-import type { CampaignMembershipResponse, CampaignRole, UserProfile } from '../../../types/domain'
+import type { CampaignRole } from '../../../types/domain'
 
-export function CampaignMemberProfilePage({
-  membership,
-  profile,
-  onRefresh,
-  onUpdateRole,
-  onBan,
-  onSuspend,
-  onUnsuspend,
-  onUnban,
-  onApprove,
-}: {
-  membership: CampaignMembershipResponse
-  profile: UserProfile
-  onRefresh: () => void
-  onUpdateRole: (role: CampaignRole) => void
-  onBan: (reason: string) => void
-  onSuspend: (reason: string) => void
-  onUnsuspend: () => void
-  onUnban: () => void
-  onApprove: () => void
-}) {
-  const [role, setRole] = useState<CampaignRole>(membership.role)
+export function CampaignMemberProfilePage() {
+  const {
+    selectedCampaignMember: membership,
+    selectedCampaignMemberProfile: profile,
+    refreshSelectedCampaignMember: onRefresh,
+    updateSelectedMemberRole: onUpdateRole,
+    banSelectedMember: onBan,
+    suspendSelectedMember: onSuspend,
+    unsuspendSelectedMember: onUnsuspend,
+    unbanSelectedMember: onUnban,
+    approveSelectedMember: onApprove,
+  } = useCampaignContext()
+  const [role, setRole] = useState<CampaignRole>(membership?.role || 'GIOCATORE')
   const [moderationMode, setModerationMode] = useState<'suspend' | 'ban' | null>(null)
   const [moderationReason, setModerationReason] = useState('')
+  if (!membership || !profile) return null
 
   const roleOptions: CampaignRole[] = ['GIOCATORE', 'CO_MASTER', 'MASTER']
   const activityLabel =

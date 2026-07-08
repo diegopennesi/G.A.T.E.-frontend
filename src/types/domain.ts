@@ -377,6 +377,9 @@ export interface CampaignInvitePreviewResponse {
 export interface AdminCampaignListItem {
   id: string
   name: string
+  realmId: string
+  realmCode: string
+  realmName: string
   founderId: string
   founderProfileName: string
   isOpen: boolean

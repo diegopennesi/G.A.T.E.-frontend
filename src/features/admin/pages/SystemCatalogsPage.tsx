@@ -1,32 +1,21 @@
 import { Fragment, useEffect, useState } from 'react'
+import { useAdminContext } from '../../../context'
 import { FieldLabel, Icon } from '../../../shared/components'
 import type {
-  AdminGameSystemUpsertRequest,
-  AdminSheetTypeUpsertRequest,
-  CampaignCatalogEntry,
   SheetEntityType,
-  SheetTypeCatalogEntry,
 } from '../../../types/domain'
 
-export function SystemCatalogsPage({
-  busy,
-  gameSystems,
-  sheetTypes,
-  onRefresh,
-  onCreateGameSystem,
-  onSaveGameSystem,
-  onCreateSheetType,
-  onSaveSheetType,
-}: {
-  busy: boolean
-  gameSystems: CampaignCatalogEntry[]
-  sheetTypes: SheetTypeCatalogEntry[]
-  onRefresh: () => void
-  onCreateGameSystem: (payload: AdminGameSystemUpsertRequest) => Promise<void>
-  onSaveGameSystem: (code: string, payload: AdminGameSystemUpsertRequest) => Promise<void>
-  onCreateSheetType: (payload: AdminSheetTypeUpsertRequest) => Promise<void>
-  onSaveSheetType: (code: string, payload: AdminSheetTypeUpsertRequest) => Promise<void>
-}) {
+export function SystemCatalogsPage() {
+  const {
+    busy,
+    gameSystems,
+    sheetTypes,
+    refreshSystemCatalogs: onRefresh,
+    createGameSystem: onCreateGameSystem,
+    saveGameSystem: onSaveGameSystem,
+    createSheetType: onCreateSheetType,
+    saveSheetType: onSaveSheetType,
+  } = useAdminContext()
   type GameSystemDraft = {
     code: string
     label: string
