@@ -78,7 +78,7 @@ Rimossi tutti gli import inutilizzati dopo l'estrazione.
 
 ---
 
-## Priority 2 — Minor Issues ⚠️ PARTIAL
+## Priority 2 — Minor Issues ✅ DONE
 
 ### 2.1 ✅ `isUnauthorized` spostato in `src/shared/utils.ts`
 
@@ -87,7 +87,7 @@ Rimossi tutti gli import inutilizzati dopo l'estrazione.
 ### 2.3 ✅ URL routing ad-hoc documentato
 `resolveRealmContextFromPath` e `buildPathForState` in `src/shared/routing.ts` implementano
 un router manuale senza `react-router-dom` (non installato).
-Aggiungere commento architetturale che documenta questa scelta intenzionale.
+Il commento architetturale che documenta questa scelta intenzionale è stato aggiunto.
 
 ### 2.4 ✅ `LeaveCampaignContext` spostato in `src/types/ui.ts`
 
@@ -157,7 +157,7 @@ Page migrate a consumo diretto dei context:
 - Verifica eseguita:
   - `npm run build` → OK VERIFIED
   - `npm run lint` → OK VERIFIED
-  - `smoke-campaign-create.spec.ts` → 🧪 da riallineare al flusso auth corrente, non usato come verifica del refit campagne
+  - `smoke-campaign-create.spec.ts` → OK VERIFIED
 
 ---
 

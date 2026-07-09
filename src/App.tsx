@@ -1510,7 +1510,14 @@ function App() {
     setMyMissionParticipationById(nextMyParticipationById)
     setMissionParticipantCharacterLabelById(characterLabels)
 
-    const missingUserIds = Array.from(participantUserIds).filter((userId) => userId !== profile?.id && !memberNames[userId])
+    const creatorUserIds = new Set(
+      nextMissions
+        .map((mission) => mission.createdBy)
+        .filter((userId) => userId !== profile?.id && !memberNames[userId]),
+    )
+    const missingUserIds = Array.from(new Set([...participantUserIds, ...creatorUserIds])).filter(
+      (userId) => userId !== profile?.id && !memberNames[userId],
+    )
     if (missingUserIds.length > 0) {
       const settledProfiles = await Promise.allSettled(missingUserIds.map((userId) => getPublicProfile(userId)))
       setMemberNames((prev) => {

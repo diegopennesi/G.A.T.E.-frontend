@@ -614,6 +614,9 @@ export function MissionsPage() {
       typeof selectedMission.quorum === 'number' &&
       selectedMission.participantCount < selectedMission.quorum
     const selectedMissionParticipants = missionParticipantsById[selectedMission.id] || []
+    const selectedMissionCreatorLabel =
+      missionParticipantLabelByUserId[selectedMission.createdBy] ||
+      (selectedMission.createdBy === currentUserId ? 'Tu' : selectedMission.createdBy)
     const sortedSelectedMissionParticipants = [...selectedMissionParticipants].sort((left, right) => {
       const compareText = (leftValue: string | null | undefined, rightValue: string | null | undefined) =>
         (leftValue || '').localeCompare(rightValue || '', 'it-IT', { sensitivity: 'base', numeric: true })
@@ -670,6 +673,7 @@ export function MissionsPage() {
     const selectedMissionCanOpenChat = canOpenMissionChat(selectedMission)
     const detailRows: MissionDetailRow[] = [
       { key: 'title', label: 'Titolo', value: selectedMission.title },
+      { key: 'creator', label: 'Creatore', value: selectedMissionCreatorLabel },
       { key: 'session', label: 'Sessione', value: formatMissionDateTime(selectedMission.sessionAt) },
       { key: 'closing', label: 'Chiusura', value: formatMissionDateTime(selectedMission.closesAt) },
       { key: 'capacity', label: 'Partecipanti', value: formatMissionParticipants(selectedMission) },
