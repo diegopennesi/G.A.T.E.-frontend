@@ -9,6 +9,7 @@ type MissionChatPanelProps = {
   currentUserId: string
   onClose: () => void
   onSend: (body: string) => void
+  showCloseAction?: boolean
 }
 
 function formatChatTimestamp(value: string) {
@@ -39,7 +40,7 @@ function formatAuthorBadge(value: string) {
   }
 }
 
-export function MissionChatPanel({ chat, busy, error, currentUserId, onClose, onSend }: MissionChatPanelProps) {
+export function MissionChatPanel({ chat, busy, error, currentUserId, onClose, onSend, showCloseAction = true }: MissionChatPanelProps) {
   const [draft, setDraft] = useState('')
   const canSend = draft.trim().length > 0 && !busy && Boolean(chat)
 
@@ -50,12 +51,14 @@ export function MissionChatPanel({ chat, busy, error, currentUserId, onClose, on
           <h3 className="section-title">{chat?.room.title || 'Chat missione'}</h3>
           <p className="muted">Bacheca della missione visibile solo a creatore, titolari e panchina.</p>
         </div>
-        <div className="inline-actions">
-          <button type="button" className="mission-chat-action-btn mission-chat-summary-btn" onClick={onClose}>
-            <Icon name="fa-solid fa-table-list" />
-            Riepilogo
-          </button>
-        </div>
+        {showCloseAction && (
+          <div className="inline-actions">
+            <button type="button" className="mission-chat-action-btn mission-chat-summary-btn" onClick={onClose}>
+              <Icon name="fa-solid fa-table-list" />
+              Riepilogo
+            </button>
+          </div>
+        )}
       </div>
 
       {error && <p className="form-error">{error}</p>}

@@ -400,6 +400,7 @@ function App() {
   const isSystemSession = isSystemRole
   const effectiveTheme: EffectiveThemeMode = isSystemRole ? 'sysadmin' : theme
   const welcomeProfileName = profile?.profileName?.trim() || profile?.username?.trim() || 'profilo'
+  const profileAvatarLabel = welcomeProfileName.slice(0, 1).toUpperCase()
   const activeUserId = profile?.id ?? null
   const brandTitle = realmBranding?.name || DEFAULT_APP_TITLE
   const brandLogoUrl = realmBranding?.logoUrl || null
@@ -4512,18 +4513,28 @@ function App() {
 
       <aside className={`sidebar-drawer ${isSidebarOpen ? 'is-open' : ''}`}>
         <div className="sidebar-top">
-          <div className="brand">
-            <div className="brand-mark">
-              {brandLogoUrl ? <img className="brand-logo-image" src={brandLogoUrl} alt={brandTitle} /> : <Icon name="fa-solid fa-dungeon" />}
+          <div className="sidebar-user sidebar-user-top">
+            <div className="sidebar-user-avatar" aria-hidden="true">
+              {profileAvatarLabel}
             </div>
-            <div>
-              <p className="brand-title">{brandTitle}</p>
-              <p className="brand-subtitle">Benvenuto {welcomeProfileName}</p>
+            <div className="sidebar-user-copy">
+              <p className="sidebar-user-name">{welcomeProfileName}</p>
+              <p className="sidebar-user-role">Profilo</p>
             </div>
           </div>
           <button type="button" className="drawer-close-btn" onClick={() => setIsSidebarOpen(false)}>
             <Icon name="fa-solid fa-xmark" />
           </button>
+        </div>
+
+        <div className="brand brand-realm-block">
+          <div className="brand-mark brand-mark-emphasis">
+            {brandLogoUrl ? <img className="brand-logo-image" src={brandLogoUrl} alt={brandTitle} /> : <Icon name="fa-solid fa-dungeon" />}
+          </div>
+          <div>
+            <p className="brand-title brand-title-realm">{brandTitle}</p>
+            <p className="brand-subtitle brand-subtitle-realm">Realm attivo</p>
+          </div>
         </div>
 
         <div className="sidebar-context">

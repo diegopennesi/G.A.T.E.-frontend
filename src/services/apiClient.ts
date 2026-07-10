@@ -1,4 +1,5 @@
 import type { ErrorPayload } from '../types/domain'
+import { hideLoading, showLoading } from './loadingOverlay'
 
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() || 'http://localhost:8080/api/v1'
 
@@ -76,24 +77,29 @@ async function parseError(response: Response): Promise<ApiError> {
 }
 
 async function runRefresh() {
+  const loadingId = showLoading('Aggiornamento sessione')
   const refreshToken = getRefreshToken()
-  if (!refreshToken) {
-    throw new ApiError('Sessione scaduta.', 401)
+  try {
+    if (!refreshToken) {
+      throw new ApiError('Sessione scaduta.', 401)
+    }
+
+    const response = await fetch(`${BASE_URL}/auth/refresh`, {
+      method: 'POST',
+      headers: buildHeaders(undefined, true),
+      body: JSON.stringify({ refreshToken }),
+    })
+
+    if (!response.ok) {
+      clearTokens()
+      throw await parseError(response)
+    }
+
+    const data = (await response.json()) as { accessToken: string; refreshToken: string }
+    setTokens(data.accessToken, data.refreshToken)
+  } finally {
+    hideLoading(loadingId)
   }
-
-  const response = await fetch(`${BASE_URL}/auth/refresh`, {
-    method: 'POST',
-    headers: buildHeaders(undefined, true),
-    body: JSON.stringify({ refreshToken }),
-  })
-
-  if (!response.ok) {
-    clearTokens()
-    throw await parseError(response)
-  }
-
-  const data = (await response.json()) as { accessToken: string; refreshToken: string }
-  setTokens(data.accessToken, data.refreshToken)
 }
 
 async function ensureRefreshed() {
@@ -119,32 +125,36 @@ export async function apiRequest<T>(
     realm?: boolean
   },
 ): Promise<T> {
+  const loadingId = showLoading(options?.method === 'GET' ? 'Caricamento dati' : 'Salvataggio in corso')
   const method = options?.method ?? 'GET'
   const auth = options?.auth ?? true
   const retryOn401 = options?.retryOn401 ?? true
   const realm = options?.realm ?? true
   const token = auth ? getAccessToken() || undefined : undefined
   const hasBody = options?.body !== undefined
+  try {
+    const response = await fetch(`${BASE_URL}${path}`, {
+      method,
+      headers: buildHeaders(token, hasBody, realm),
+      body: hasBody ? JSON.stringify(options?.body) : undefined,
+    })
 
-  const response = await fetch(`${BASE_URL}${path}`, {
-    method,
-    headers: buildHeaders(token, hasBody, realm),
-    body: hasBody ? JSON.stringify(options?.body) : undefined,
-  })
-
-  if (!response.ok) {
-    if (response.status === 401 && auth && retryOn401 && getRefreshToken()) {
-      await ensureRefreshed()
-      return apiRequest<T>(path, { ...options, retryOn401: false, realm })
+    if (!response.ok) {
+      if (response.status === 401 && auth && retryOn401 && getRefreshToken()) {
+        await ensureRefreshed()
+        return apiRequest<T>(path, { ...options, retryOn401: false, realm })
+      }
+      throw await parseError(response)
     }
-    throw await parseError(response)
-  }
 
-  if (response.status === 204) {
-    return undefined as T
-  }
+    if (response.status === 204) {
+      return undefined as T
+    }
 
-  return (await response.json()) as T
+    return (await response.json()) as T
+  } finally {
+    hideLoading(loadingId)
+  }
 }
 
 export function getApiBaseUrl() {

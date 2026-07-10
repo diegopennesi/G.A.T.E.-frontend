@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react'
+import { Skeleton } from 'primereact/skeleton'
 import { useCampaignContext } from '../../../context'
 import { DataTable, FieldLabel, Icon } from '../../../shared/components'
 import { toMessage } from '../../../shared/utils'
 import type { InviteAccessPreview } from '../../../types/ui'
 import type { CampaignRole } from '../../../types/domain'
 import { CampaignAccessBadge, CampaignOpenBadge, CampaignStatusBadge } from '../components'
+import { useLoadingOverlayState } from '../../../services/loadingOverlay'
 
 export function CampaignListPage() {
   const {
@@ -27,6 +29,8 @@ export function CampaignListPage() {
   const [invitePreview, setInvitePreview] = useState<InviteAccessPreview | null>(null)
   const [inviteFeedback, setInviteFeedback] = useState('')
   const [inviteBusy, setInviteBusy] = useState(false)
+  const { pendingCount } = useLoadingOverlayState()
+  const showLoadingSkeleton = pendingCount > 0 && campaigns.length === 0
 
   const filteredCampaigns = useMemo(() => {
     return campaigns.filter((item) => {
@@ -116,26 +120,39 @@ export function CampaignListPage() {
         <div className="campaign-invite-form">
           <label className="campaign-invite-input">
             <FieldLabel icon="fa-solid fa-key" label="Codice o token" />
-            <input
-              className="invite-code-input"
-              value={inviteValue}
-              placeholder="Incolla un UUID o un token invito"
-              onChange={(event) => {
-                setInviteValue(event.target.value)
-                if (inviteFeedback) setInviteFeedback('')
-                if (invitePreview) setInvitePreview(null)
-              }}
-            />
+            {showLoadingSkeleton ? (
+              <Skeleton height="2.75rem" borderRadius="8px" />
+            ) : (
+              <input
+                className="invite-code-input"
+                value={inviteValue}
+                placeholder="Incolla un UUID o un token invito"
+                onChange={(event) => {
+                  setInviteValue(event.target.value)
+                  if (inviteFeedback) setInviteFeedback('')
+                  if (invitePreview) setInvitePreview(null)
+                }}
+              />
+            )}
           </label>
           <div className="campaign-invite-actions">
-            <button type="button" className="secondary-btn" onClick={previewCampaignByCode} disabled={inviteBusy}>
-              <Icon name="fa-solid fa-magnifying-glass" />
-              Verifica
-            </button>
-            <button type="button" className="primary-btn" onClick={applyCampaignByCode} disabled={inviteBusy}>
-              <Icon name="fa-solid fa-paper-plane" />
-              Richiedi accesso
-            </button>
+            {showLoadingSkeleton ? (
+              <>
+                <Skeleton width="8rem" height="2.75rem" borderRadius="8px" />
+                <Skeleton width="10rem" height="2.75rem" borderRadius="8px" />
+              </>
+            ) : (
+              <>
+                <button type="button" className="secondary-btn" onClick={previewCampaignByCode} disabled={inviteBusy}>
+                  <Icon name="fa-solid fa-magnifying-glass" />
+                  Verifica
+                </button>
+                <button type="button" className="primary-btn" onClick={applyCampaignByCode} disabled={inviteBusy}>
+                  <Icon name="fa-solid fa-paper-plane" />
+                  Richiedi accesso
+                </button>
+              </>
+            )}
           </div>
         </div>
         {inviteFeedback && <p className="muted campaign-invite-feedback">{inviteFeedback}</p>}
@@ -165,28 +182,44 @@ export function CampaignListPage() {
       <div className="campaign-list-filters">
         <label className="campaign-list-filter">
           <FieldLabel icon="fa-solid fa-filter" label="Stato membership" />
-          <select value={membershipFilter} onChange={(event) => setMembershipFilter(event.target.value as typeof membershipFilter)}>
-            <option value="all">Tutte</option>
-            <option value="inside">Dentro</option>
-            <option value="outside">Fuori</option>
-            <option value="pending">In attesa</option>
-            <option value="blocked">Bloccate</option>
-          </select>
+          {showLoadingSkeleton ? (
+            <Skeleton height="2.75rem" borderRadius="8px" />
+          ) : (
+            <select value={membershipFilter} onChange={(event) => setMembershipFilter(event.target.value as typeof membershipFilter)}>
+              <option value="all">Tutte</option>
+              <option value="inside">Dentro</option>
+              <option value="outside">Fuori</option>
+              <option value="pending">In attesa</option>
+              <option value="blocked">Bloccate</option>
+            </select>
+          )}
         </label>
         <label className="campaign-list-filter">
           <FieldLabel icon="fa-solid fa-user-shield" label="Ruolo" />
-          <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as typeof roleFilter)}>
-            <option value="all">Tutti i ruoli</option>
-            <option value="GIOCATORE">Giocatore</option>
-            <option value="CO_MASTER">Co-master</option>
-            <option value="MASTER">Master</option>
-            <option value="SUPER_MASTER">Super master</option>
-          </select>
+          {showLoadingSkeleton ? (
+            <Skeleton height="2.75rem" borderRadius="8px" />
+          ) : (
+            <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as typeof roleFilter)}>
+              <option value="all">Tutti i ruoli</option>
+              <option value="GIOCATORE">Giocatore</option>
+              <option value="CO_MASTER">Co-master</option>
+              <option value="MASTER">Master</option>
+              <option value="SUPER_MASTER">Super master</option>
+            </select>
+          )}
         </label>
       </div>
       {activeCampaignName && <p className="muted">Campagna attiva: <strong>{activeCampaignName}</strong></p>}
-      {campaigns.length === 0 && <p className="muted">Nessuna campagna visibile. Premi "Cerca campagne".</p>}
-      {campaigns.length > 0 && (
+      {showLoadingSkeleton && (
+        <div className="campaign-table-skeleton" aria-hidden="true">
+          <Skeleton height="2.5rem" borderRadius="8px" />
+          <Skeleton height="6rem" borderRadius="8px" />
+          <Skeleton height="6rem" borderRadius="8px" />
+          <Skeleton height="6rem" borderRadius="8px" />
+        </div>
+      )}
+      {!showLoadingSkeleton && campaigns.length === 0 && <p className="muted">Nessuna campagna visibile. Premi "Cerca campagne".</p>}
+      {!showLoadingSkeleton && campaigns.length > 0 && (
         <DataTable
           columns={[
             { key: 'campaign', label: 'Campagna' },
@@ -252,9 +285,9 @@ export function CampaignListPage() {
                         className="secondary-btn"
                         onClick={() => onOpenCampaign(item.id)}
                         disabled={isDisabled}
-                        title={isDisabled ? 'Campagna disattivata: apri e attiva non disponibile' : undefined}
+                        title={isDisabled ? 'Campagna disattivata: selezione non disponibile' : undefined}
                       >
-                        Apri e attiva
+                        Seleziona campagna
                       </button>
                     )}
                     {(item.membershipStatus === null || item.membershipStatus === 'REJECTED') && item.isOpen && !isDisabled && (
