@@ -1,0 +1,493 @@
+.site-shell {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top right, rgba(15, 124, 146, 0.08), transparent 22rem),
+    linear-gradient(180deg, #f7f4ee 0%, #fcfbf8 100%);
+  color: #13353d;
+}
+
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid rgba(19, 53, 61, 0.12);
+  background: rgba(252, 251, 248, 0.94);
+  backdrop-filter: blur(12px);
+}
+
+.site-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.site-brand-mark {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #0b7184;
+  color: #fff;
+}
+
+.site-brand-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.site-brand-copy {
+  display: grid;
+}
+
+.site-brand-copy strong {
+  font-size: 0.98rem;
+}
+
+.site-brand-copy span,
+.site-account-copy span,
+.site-kicker,
+.site-mission-meta,
+.site-mission-date {
+  color: #557078;
+}
+
+.site-tabs {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding-bottom: 0.2rem;
+  scrollbar-width: thin;
+}
+
+.site-tab,
+.site-filter-btn,
+.site-highlight-card,
+.site-mission-card,
+.site-inline-link,
+.site-account-panel button,
+.site-booking-actions button {
+  border: 0;
+  border-radius: 8px;
+}
+
+.site-tab {
+  flex: 0 0 auto;
+  height: 2.5rem;
+  padding: 0 0.95rem;
+  background: #e8ece8;
+  color: #16424a;
+  font: inherit;
+}
+
+.site-tab.is-active,
+.site-filter-btn.is-active,
+.site-booking-actions button.is-active {
+  background: #e67c00;
+  color: #fff;
+}
+
+.site-account {
+  position: relative;
+}
+
+.site-account-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.3rem 0.55rem 0.3rem 0.3rem;
+  border: 0;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(19, 53, 61, 0.08);
+  font: inherit;
+}
+
+.site-account-avatar {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  background: #0b7184;
+  color: #fff;
+  font-weight: 700;
+}
+
+.site-account-copy {
+  display: grid;
+  text-align: left;
+  line-height: 1.1;
+}
+
+.site-account-panel {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  display: grid;
+  gap: 0.35rem;
+  min-width: 12rem;
+  padding: 0.5rem;
+  border: 1px solid rgba(19, 53, 61, 0.1);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(19, 53, 61, 0.14);
+}
+
+.site-account-panel button {
+  padding: 0.7rem 0.8rem;
+  background: #f3f5f4;
+  text-align: left;
+  font: inherit;
+}
+
+.site-account-panel button.is-danger {
+  background: #fff2ea;
+  color: #a54c00;
+}
+
+.site-main {
+  width: min(1180px, calc(100vw - 2rem));
+  margin: 0 auto;
+  padding: 1rem 0 2rem;
+}
+
+.site-page-head {
+  margin-bottom: 1rem;
+}
+
+.site-page-head h1,
+.site-landing-hero-copy h2,
+.site-editorial-card h2,
+.site-campaign-head h2,
+.site-mission-hero-copy h2 {
+  margin: 0.2rem 0 0;
+  color: #0f3440;
+}
+
+.site-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.9rem;
+  padding: 0 0.7rem;
+  border-radius: 999px;
+  background: rgba(11, 113, 132, 0.12);
+  color: #0b7184;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.site-landing,
+.site-shop-info,
+.site-campaign-board,
+.site-mission-detail {
+  display: grid;
+  gap: 1rem;
+}
+
+.site-landing-hero,
+.site-editorial-card,
+.site-campaign-head,
+.site-filter-bar,
+.site-mission-card,
+.site-mission-hero-card,
+.site-booking-card,
+.site-chat-card {
+  border: 1px solid rgba(19, 53, 61, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 8px 24px rgba(19, 53, 61, 0.06);
+}
+
+.site-landing-hero {
+  min-height: 18rem;
+  padding: 1.5rem;
+  background-position: center;
+  background-size: cover;
+}
+
+.site-landing-hero-copy {
+  max-width: 30rem;
+  color: #fff;
+}
+
+.site-landing-hero-copy h2,
+.site-landing-hero-copy p {
+  color: inherit;
+}
+
+.site-highlight-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.site-highlight-card {
+  display: grid;
+  gap: 0.55rem;
+  padding: 1rem;
+  background: #fff;
+  text-align: left;
+  font: inherit;
+}
+
+.site-shop-info {
+  position: relative;
+  overflow: hidden;
+  padding: 1rem 0;
+}
+
+.site-shop-info-backdrop {
+  position: absolute;
+  inset: 0;
+  background-position: center;
+  background-size: cover;
+  opacity: 0.7;
+}
+
+.site-editorial-card {
+  position: relative;
+  z-index: 1;
+  width: min(42rem, 100%);
+  padding: 1.5rem;
+}
+
+.site-editorial-card p {
+  line-height: 1.7;
+}
+
+.site-campaign-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: start;
+  padding: 1rem 1.1rem;
+}
+
+.site-campaign-state {
+  min-height: 2.2rem;
+  padding: 0.55rem 0.8rem;
+  border-radius: 999px;
+  background: rgba(11, 113, 132, 0.1);
+  color: #0b7184;
+  font-weight: 700;
+}
+
+.site-filter-bar {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem 1.1rem;
+}
+
+.site-search,
+.site-chat-input-row input {
+  width: 100%;
+  min-height: 2.9rem;
+  padding: 0 0.95rem;
+  border: 1px solid rgba(19, 53, 61, 0.14);
+  border-radius: 8px;
+  background: #fff;
+  font: inherit;
+}
+
+.site-filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.site-filter-btn {
+  min-height: 2.55rem;
+  padding: 0 0.9rem;
+  background: #0b7184;
+  color: #fff;
+  font: inherit;
+}
+
+.site-mission-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.site-mission-card {
+  display: grid;
+  grid-template-columns: minmax(15rem, 28%) 1fr;
+  gap: 0;
+  overflow: hidden;
+  padding: 0;
+  text-align: left;
+  font: inherit;
+}
+
+.site-mission-cover,
+.site-mission-hero {
+  min-height: 12rem;
+  background-position: center;
+  background-size: cover;
+}
+
+.site-mission-copy,
+.site-mission-hero-copy,
+.site-booking-card,
+.site-chat-card {
+  padding: 1rem 1.1rem;
+}
+
+.site-mission-copy {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.site-mission-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(18rem, 0.95fr);
+  gap: 1rem;
+}
+
+.site-mission-hero-card {
+  overflow: hidden;
+}
+
+.site-booking-card {
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+}
+
+.site-booking-card h3,
+.site-chat-card h3 {
+  margin: 0;
+}
+
+.site-booking-actions {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.site-booking-actions button {
+  min-height: 2.7rem;
+  background: #0b7184;
+  color: #fff;
+  font: inherit;
+}
+
+.site-booking-list ul {
+  margin: 0.55rem 0 0;
+  padding-left: 1rem;
+}
+
+.site-chat-card {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.site-chat-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+}
+
+.site-inline-link {
+  min-height: 2.2rem;
+  padding: 0 0.8rem;
+  background: #edf3f3;
+  color: #17424a;
+  font: inherit;
+}
+
+.site-chat-input-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.6rem;
+}
+
+.site-chat-input-row button {
+  width: 2.9rem;
+  height: 2.9rem;
+  border: 0;
+  border-radius: 999px;
+  background: #0b7184;
+  color: #fff;
+}
+
+.site-chat-feed {
+  display: grid;
+  gap: 0.7rem;
+  max-height: 22rem;
+  overflow-y: auto;
+}
+
+.site-chat-message {
+  padding: 0.85rem 0.9rem;
+  border: 1px solid rgba(19, 53, 61, 0.08);
+  border-radius: 8px;
+  background: #f8faf9;
+}
+
+.site-chat-message-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.3rem;
+}
+
+.site-chat-message p {
+  margin: 0;
+}
+
+@media (max-width: 900px) {
+  .site-header {
+    grid-template-columns: 1fr;
+  }
+
+  .site-account {
+    justify-self: end;
+  }
+
+  .site-highlight-grid,
+  .site-mission-detail-grid,
+  .site-mission-card {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .site-main {
+    width: min(100vw - 1rem, 100%);
+    padding: 0.75rem 0 1.25rem;
+  }
+
+  .site-header {
+    padding: 0.75rem;
+  }
+
+  .site-landing-hero,
+  .site-editorial-card,
+  .site-campaign-head,
+  .site-filter-bar,
+  .site-mission-copy,
+  .site-mission-hero-copy,
+  .site-booking-card,
+  .site-chat-card {
+    padding: 0.9rem;
+  }
+
+  .site-chat-head,
+  .site-campaign-head {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+}

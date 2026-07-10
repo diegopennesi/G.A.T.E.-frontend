@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import { AuthScreen } from './features/auth'
 import {
@@ -11,6 +11,7 @@ import { MissionsPage } from './features/missions'
 import { LogPage } from './features/notifications'
 import { EditProfilePage, ProfilePage } from './features/profile'
 import { RoomsPage } from './features/rooms'
+import { SiteShell } from './features/site'
 import { SystemCatalogsPage } from './features/admin'
 import {
   AdminProvider,
@@ -29,7 +30,7 @@ import { useProfileState } from './hooks/useProfileState'
 import { useRealmState } from './hooks/useRealmState'
 import { useUiState } from './hooks/useUiState'
 import { DataTable, Icon, RealmStatusScreen, SearchableSelect } from './shared/components'
-import { resolveRealmContextFromPath, buildPathForState } from './shared/routing'
+import { resolveRealmContextFromPath, buildPathForState, buildSiteAuthPath, buildSitePath } from './shared/routing'
 import { ApiError, getAccessToken, setRealmCode } from './services/apiClient'
 import {
   toMessage,
@@ -232,9 +233,17 @@ const CAMPAIGN_REQUIRED_TOOLTIP = 'Caricare prima la campagna'
 const MODULE_REQUIRED_BY_SCREEN: Partial<Record<Screen, string>> = {
   Stanze: 'STANZE',
 }
+const AUTH_SEGMENTS = new Set(['login', 'register', 'recover'])
+
+function resolvePostLoginBranch(currentBranch: 'auth' | 'app' | 'site', platformRole?: PlatformRole | null) {
+  if (platformRole === 'SYSTEM') return 'app' as const
+  return currentBranch === 'site' ? 'site' as const : 'app' as const
+}
 
 function App() {
   const initialRealmContext = useMemo(() => resolveRealmContextFromPath(window.location.pathname), [])
+  const [routeBranch, setRouteBranch] = useState(initialRealmContext.branch)
+  const [sitePathSegments, setSitePathSegments] = useState(initialRealmContext.sitePathSegments)
   const {
     screen,
     setScreen,
@@ -413,6 +422,8 @@ function App() {
       const resolved = resolveRealmContextFromPath(window.location.pathname)
       setRealmCodeState(resolved.realmCode)
       setAuthMode(resolved.authMode)
+      setRouteBranch(resolved.branch)
+      setSitePathSegments(resolved.sitePathSegments)
       if (resolved.screen) {
         setScreen(resolved.screen)
       }
@@ -424,16 +435,25 @@ function App() {
   }, [])
 
   useEffect(() => {
-    const nextPath = buildPathForState({
-      realmCode,
-      authMode,
-      screen,
-      isAuthenticated: Boolean(profile),
-    })
+    const nextPath = !profile
+      ? routeBranch === 'site'
+        ? buildSiteAuthPath(realmCode, authMode)
+        : `/homepage/${encodeURIComponent(realmCode.trim().toLowerCase() || 'gate')}/${authMode}`
+      : routeBranch === 'site'
+        ? buildSitePath(
+          realmCode,
+          ...(sitePathSegments.length === 0 || AUTH_SEGMENTS.has(sitePathSegments[0]) ? ['landing'] : sitePathSegments),
+        )
+        : buildPathForState({
+          realmCode,
+          authMode,
+          screen,
+          isAuthenticated: Boolean(profile),
+        })
     if (window.location.pathname !== nextPath) {
       window.history.replaceState(window.history.state, '', nextPath)
     }
-  }, [authMode, profile, realmCode, screen])
+  }, [authMode, profile, realmCode, routeBranch, screen, sitePathSegments])
 
   useEffect(() => {
     let cancelled = false
@@ -1036,7 +1056,7 @@ function App() {
       if (isUnauthorized(err)) {
         handleLogout()
       }
-    } finally {
+    } finally {profile
       setBusy(false)
     }
   }
@@ -2017,6 +2037,14 @@ function App() {
   }, [screen, campaignGameSystems.length])
 
   const handleAuth = async (session: AuthSession) => {
+    const nextBranch = resolvePostLoginBranch(routeBranch, session.user.platformRole)
+    setRouteBranch(nextBranch)
+    if (nextBranch === 'site') {
+      setSitePathSegments(['landing'])
+    } else {
+      setScreen('Profilo')
+      setSitePathSegments([])
+    }
     setProfile(session.user)
     setError('')
     addEvent('Autenticazione completata', 'ok')
@@ -2418,9 +2446,26 @@ function App() {
             logout: handleLogout,
           }}
         >
-          <AuthScreen key={`${realmCode}:${authMode}`} />
+          <AuthScreen key={`${routeBranch}:${realmCode}:${authMode}`} />
         </ProfileProvider>
       </RealmProvider>
+    )
+  }
+
+  if (routeBranch === 'site') {
+    return (
+      <SiteShell
+        brandTitle={brandTitle}
+        brandLogoUrl={brandLogoUrl}
+        profileName={welcomeProfileName}
+        routeSegments={sitePathSegments}
+        onNavigate={(...segments) => {
+          setRouteBranch('site')
+          setSitePathSegments(segments)
+          window.history.pushState(window.history.state, '', buildSitePath(realmCode, ...segments))
+        }}
+        onLogout={handleLogout}
+      />
     )
   }
 
