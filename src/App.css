@@ -1116,6 +1116,40 @@ textarea {
   margin-top: 12px;
 }
 
+.campaign-outline-action {
+  --outline-accent: #c9a84c;
+  min-height: 2.75rem;
+  padding: 0 1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  border: 1px solid color-mix(in srgb, var(--outline-accent) 48%, #2e2a45);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--outline-accent);
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease, transform 140ms ease;
+}
+
+.campaign-outline-action:hover,
+.campaign-outline-action:focus-visible {
+  background: color-mix(in srgb, var(--outline-accent) 10%, transparent);
+  border-color: var(--outline-accent);
+  color: #fffaf0;
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.campaign-outline-action--gold {
+  --outline-accent: #d9be73;
+}
+
+.campaign-outline-action--violet {
+  --outline-accent: #b7a6ff;
+}
+
 .campaign-addon-icons {
   display: flex;
   flex-wrap: wrap;
@@ -1172,22 +1206,23 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  border: 1px solid transparent;
+  border: 1px solid #3a3652;
   border-radius: 999px;
+  background: rgba(255, 255, 255, 0.02);
   font-size: 0.78rem;
   font-weight: 700;
   white-space: nowrap;
 }
 
 .campaign-meta-pill.is-active {
-  border-color: rgba(74, 222, 128, 0.28);
-  background: rgba(34, 197, 94, 0.14);
+  border-color: rgba(74, 222, 128, 0.42);
+  background: transparent;
   color: #86efac;
 }
 
 .campaign-meta-pill.is-inactive {
-  border-color: rgba(148, 163, 184, 0.22);
-  background: rgba(148, 163, 184, 0.1);
+  border-color: rgba(148, 163, 184, 0.3);
+  background: transparent;
   color: #cbd5e1;
 }
 
@@ -1725,6 +1760,7 @@ textarea {
 .member-state-badge {
   display: inline-flex;
   align-items: center;
+  gap: 7px;
   min-height: 28px;
   padding: 0 10px;
   border: 1px solid transparent;
@@ -1738,32 +1774,61 @@ textarea {
 
 .member-state-badge.is-active {
   border-color: rgba(74, 222, 128, 0.3);
-  background: rgba(34, 197, 94, 0.18);
+  background: rgba(34, 197, 94, 0.12);
   color: #86efac;
 }
 
-.member-state-badge.is-banned {
-  border-color: rgba(239, 68, 68, 0.32);
-  background: rgba(239, 68, 68, 0.2);
-  color: #f87171;
-}
-
-.member-state-badge.is-blocked {
-  border-color: rgba(248, 180, 53, 0.3);
-  background: rgba(248, 180, 53, 0.16);
+.member-state-badge.is-retired {
+  border-color: rgba(245, 158, 11, 0.3);
+  background: rgba(245, 158, 11, 0.12);
   color: #fcd34d;
 }
 
-.member-state-badge.is-pending {
-  border-color: rgba(245, 158, 11, 0.28);
-  background: rgba(245, 158, 11, 0.14);
-  color: #fbbf24;
+.member-state-badge.is-dead {
+  border-color: rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.12);
+  color: #fca5a5;
 }
 
 .member-state-badge.is-neutral {
   border-color: rgba(148, 163, 184, 0.24);
   background: rgba(148, 163, 184, 0.12);
   color: #cbd5e1;
+}
+
+.campaign-role-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid #3a3652;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.02);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.campaign-role-badge.is-super-master {
+  border-color: rgba(244, 114, 182, 0.36);
+  color: #f9a8d4;
+}
+
+.campaign-role-badge.is-master {
+  border-color: rgba(217, 190, 115, 0.36);
+  color: #f2d38a;
+}
+
+.campaign-role-badge.is-co-master {
+  border-color: rgba(167, 139, 250, 0.36);
+  color: #c4b5fd;
+}
+
+.campaign-role-badge.is-player {
+  border-color: rgba(96, 165, 250, 0.34);
+  color: #93c5fd;
 }
 
 .member-table-shell {
@@ -3886,12 +3951,32 @@ textarea {
   margin-bottom: 12px;
 }
 
+.multicheck-field summary {
+  list-style: none;
+}
+
+.multicheck-field summary::-webkit-details-marker {
+  display: none;
+}
+
 .multicheck-trigger {
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+.multicheck-label-stack {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  text-align: left;
+}
+
+.multicheck-label {
+  font-size: 0.72rem;
+  color: #8b87a0;
 }
 
 .multicheck-value {
@@ -3915,33 +4000,87 @@ textarea {
   border-radius: 14px;
   background: linear-gradient(180deg, #12101b 0%, #10131f 100%);
   padding: 14px;
+  display: block;
+}
+
+.member-filter-toolbar {
   display: grid;
+  grid-template-columns: minmax(18rem, 2.1fr) minmax(14rem, 1fr) minmax(14rem, 1fr);
   gap: 12px;
+  align-items: end;
 }
 
-.member-filters-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.member-filters-summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  justify-content: flex-end;
-}
-
-.member-filter-group {
+.member-filter-field {
   display: grid;
   gap: 8px;
 }
 
-.member-filter-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+.member-filter-field > input,
+.member-filter-toolbar .multicheck-field {
+  width: 100%;
+}
+
+.member-filter-option-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.member-filter-select {
+  width: 100%;
+  min-height: 2.75rem;
+  border: 1px solid #2e2a45;
+  border-radius: 10px;
+  background: #1b1f2d;
+}
+
+.member-filter-select:not(.p-disabled):hover,
+.member-filter-select.p-focus {
+  border-color: #4b4f72;
+  box-shadow: none;
+}
+
+.member-filter-select .p-multiselect-label {
+  display: flex;
+  align-items: center;
+  min-height: 2.75rem;
+  padding: 0.7rem 0.85rem;
+  color: #e8e6f0;
+}
+
+.member-filter-select .p-multiselect-trigger {
+  width: 2.5rem;
+  color: #a8abd0;
+}
+
+.member-filter-select-panel {
+  border: 1px solid #2e2a45;
+  border-radius: 10px;
+  background: #171424;
+  overflow: hidden;
+}
+
+.member-filter-select-panel .p-multiselect-header {
+  display: none;
+}
+
+.member-filter-select-panel .p-multiselect-items {
+  padding: 0.35rem;
+}
+
+.member-filter-select-panel .p-multiselect-item {
+  margin: 0;
+  border-radius: 8px;
+  color: #e8e6f0;
+}
+
+.member-filter-select-panel .p-multiselect-item.p-highlight {
+  background: rgba(201, 168, 76, 0.12);
+  color: #fff7dd;
+}
+
+.member-filter-select-panel .p-checkbox {
+  margin-right: 0.55rem;
 }
 
 .character-filter-toolbar {
@@ -3973,12 +4112,6 @@ textarea {
 }
 
 .filter-chip-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.member-filter-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -4157,7 +4290,7 @@ textarea {
     grid-template-columns: 1fr;
   }
 
-  .member-filter-row {
+  .member-filter-toolbar {
     grid-template-columns: 1fr;
   }
 
@@ -4793,39 +4926,33 @@ html[data-theme='light'] .campaign-visibility-meta {
 }
 
 html[data-theme='light'] .campaign-meta-pill.is-active {
-  background: rgba(34, 197, 94, 0.14);
-  border-color: rgba(34, 197, 94, 0.3);
+  background: transparent;
+  border-color: rgba(34, 197, 94, 0.36);
   color: #166534;
 }
 
 html[data-theme='light'] .campaign-meta-pill.is-inactive {
-  background: rgba(148, 163, 184, 0.14);
-  border-color: rgba(148, 163, 184, 0.24);
+  background: transparent;
+  border-color: rgba(148, 163, 184, 0.32);
   color: #334155;
 }
 
 html[data-theme='light'] .member-state-badge.is-active {
-  background: rgba(34, 197, 94, 0.14);
+  background: rgba(34, 197, 94, 0.08);
   border-color: rgba(34, 197, 94, 0.28);
   color: #166534;
 }
 
-html[data-theme='light'] .member-state-badge.is-banned {
-  background: rgba(239, 68, 68, 0.12);
+html[data-theme='light'] .member-state-badge.is-retired {
+  background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.26);
+  color: #92400e;
+}
+
+html[data-theme='light'] .member-state-badge.is-dead {
+  background: rgba(239, 68, 68, 0.08);
   border-color: rgba(239, 68, 68, 0.26);
   color: #b91c1c;
-}
-
-html[data-theme='light'] .member-state-badge.is-blocked {
-  background: rgba(245, 158, 11, 0.14);
-  border-color: rgba(245, 158, 11, 0.26);
-  color: #92400e;
-}
-
-html[data-theme='light'] .member-state-badge.is-pending {
-  background: rgba(245, 158, 11, 0.12);
-  border-color: rgba(245, 158, 11, 0.26);
-  color: #92400e;
 }
 
 html[data-theme='light'] .member-state-badge.is-neutral {
@@ -5123,34 +5250,33 @@ html[data-theme='sysadmin'] .data-table-link:focus-visible {
 }
 
 html[data-theme='sysadmin'] .campaign-meta-pill.is-active {
-  background: rgba(240, 109, 104, 0.16);
+  background: transparent;
   border-color: rgba(240, 109, 104, 0.3);
   color: #ffd6d4;
 }
 
 html[data-theme='sysadmin'] .campaign-meta-pill.is-inactive {
-  background: rgba(148, 163, 184, 0.12);
+  background: transparent;
   border-color: rgba(148, 163, 184, 0.22);
   color: #f3f4f6;
 }
 
 html[data-theme='sysadmin'] .member-state-badge.is-active {
-  background: rgba(74, 222, 128, 0.14);
+  background: rgba(74, 222, 128, 0.08);
   border-color: rgba(74, 222, 128, 0.28);
   color: #bbf7d0;
 }
 
-html[data-theme='sysadmin'] .member-state-badge.is-banned {
-  background: rgba(239, 68, 68, 0.16);
-  border-color: rgba(239, 68, 68, 0.28);
-  color: #fecaca;
-}
-
-html[data-theme='sysadmin'] .member-state-badge.is-blocked,
-html[data-theme='sysadmin'] .member-state-badge.is-pending {
-  background: rgba(245, 158, 11, 0.14);
+html[data-theme='sysadmin'] .member-state-badge.is-retired {
+  background: rgba(245, 158, 11, 0.08);
   border-color: rgba(245, 158, 11, 0.26);
   color: #fde68a;
+}
+
+html[data-theme='sysadmin'] .member-state-badge.is-dead {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.28);
+  color: #fecaca;
 }
 
 html[data-theme='sysadmin'] .member-state-badge.is-neutral {
@@ -5615,6 +5741,10 @@ body {
 
 .mission-data-table th.mission-title-col {
   text-align: center;
+}
+
+.mission-data-table th.mission-title-col .data-table-sort-btn {
+  justify-content: center;
 }
 
 .mission-participants-pill {

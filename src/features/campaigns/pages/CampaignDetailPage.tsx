@@ -1,9 +1,77 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { MultiSelect } from 'primereact/multiselect'
 import { useCampaignContext } from '../../../context'
 import { Icon, InfoBlock } from '../../../shared/components'
-import { campaignModuleIconName, campaignModuleTitle, campaignToneLabel, catalogEntryDescription, catalogEntryLabel } from '../../../shared/utils'
-import type { CampaignMemberStatus, CampaignMembershipResponse, CampaignRole } from '../../../types/domain'
+import {
+  campaignModuleIconName,
+  campaignModuleTitle,
+  campaignToneLabel,
+  catalogEntryDescription,
+  catalogEntryLabel,
+  formatShortDate,
+} from '../../../shared/utils'
+import type { CampaignCharacterStatus, CampaignRole } from '../../../types/domain'
 import { CampaignStatusBadge } from '../components'
+
+type FilterOption<T extends string> = {
+  value: T
+  label: string
+  icon: string
+}
+
+const ROLE_FILTER_OPTIONS: Array<FilterOption<CampaignRole>> = [
+  { value: 'SUPER_MASTER', label: 'Super master', icon: 'fa-solid fa-shield-halved' },
+  { value: 'MASTER', label: 'Master', icon: 'fa-solid fa-book-open' },
+  { value: 'CO_MASTER', label: 'Co-master', icon: 'fa-solid fa-user-pen' },
+  { value: 'GIOCATORE', label: 'Giocatore', icon: 'fa-solid fa-user' },
+]
+
+const STATUS_FILTER_OPTIONS: Array<FilterOption<CampaignCharacterStatus>> = [
+  { value: 'ACTIVE', label: 'Active', icon: 'fa-solid fa-circle-check' },
+  { value: 'RETIRED', label: 'Retired', icon: 'fa-solid fa-hourglass-half' },
+  { value: 'DEAD', label: 'Dead', icon: 'fa-solid fa-circle-xmark' },
+]
+
+function roleRank(role: CampaignRole) {
+  switch (role) {
+    case 'SUPER_MASTER':
+      return 4
+    case 'MASTER':
+      return 3
+    case 'CO_MASTER':
+      return 2
+    case 'GIOCATORE':
+    default:
+      return 1
+  }
+}
+
+function roleBadgeMeta(role: CampaignRole) {
+  switch (role) {
+    case 'SUPER_MASTER':
+      return { label: 'Super master', icon: 'fa-solid fa-shield-halved', className: 'is-super-master' }
+    case 'MASTER':
+      return { label: 'Master', icon: 'fa-solid fa-book-open', className: 'is-master' }
+    case 'CO_MASTER':
+      return { label: 'Co-master', icon: 'fa-solid fa-user-pen', className: 'is-co-master' }
+    case 'GIOCATORE':
+    default:
+      return { label: 'Giocatore', icon: 'fa-solid fa-user', className: 'is-player' }
+  }
+}
+
+function characterStateMeta(status: CampaignCharacterStatus | null) {
+  switch (status) {
+    case 'ACTIVE':
+      return { label: 'Active', icon: 'fa-solid fa-circle-check', className: 'is-active' }
+    case 'RETIRED':
+      return { label: 'Retired', icon: 'fa-solid fa-hourglass-half', className: 'is-retired' }
+    case 'DEAD':
+      return { label: 'Dead', icon: 'fa-solid fa-circle-xmark', className: 'is-dead' }
+    default:
+      return { label: 'N/A', icon: 'fa-solid fa-circle-info', className: 'is-neutral' }
+  }
+}
 
 export function CampaignDetailPage() {
   const {
@@ -26,44 +94,30 @@ export function CampaignDetailPage() {
     membershipRole,
   } = useCampaignContext()
   const [memberQuery, setMemberQuery] = useState('')
-  const [statusFilters, setStatusFilters] = useState<CampaignMemberStatus[]>([
-    'APPROVED', 'PENDING', 'BLOCKED', 'BANNED', 'REJECTED',
-  ])
-  const [roleFilters, setRoleFilters] = useState<CampaignRole[]>([
-    'GIOCATORE', 'CO_MASTER', 'MASTER', 'SUPER_MASTER',
-  ])
+  const [statusFilters, setStatusFilters] = useState<CampaignCharacterStatus[]>(['ACTIVE', 'RETIRED', 'DEAD'])
+  const [roleFilters, setRoleFilters] = useState<CampaignRole[]>(['SUPER_MASTER', 'MASTER', 'CO_MASTER', 'GIOCATORE'])
 
   const normalizedQuery = memberQuery.trim().toLowerCase()
-  const filteredMembers = members.filter((member) => {
-    const displayName = memberNames[member.userId] || member.userId
-    return (
-      (normalizedQuery.length === 0 || displayName.toLowerCase().includes(normalizedQuery)) &&
-      statusFilters.includes(member.memberStatus) &&
-      roleFilters.includes(member.role)
-    )
-  })
+  const approvedMembers = useMemo(() => members.filter((member) => member.memberStatus === 'APPROVED'), [members])
+  const filteredMembers = useMemo(() => {
+    return approvedMembers
+      .filter((member) => {
+        const displayName = memberNames[member.userId] || member.userId
+        return (
+          (normalizedQuery.length === 0 || displayName.toLowerCase().includes(normalizedQuery)) &&
+          roleFilters.includes(member.role) &&
+          Boolean(member.characterStatus && statusFilters.includes(member.characterStatus))
+        )
+      })
+      .sort((left, right) => {
+        const rankDiff = roleRank(right.role) - roleRank(left.role)
+        if (rankDiff !== 0) return rankDiff
+        return (memberNames[left.userId] || left.userId).localeCompare(memberNames[right.userId] || right.userId, 'it', {
+          sensitivity: 'base',
+        })
+      })
+  }, [approvedMembers, memberNames, normalizedQuery, roleFilters, statusFilters])
 
-  const memberActivityBadge = (member: CampaignMembershipResponse) => {
-    if (member.memberStatus === 'BLOCKED') return { label: 'BLOCKED', className: 'is-blocked' }
-    if (member.memberStatus === 'BANNED') return { label: 'BANNED', className: 'is-banned' }
-    if (member.memberStatus === 'PENDING') return { label: 'PENDING', className: 'is-pending' }
-    if (member.memberStatus !== 'APPROVED') return { label: member.memberStatus, className: 'is-neutral' }
-    if (member.characterStatus === 'DEAD' || member.characterStatus === 'RETIRED') {
-      return { label: 'INACTIVE', className: 'is-neutral' }
-    }
-    return { label: 'ACTIVE', className: 'is-active' }
-  }
-
-  const toggleStatusFilter = (status: CampaignMemberStatus) => {
-    setStatusFilters((prev) => (prev.includes(status) ? prev.filter((item) => item !== status) : [...prev, status]))
-  }
-
-  const toggleRoleFilter = (role: CampaignRole) => {
-    setRoleFilters((prev) => (prev.includes(role) ? prev.filter((item) => item !== role) : [...prev, role]))
-  }
-
-  const statusFilterLabel = statusFilters.length > 0 ? statusFilters.join(', ') : 'Nessuno stato selezionato'
-  const roleFilterLabel = roleFilters.length > 0 ? roleFilters.join(', ') : 'Nessun grado selezionato'
   const campaignVisibilityMeta = [
     {
       key: 'open',
@@ -78,10 +132,6 @@ export function CampaignDetailPage() {
       icon: campaign?.isSearchable ? 'fa-solid fa-magnifying-glass' : 'fa-solid fa-eye-slash',
     },
   ]
-  const campaignDetailButtonClass =
-    membershipStatus === 'APPROVED' && (membershipRole === 'MASTER' || membershipRole === 'SUPER_MASTER')
-      ? 'primary-btn'
-      : 'secondary-btn'
 
   return (
     <section className="panel">
@@ -94,9 +144,7 @@ export function CampaignDetailPage() {
       {!campaign && <p className="muted">Carica prima una campagna.</p>}
       {campaign && (
         <>
-          {campaign.coverImageUrl && (
-            <img className="campaign-cover" src={campaign.coverImageUrl} alt="" />
-          )}
+          {campaign.coverImageUrl && <img className="campaign-cover" src={campaign.coverImageUrl} alt="" />}
           <div className="campaign-hero-head">
             <div className="campaign-hero-title-block">
               <p className="campaign-hero-kicker">Scheda Campagna</p>
@@ -181,13 +229,15 @@ export function CampaignDetailPage() {
               </button>
             )}
             {(membershipRole === 'MASTER' || membershipRole === 'SUPER_MASTER') && (
-              <button type="button" className={campaignDetailButtonClass} onClick={onOpenManagement}>
-                Gestione Campagna
+              <button type="button" className="campaign-outline-action campaign-outline-action--gold" onClick={onOpenManagement}>
+                <Icon name="fa-solid fa-book-open" />
+                <span>Gestione Campagna</span>
               </button>
             )}
             {membershipStatus === 'APPROVED' && (
-              <button type="button" className="secondary-btn" onClick={onOpenCharacters}>
-                Gestione Personaggi
+              <button type="button" className="campaign-outline-action campaign-outline-action--violet" onClick={onOpenCharacters}>
+                <Icon name="fa-solid fa-user" />
+                <span>Gestione Personaggi</span>
               </button>
             )}
             {membershipStatus === 'APPROVED' && campaign?.founderId !== currentUserId && (
@@ -201,63 +251,57 @@ export function CampaignDetailPage() {
               <div className="divider" />
               <h3 className="section-title">Membri Campagna</h3>
               <div className="member-filters-panel">
-                <div className="member-filters-head">
-                  <div>
-                    <p className="section-title">Filtro membri</p>
-                    <p className="muted">Un solo pannello per ricerca, stato e grado. Passa sopra le opzioni per i suggerimenti.</p>
-                  </div>
-                  <div className="member-filters-summary">
-                    <span className="status status-info" title={statusFilterLabel}>
-                      Stato: {statusFilters.length}
-                    </span>
-                    <span className="status status-info" title={roleFilterLabel}>
-                      Gradi: {roleFilters.length}
-                    </span>
-                  </div>
-                </div>
-                <label>
-                  Cerca membro per nome
-                  <input value={memberQuery} onChange={(event) => setMemberQuery(event.target.value)} placeholder="es. Sandro" />
-                </label>
-                <div className="member-filter-row">
-                  <div className="member-filter-group">
-                    <p className="muted">Stato membro</p>
-                    <div className="member-filter-chips">
-                      {(['APPROVED', 'PENDING', 'BLOCKED', 'BANNED', 'REJECTED'] as CampaignMemberStatus[]).map((status) => (
-                        <button
-                          key={status}
-                          type="button"
-                          className={`filter-chip filter-chip--status-${status.toLowerCase()} ${
-                            statusFilters.includes(status) ? 'is-active' : ''
-                          }`}
-                          onClick={() => toggleStatusFilter(status)}
-                          title={`Mostra i membri con stato ${status}`}
-                        >
-                          {status}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="member-filter-group">
-                    <p className="muted">Grado</p>
-                    <div className="member-filter-chips">
-                      {(['GIOCATORE', 'CO_MASTER', 'MASTER', 'SUPER_MASTER'] as CampaignRole[]).map((role) => (
-                        <button
-                          key={role}
-                          type="button"
-                          className={`filter-chip filter-chip--role-${role.toLowerCase()} ${roleFilters.includes(role) ? 'is-active' : ''}`}
-                          onClick={() => toggleRoleFilter(role)}
-                          title={`Mostra i membri con grado ${role}`}
-                        >
-                          {role}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                <div className="member-filter-toolbar">
+                  <label className="member-filter-field">
+                    <span className="muted">Cerca membro per nome</span>
+                    <input value={memberQuery} onChange={(event) => setMemberQuery(event.target.value)} placeholder="es. Sandro" />
+                  </label>
+                  <label className="member-filter-field">
+                    <span className="muted">Stato</span>
+                    <MultiSelect
+                      className="member-filter-select"
+                      panelClassName="member-filter-select-panel"
+                      value={statusFilters}
+                      options={STATUS_FILTER_OPTIONS}
+                      optionLabel="label"
+                      optionValue="value"
+                      onChange={(event) => setStatusFilters(event.value as CampaignCharacterStatus[])}
+                      placeholder="Tutti gli stati"
+                      maxSelectedLabels={2}
+                      selectedItemsLabel="{0} selezionati"
+                      itemTemplate={(option: FilterOption<CampaignCharacterStatus>) => (
+                        <span className="member-filter-option-copy">
+                          <Icon name={option.icon} />
+                          <span>{option.label}</span>
+                        </span>
+                      )}
+                    />
+                  </label>
+                  <label className="member-filter-field">
+                    <span className="muted">Grado</span>
+                    <MultiSelect
+                      className="member-filter-select"
+                      panelClassName="member-filter-select-panel"
+                      value={roleFilters}
+                      options={ROLE_FILTER_OPTIONS}
+                      optionLabel="label"
+                      optionValue="value"
+                      onChange={(event) => setRoleFilters(event.value as CampaignRole[])}
+                      placeholder="Tutti i gradi"
+                      maxSelectedLabels={2}
+                      selectedItemsLabel="{0} selezionati"
+                      itemTemplate={(option: FilterOption<CampaignRole>) => (
+                        <span className="member-filter-option-copy">
+                          <Icon name={option.icon} />
+                          <span>{option.label}</span>
+                        </span>
+                      )}
+                    />
+                  </label>
                 </div>
               </div>
-              {members.length === 0 && <p className="muted">Nessun membro</p>}
-              {members.length > 0 && filteredMembers.length > 0 && (
+              {approvedMembers.length === 0 && <p className="muted">Nessun membro</p>}
+              {approvedMembers.length > 0 && filteredMembers.length > 0 && (
                 <div className="member-table-shell">
                   <div className="member-table-wrap">
                     <table className="member-table">
@@ -266,12 +310,13 @@ export function CampaignDetailPage() {
                           <th scope="col">Membro</th>
                           <th scope="col">Ruolo</th>
                           <th scope="col">Stato</th>
-                          <th scope="col">PG</th>
+                          <th scope="col">Iscritto il</th>
                         </tr>
                       </thead>
                       <tbody>
                         {filteredMembers.map((member) => {
-                          const activity = memberActivityBadge(member)
+                          const roleMeta = roleBadgeMeta(member.role)
+                          const stateMeta = characterStateMeta(member.characterStatus)
                           return (
                             <tr key={`${member.userId}-${member.role}-${member.memberStatus}`}>
                               <td>
@@ -279,11 +324,19 @@ export function CampaignDetailPage() {
                                   {memberNames[member.userId] || member.userId}
                                 </button>
                               </td>
-                              <td>{member.role}</td>
                               <td>
-                                <span className={`member-state-badge ${activity.className}`}>{activity.label}</span>
+                                <span className={`campaign-role-badge ${roleMeta.className}`}>
+                                  <Icon name={roleMeta.icon} />
+                                  <span>{roleMeta.label}</span>
+                                </span>
                               </td>
-                              <td className="member-table-muted">{member.characterStatus || 'N/A'}</td>
+                              <td>
+                                <span className={`member-state-badge ${stateMeta.className}`}>
+                                  <Icon name={stateMeta.icon} />
+                                  <span>{stateMeta.label}</span>
+                                </span>
+                              </td>
+                              <td className="member-table-muted">{formatShortDate(member.joinedAt)}</td>
                             </tr>
                           )
                         })}
@@ -292,7 +345,7 @@ export function CampaignDetailPage() {
                   </div>
                 </div>
               )}
-              {members.length > 0 && filteredMembers.length === 0 && (
+              {approvedMembers.length > 0 && filteredMembers.length === 0 && (
                 <p className="muted">Nessun membro trovato con questo filtro.</p>
               )}
             </>

@@ -108,14 +108,8 @@ export const CAMPAIGN_MODULE_UNAVAILABLE_HINT = 'Non attualmente disponibile'
 export const CAMPAIGN_MODULE_HIDDEN_CODES = new Set(['NOTIFICATIONS'])
 export const CAMPAIGN_MODULE_UNAVAILABLE_CODES = new Set(['STANZE'])
 
-export function campaignModuleIconName(module: CampaignCatalogEntry): string {
-  const token = `${module.code} ${module.label}`.toLowerCase()
-  if (token.includes('notif')) return 'fa-solid fa-bell'
-  if (token.includes('chat') || token.includes('messag') || token.includes('comment')) return 'fa-solid fa-comment-dots'
-  if (token.includes('stanza') || token.includes('room') || token.includes('door')) return 'fa-solid fa-door-open'
-  if (token.includes('mission') || token.includes('quest') || token.includes('board') || token.includes('bacheca'))
-    return 'fa-solid fa-clipboard-list'
-  return 'fa-solid fa-circle-info'
+export function campaignModuleIconName(_module: CampaignCatalogEntry): string {
+  return 'fa-solid fa-gamepad'
 }
 
 export function campaignModuleTitle(module: CampaignCatalogEntry): string {

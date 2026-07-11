@@ -4549,69 +4549,70 @@ function App() {
         </div>
 
         <nav className="menu" aria-label="Navigazione principale">
-          {NAVIGATION_SECTIONS.map((section) => (
-            <section key={section.label} className="menu-section">
-              <div className="menu-section-head">
-                <div>
-                  <p className="menu-group-label">{section.label}</p>
-                  <p className="menu-section-description">{section.description}</p>
+          {NAVIGATION_SECTIONS.map((section) => {
+            const visibleItems = section.items
+              .map((item) => ({ item, state: getMenuScreenState(item) }))
+              .filter(({ state }) => state.enabled)
+
+            if (visibleItems.length === 0) return null
+
+            return (
+              <section key={section.label} className="menu-section">
+                <div className="menu-section-head">
+                  <div>
+                    <p className="menu-group-label">{section.label}</p>
+                    <p className="menu-section-description">{section.description}</p>
+                  </div>
                 </div>
-              </div>
-              <div className={`menu-section-grid ${section.label === 'Strumenti' ? 'is-compact' : ''}`}>
-                {section.items.map((item) => (
-                  (() => {
-                    const itemState = getMenuScreenState(item)
-                    const isDisabled = !itemState.enabled
-                    return (
-                      <button
-                        key={item}
-                        type="button"
-                        className={`menu-item ${screen === item ? 'is-active' : ''} ${requiresCampaignSelection(item) && !hasActiveCampaign ? 'is-gated' : ''} ${isDisabled ? 'is-disabled' : ''} ${MODULE_REQUIRED_BY_SCREEN[item] && hasActiveCampaign && !(campaign?.allowedModules || []).includes(MODULE_REQUIRED_BY_SCREEN[item]!) ? 'is-module-disabled' : ''}`}
-                        onClick={() => {
-                          if (!itemState.enabled) return
-                          if (item === 'Lista Campagne' && hasActiveCampaign) {
-                            goToScreen('Scheda Campagna')
-                            return
-                          }
-                          goToScreen(item)
-                        }}
-                        disabled={isDisabled}
-                        title={itemState.title}
-                        aria-current={screen === item ? 'page' : undefined}
-                      >
-                    <span className="menu-item-icon">
-                      <Icon name={SCREEN_ICONS[item]} />
-                      {itemState.showOverlayX && (
-                        <span className="menu-item-overlay" aria-hidden="true">
-                          <Icon name="fa-solid fa-xmark" />
-                        </span>
-                      )}
-                      {item === 'Approvazione Accessi' && itemState.enabled && pendingApplications.length > 0 && (
-                        <span className="menu-item-badge" aria-hidden="true">
-                          {pendingApplications.length}
-                        </span>
-                      )}
-                    </span>
-                    <span className="menu-item-text">{SCREEN_LABELS[item]}</span>
-                      </button>
-                    )
-                  })()
-                ))}
-              </div>
-            </section>
-          ))}
+                <div className={`menu-section-grid ${section.label === 'Strumenti' ? 'is-compact' : ''}`}>
+                  {visibleItems.map(({ item, state: itemState }) => (
+                    <button
+                      key={item}
+                      type="button"
+                      className={`menu-item ${screen === item ? 'is-active' : ''} ${requiresCampaignSelection(item) && !hasActiveCampaign ? 'is-gated' : ''} ${MODULE_REQUIRED_BY_SCREEN[item] && hasActiveCampaign && !(campaign?.allowedModules || []).includes(MODULE_REQUIRED_BY_SCREEN[item]!) ? 'is-module-disabled' : ''}`}
+                      onClick={() => {
+                        if (item === 'Lista Campagne' && hasActiveCampaign) {
+                          goToScreen('Scheda Campagna')
+                          return
+                        }
+                        goToScreen(item)
+                      }}
+                      title={itemState.title}
+                      aria-current={screen === item ? 'page' : undefined}
+                    >
+                      <span className="menu-item-icon">
+                        <Icon name={SCREEN_ICONS[item]} />
+                        {itemState.showOverlayX && (
+                          <span className="menu-item-overlay" aria-hidden="true">
+                            <Icon name="fa-solid fa-xmark" />
+                          </span>
+                        )}
+                        {item === 'Approvazione Accessi' && pendingApplications.length > 0 && (
+                          <span className="menu-item-badge" aria-hidden="true">
+                            {pendingApplications.length}
+                          </span>
+                        )}
+                      </span>
+                      <span className="menu-item-text">{SCREEN_LABELS[item]}</span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )
+          })}
         </nav>
 
           <div className="sidebar-footer">
-            <button
-              type="button"
-              className="refresh-btn theme-toggle-btn sidebar-theme-toggle"
-              disabled={isSystemRole}
-              onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-            >
-              <Icon name={isSystemRole ? 'fa-solid fa-shield-halved' : theme === 'light' ? 'fa-solid fa-moon' : 'fa-solid fa-sun'} />
-              <span>{isSystemRole ? 'Tema Sistema' : theme === 'light' ? 'Tema scuro' : 'Tema chiaro'}</span>
-            </button>
+            {!isSystemRole && (
+              <button
+                type="button"
+                className="refresh-btn theme-toggle-btn sidebar-theme-toggle"
+                onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+              >
+                <Icon name={theme === 'light' ? 'fa-solid fa-moon' : 'fa-solid fa-sun'} />
+                <span>{theme === 'light' ? 'Tema scuro' : 'Tema chiaro'}</span>
+              </button>
+            )}
             <button type="button" className="logout-btn" onClick={handleLogout}>
               <Icon name="fa-solid fa-right-from-bracket" />
               <span>Logout</span>

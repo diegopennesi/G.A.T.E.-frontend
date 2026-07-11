@@ -325,6 +325,7 @@ export interface CampaignMembershipResponse {
   userId: string
   campaignId: string
   characterId: string | null
+  joinedAt: string | null
   role: CampaignRole
   memberStatus: CampaignMemberStatus
   characterStatus: CampaignCharacterStatus | null
