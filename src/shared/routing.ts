@@ -22,7 +22,7 @@ export function resolveRealmContextFromPath(pathname: string): {
       return {
         realmCode: segments[1].trim().toLowerCase(),
         authMode: 'login',
-        screen: (segments[3] && SCREEN_BY_PATH_SEGMENT[segments[3]]) || 'Profilo',
+        screen: (segments[3] && SCREEN_BY_PATH_SEGMENT[segments[3]]) || 'Ingresso',
       }
     }
     const nextSegment = segments[2]

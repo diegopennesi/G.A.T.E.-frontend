@@ -1,6 +1,7 @@
 import type { CampaignRole } from './domain'
 
 export type Screen =
+  | 'Ingresso'
   | 'Lista Campagne'
   | 'Crea Campagna'
   | 'Scheda Campagna'
@@ -61,6 +62,7 @@ export type InviteAccessPreview = {
 }
 
 export const SCREEN_PATH_SEGMENTS: Record<Screen, string> = {
+  Ingresso: 'ingresso',
   Profilo: 'profilo',
   'Modifica Profilo': 'profilo-modifica',
   'Lista Campagne': 'campagne',
@@ -79,6 +81,7 @@ export const SCREEN_PATH_SEGMENTS: Record<Screen, string> = {
 }
 
 export const SCREEN_LABELS: Record<Screen, string> = {
+  Ingresso: 'Ingresso',
   'Lista Campagne': 'Campagne',
   'Crea Campagna': 'Crea campagna',
   'Scheda Campagna': 'Scheda campagna',
@@ -125,6 +128,7 @@ export const NAVIGATION_SECTIONS: NavigationSection[] = [
 ]
 
 export const SCREEN_ICONS: Record<Screen, string> = {
+  Ingresso: 'fa-solid fa-door-open',
   'Lista Campagne': 'fa-solid fa-layer-group',
   'Crea Campagna': 'fa-solid fa-circle-plus',
   'Scheda Campagna': 'fa-solid fa-book-open',

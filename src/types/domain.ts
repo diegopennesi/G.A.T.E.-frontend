@@ -280,6 +280,7 @@ export interface CampaignResponse {
   isOpen: boolean
   isActive: boolean
   isSearchable: boolean
+  autoJoinEnabled: boolean
   inviteCode: string
   gameSystem?: string | null
   allowedModules: string[]
@@ -354,6 +355,7 @@ export interface CampaignDiscoverResponse {
   isOpen: boolean
   isActive: boolean
   isSearchable: boolean
+  autoJoinEnabled: boolean
   inviteCode?: string
   gameSystem?: string | null
   createdAt: string
@@ -371,8 +373,31 @@ export interface CampaignInvitePreviewResponse {
   founderId: string
   isOpen: boolean
   isActive: boolean
+  autoJoinEnabled: boolean
   gameSystem?: string | null
   createdAt: string
+}
+
+export interface PostLoginCampaignEntryResponse {
+  id: string
+  name: string
+  summary: string | null
+  description: string | null
+  founderId: string
+  isOpen: boolean
+  isActive: boolean
+  isVisible: boolean
+  autoJoinEnabled: boolean
+  gameSystem?: string | null
+  createdAt: string
+  membershipStatus: CampaignMemberStatus | null
+  membershipRole: CampaignRole | null
+  moderationReason: string | null
+}
+
+export interface PostLoginCampaignSummaryResponse {
+  canCreateCampaign: boolean
+  campaigns: PostLoginCampaignEntryResponse[]
 }
 
 export interface AdminCampaignListItem {
@@ -386,6 +411,7 @@ export interface AdminCampaignListItem {
   isOpen: boolean
   isActive: boolean
   isSearchable: boolean
+  autoJoinEnabled: boolean
   gameSystem: string
   allowedModules: string[]
   createdAt: string
@@ -407,6 +433,7 @@ export interface AdminCampaignUpdateRequest {
   isOpen: boolean
   isActive: boolean
   isSearchable: boolean
+  autoJoinEnabled?: boolean
   gameSystem: string
   allowedModules: string[]
 }

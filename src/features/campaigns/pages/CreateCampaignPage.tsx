@@ -133,6 +133,7 @@ export function CreateCampaignPage() {
   const [coverImageUrl, setCoverImageUrl] = useState('')
   const [isOpen, setIsOpen] = useState(true)
   const [isSearchable, setIsSearchable] = useState(true)
+  const [autoJoinEnabled, setAutoJoinEnabled] = useState(false)
   const [selectedGameSystemChoice, setSelectedGameSystemChoice] = useState('')
   const [selectedModulesDraft, setSelectedModulesDraft] = useState<string[]>([])
   const availableModuleCodes = useMemo(() => availableModules.map((module) => module.code), [availableModules])
@@ -176,6 +177,15 @@ export function CreateCampaignPage() {
       activeLabel: 'Ricercabile',
       inactiveLabel: 'Nascosta',
       onToggle: () => setIsSearchable((prev) => !prev),
+    },
+    {
+      key: 'auto-join',
+      title: 'Auto join',
+      description: "Approva automaticamente l'accesso da app quando la campagna e aperta e visibile.",
+      active: autoJoinEnabled,
+      activeLabel: 'Automatico',
+      inactiveLabel: 'Manuale',
+      onToggle: () => setAutoJoinEnabled((prev) => !prev),
     },
   ]
 
@@ -272,6 +282,7 @@ export function CreateCampaignPage() {
             coverImageUrl,
             isOpen,
             isSearchable,
+            autoJoinEnabled,
             gameSystem: selectedGameSystem,
             allowedModules: selectedModules,
           })

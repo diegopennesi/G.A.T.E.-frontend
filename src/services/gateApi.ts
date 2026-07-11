@@ -26,6 +26,7 @@ import type {
   CharacterSheetResponse,
   CharacterStatus,
   MyCampaignMembershipResponse,
+  PostLoginCampaignSummaryResponse,
   MissionParticipantResponse,
   MissionParticipationType,
   MissionChatResponse,
@@ -318,6 +319,7 @@ export async function createCampaign(payload: {
   coverImageUrl?: string
   isOpen?: boolean
   isSearchable?: boolean
+  autoJoinEnabled?: boolean
   gameSystem: string
   allowedModules?: string[]
 }): Promise<CampaignResponse> {
@@ -334,6 +336,7 @@ export async function createCampaign(payload: {
       coverImageUrl: payload.coverImageUrl || null,
       isOpen: payload.isOpen ?? true,
       isSearchable: payload.isSearchable ?? true,
+      autoJoinEnabled: payload.autoJoinEnabled ?? false,
       gameSystem: payload.gameSystem,
       allowedModules: payload.allowedModules ?? [],
     },
@@ -379,6 +382,7 @@ export async function updateCampaign(
     coverImageUrl?: string
     isOpen: boolean
     isSearchable: boolean
+    autoJoinEnabled?: boolean
     allowedModules?: string[]
   },
 ): Promise<CampaignResponse> {
@@ -395,6 +399,7 @@ export async function updateCampaign(
       coverImageUrl: payload.coverImageUrl || null,
       isOpen: payload.isOpen,
       isSearchable: payload.isSearchable,
+      autoJoinEnabled: payload.autoJoinEnabled,
       allowedModules: payload.allowedModules ?? [],
     },
   })
@@ -402,6 +407,10 @@ export async function updateCampaign(
 
 export async function discoverCampaigns(openOnly = false): Promise<CampaignDiscoverResponse[]> {
   return apiRequest<CampaignDiscoverResponse[]>(`/campaigns/discover?openOnly=${openOnly ? 'true' : 'false'}`)
+}
+
+export async function getPostLoginCampaignSummary(): Promise<PostLoginCampaignSummaryResponse> {
+  return apiRequest<PostLoginCampaignSummaryResponse>('/campaigns/post-login-summary')
 }
 
 export async function listCampaignModules(): Promise<CampaignCatalogEntry[]> {
