@@ -2,17 +2,7 @@ import { useMemo, useState } from 'react'
 import { useCampaignContext } from '../../../context'
 import { DataTable, FieldLabel, Icon } from '../../../shared/components'
 import type { CampaignCatalogEntry } from '../../../types/domain'
-import { CAMPAIGN_TONE_OPTIONS, catalogEntryDescription } from '../../../shared/utils'
-
-function campaignModuleIconName(module: CampaignCatalogEntry): string {
-  const token = `${module.code} ${module.label}`.toLowerCase()
-  if (token.includes('notif')) return 'fa-solid fa-bell'
-  if (token.includes('chat') || token.includes('messag') || token.includes('comment')) return 'fa-solid fa-comment-dots'
-  if (token.includes('stanza') || token.includes('room') || token.includes('door')) return 'fa-solid fa-door-open'
-  if (token.includes('mission') || token.includes('quest') || token.includes('board') || token.includes('bacheca'))
-    return 'fa-solid fa-clipboard-list'
-  return 'fa-solid fa-circle-info'
-}
+import { CAMPAIGN_TONE_OPTIONS, campaignModuleIconName, catalogEntryDescription } from '../../../shared/utils'
 
 function campaignModuleTitle(module: CampaignCatalogEntry): string {
   return module.label || module.code

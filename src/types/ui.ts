@@ -129,7 +129,7 @@ export const SCREEN_ICONS: Record<Screen, string> = {
   'Crea Campagna': 'fa-solid fa-circle-plus',
   'Scheda Campagna': 'fa-solid fa-book-open',
   'Approvazione Accessi': 'fa-solid fa-shield-halved',
-  Missioni: 'fa-solid fa-flag-checkered',
+  Missioni: 'lucide:Flag',
   Stanze: 'fa-solid fa-door-open',
   Log: 'fa-solid fa-list-check',
   Profilo: 'fa-solid fa-user',

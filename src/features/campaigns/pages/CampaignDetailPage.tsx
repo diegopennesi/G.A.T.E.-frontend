@@ -9,6 +9,7 @@ import {
   catalogEntryDescription,
   catalogEntryLabel,
   formatShortDate,
+  gameSystemIconName,
 } from '../../../shared/utils'
 import type { CampaignCharacterStatus, CampaignRole } from '../../../types/domain'
 import { CampaignStatusBadge } from '../components'
@@ -122,8 +123,8 @@ export function CampaignDetailPage() {
     {
       key: 'open',
       active: campaign?.isOpen ?? false,
-      label: campaign?.isOpen ? 'Campagna aperta' : 'Campagna privata',
-      icon: campaign?.isOpen ? 'fa-solid fa-door-open' : 'fa-solid fa-lock',
+      label: campaign?.isOpen ? 'Campagna aperta' : 'Campagna chiusa',
+      icon: campaign?.isOpen ? 'fa-solid fa-unlock' : 'fa-solid fa-lock',
     },
     {
       key: 'searchable',
@@ -138,6 +139,7 @@ export function CampaignDetailPage() {
       <div className="row-between">
         <h2>Scheda Campagna</h2>
         <button type="button" className="secondary-btn" onClick={onReload}>
+          <Icon name="fa-solid fa-rotate" />
           Reload
         </button>
       </div>
@@ -151,29 +153,63 @@ export function CampaignDetailPage() {
               <div className="campaign-hero-title-row">
                 <h2 className="campaign-hero-title">{campaign.name}</h2>
                 <span className="campaign-system-inline" title={catalogEntryDescription(availableGameSystems, campaign.gameSystem) || undefined}>
-                  <Icon name="fa-solid fa-gamepad" />
+                  <Icon name={gameSystemIconName(campaign.gameSystem)} />
                   <span>{catalogEntryLabel(availableGameSystems, campaign.gameSystem) || 'Sistema non disponibile'}</span>
                 </span>
               </div>
             </div>
             <div className="campaign-hero-status">
-              <p className="campaign-status-line">
-                Stato campagna: <CampaignStatusBadge isActive={campaign.isActive} />
-              </p>
+              <CampaignStatusBadge isActive={campaign.isActive} />
             </div>
           </div>
-          <div className="campaign-visibility-meta" aria-label="Stato visibilità campagna">
-            {campaignVisibilityMeta.map((item) => (
-              <span
-                key={item.key}
-                className={`campaign-meta-pill ${item.active ? 'is-active' : 'is-inactive'}`}
-                title={item.label}
-                aria-label={item.label}
-              >
-                <Icon name={item.icon} />
-                <span>{item.label}</span>
-              </span>
-            ))}
+          <div className="campaign-hero-toolbar">
+            <div className="campaign-hero-meta" aria-label="Stato visibilità campagna">
+              {campaignVisibilityMeta.map((item) => (
+                <span
+                  key={item.key}
+                  className={`campaign-meta-pill ${item.active ? 'is-active' : 'is-inactive'}`}
+                  title={item.label}
+                  aria-label={item.label}
+                >
+                  <Icon name={item.icon} />
+                  <span>{item.label}</span>
+                </span>
+              ))}
+            </div>
+            <div className="inline-actions campaign-detail-actions">
+              {!isActiveCampaign && membershipStatus === 'APPROVED' && (
+                <button type="button" className="primary-btn" onClick={onActivate}>
+                  Attiva campagna
+                </button>
+              )}
+              {(membershipStatus === null || membershipStatus === 'REJECTED') && campaign.isOpen && (
+                <button type="button" className="primary-btn" onClick={onApply}>
+                  Richiedi accesso
+                </button>
+              )}
+              {membershipStatus === 'PENDING' && (
+                <button type="button" className="secondary-btn" disabled>
+                  Richiesta inviata
+                </button>
+              )}
+              {(membershipRole === 'MASTER' || membershipRole === 'SUPER_MASTER') && (
+                <button type="button" className="campaign-outline-action campaign-outline-action--gold" onClick={onOpenManagement}>
+                  <Icon name="fa-solid fa-book-open" />
+                  <span>Gestione Campagna</span>
+                </button>
+              )}
+              {membershipStatus === 'APPROVED' && (
+                <button type="button" className="campaign-outline-action campaign-outline-action--violet" onClick={onOpenCharacters}>
+                  <Icon name="fa-solid fa-user" />
+                  <span>Gestione Personaggi</span>
+                </button>
+              )}
+              {membershipStatus === 'APPROVED' && campaign?.founderId !== currentUserId && (
+                <button type="button" className="danger-btn campaign-leave-btn" onClick={onLeaveCampaign}>
+                  Esci dalla campagna
+                </button>
+              )}
+            </div>
           </div>
           {campaign.summary && <p className="campaign-summary">{campaign.summary}</p>}
           <p className="campaign-description-muted">{campaign.description || 'Nessuna descrizione'}</p>
@@ -184,9 +220,9 @@ export function CampaignDetailPage() {
             <InfoBlock title="Requisiti d'ingresso" value={campaign.requirements} />
           </div>
           <div className="campaign-addon-section">
-            <div className="row-between">
+            <div className="campaign-addon-head">
               <h3 className="section-title">Addon campagna</h3>
-              <span className="readonly-chip">{campaign.allowedModules.length} attivi</span>
+              <p className="muted">Moduli disponibili per questa campagna.</p>
             </div>
             {availableModules.length > 0 ? (
               <div className="campaign-addon-icons" role="list" aria-label="Addon campagna">
@@ -210,40 +246,6 @@ export function CampaignDetailPage() {
               </div>
             ) : (
               <p className="muted">Lista addon non ancora disponibile.</p>
-            )}
-          </div>
-          <div className="inline-actions campaign-detail-actions">
-            {!isActiveCampaign && membershipStatus === 'APPROVED' && (
-              <button type="button" className="primary-btn" onClick={onActivate}>
-                Attiva campagna
-              </button>
-            )}
-            {(membershipStatus === null || membershipStatus === 'REJECTED') && campaign.isOpen && (
-              <button type="button" className="primary-btn" onClick={onApply}>
-                Richiedi accesso
-              </button>
-            )}
-            {membershipStatus === 'PENDING' && (
-              <button type="button" className="secondary-btn" disabled>
-                Richiesta inviata
-              </button>
-            )}
-            {(membershipRole === 'MASTER' || membershipRole === 'SUPER_MASTER') && (
-              <button type="button" className="campaign-outline-action campaign-outline-action--gold" onClick={onOpenManagement}>
-                <Icon name="fa-solid fa-book-open" />
-                <span>Gestione Campagna</span>
-              </button>
-            )}
-            {membershipStatus === 'APPROVED' && (
-              <button type="button" className="campaign-outline-action campaign-outline-action--violet" onClick={onOpenCharacters}>
-                <Icon name="fa-solid fa-user" />
-                <span>Gestione Personaggi</span>
-              </button>
-            )}
-            {membershipStatus === 'APPROVED' && campaign?.founderId !== currentUserId && (
-              <button type="button" className="danger-btn campaign-leave-btn" onClick={onLeaveCampaign}>
-                Esci dalla campagna
-              </button>
             )}
           </div>
           {canManageMembers && (

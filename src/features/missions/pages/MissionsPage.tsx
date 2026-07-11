@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react'
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
+import { MultiSelect } from 'primereact/multiselect'
 import { Skeleton } from 'primereact/skeleton'
 import { useMissionContext } from '../../../context'
 import { MissionChatPanel } from '../../chat'
 import { ConfirmActionDialog, DataTable, FieldLabel, Icon } from '../../../shared/components'
+import { gameSystemIconName } from '../../../shared/utils'
 import type {
   MissionParticipationType,
   MissionResponse,
@@ -21,6 +23,20 @@ type MissionPayload = {
   maxParticipants?: number | null
   autoReopenOnDrop?: boolean
 }
+
+type MissionViewFilter = 'active' | 'expired' | 'completed'
+
+type MissionFilterOption = {
+  value: MissionViewFilter
+  label: string
+  icon: string
+}
+
+const MISSION_VIEW_FILTER_OPTIONS: MissionFilterOption[] = [
+  { value: 'active', label: 'Attive', icon: 'fa-solid fa-unlock' },
+  { value: 'expired', label: 'Scadute', icon: 'fa-solid fa-hourglass-half' },
+  { value: 'completed', label: 'Completate', icon: 'fa-solid fa-circle-check' },
+]
 
 type MissionDraft = {
   title: string
@@ -235,12 +251,7 @@ function missionGameSystemLabel(value: string | null | undefined) {
 }
 
 function missionGameSystemIcon(value: string | null | undefined) {
-  switch (value) {
-    case 'DND5E':
-      return 'pi pi-star'
-    default:
-      return 'pi pi-book'
-  }
+  return gameSystemIconName(value)
 }
 
 function renderMissionText(value: string | null | undefined) {
@@ -335,8 +346,7 @@ export function MissionsPage() {
   const [createError, setCreateError] = useState('')
   const [searchText, setSearchText] = useState('')
   const [campaignFilters, setCampaignFilters] = useState<Record<string, string>>({})
-  const [showExpired, setShowExpired] = useState(false)
-  const [showCompleted, setShowCompleted] = useState(false)
+  const [missionViewFilters, setMissionViewFilters] = useState<MissionViewFilter[]>(['active'])
   const [sortBy, setSortBy] = useState<MissionSortKey>('session')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
   const [participantSortBy, setParticipantSortBy] = useState<MissionParticipantSortKey>('user')
@@ -355,6 +365,9 @@ export function MissionsPage() {
   const visibleMode = mode === 'create' && canUseCreateMode ? 'create' : 'browse'
   const selectedMissionInActiveCampaign = Boolean(selectedMission && selectedMission.campaignId === activeCampaignId)
   const campaignFilter = activeCampaignId ? campaignFilters[activeCampaignId] || 'all' : 'all'
+  const activeMissionView = missionViewFilters[0] || 'active'
+  const showExpired = activeMissionView === 'expired'
+  const showCompleted = activeMissionView === 'completed'
   const selectedMissionStarted = Boolean(
     selectedMission?.sessionAt && new Date(selectedMission.sessionAt).getTime() <= now,
   )
@@ -960,7 +973,7 @@ export function MissionsPage() {
           {hasActiveCampaign && visibleMode !== 'create' && canCreateMissions && (
             <button
               type="button"
-              className="secondary-btn"
+              className="primary-btn"
               onClick={() => {
                 setCreateDraft(defaultDraft())
                 setCreateError('')
@@ -1013,34 +1026,31 @@ export function MissionsPage() {
             )}
           </label>
         )}
-        <div className="segmented-btn-group mission-status-toggle">
-          <button
-            type="button"
-            className={`segmented-btn ${showExpired ? 'is-active' : ''}`}
-            title="Mostra solo missioni con data sessione precedente a ora"
-            onClick={() => {
+        <label className="member-filter-field mission-view-filter">
+          <span className="muted">Vista</span>
+          <MultiSelect
+            className="member-filter-select"
+            panelClassName="member-filter-select-panel"
+            value={missionViewFilters}
+            options={MISSION_VIEW_FILTER_OPTIONS}
+            optionLabel="label"
+            optionValue="value"
+            onChange={(event) => {
               setNow(Date.now())
-              const nextValue = !showExpired
-              setShowExpired(nextValue)
-              if (nextValue) setShowCompleted(false)
+              const nextValues = (event.value as MissionViewFilter[]).slice(-1)
+              setMissionViewFilters(nextValues)
             }}
-          >
-            Scadute
-          </button>
-          <button
-            type="button"
-            className={`segmented-btn ${showCompleted ? 'is-active' : ''}`}
-            title="Mostra solo missioni completate"
-            onClick={() => {
-              setNow(Date.now())
-              const nextValue = !showCompleted
-              setShowCompleted(nextValue)
-              if (nextValue) setShowExpired(false)
-            }}
-          >
-            Completate
-          </button>
-        </div>
+            placeholder="Vista"
+            maxSelectedLabels={1}
+            selectedItemsLabel="{0} selezionata"
+            itemTemplate={(option: MissionFilterOption) => (
+              <span className="member-filter-option-copy">
+                <Icon name={option.icon} />
+                <span>{option.label}</span>
+              </span>
+            )}
+          />
+        </label>
       </div>
 
       <div className="mission-grid mission-grid-single">

@@ -114,7 +114,7 @@ export function CampaignOpenBadge({ isOpen }: { isOpen: boolean }) {
   return (
     <span className={`campaign-open-badge ${isOpen ? 'is-open' : 'is-closed'}`} title={isOpen ? 'Campagna aperta' : 'Campagna chiusa'}>
       <span className="campaign-open-badge-icon" aria-hidden="true">
-        <Icon name={isOpen ? 'fa-solid fa-circle-check' : 'fa-solid fa-circle-xmark'} />
+        <Icon name={isOpen ? 'fa-solid fa-unlock' : 'fa-solid fa-lock'} />
       </span>
       <span>{isOpen ? 'APERTA' : 'CHIUSA'}</span>
     </span>

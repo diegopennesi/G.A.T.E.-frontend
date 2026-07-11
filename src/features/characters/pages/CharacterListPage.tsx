@@ -1,8 +1,27 @@
 import { useMemo, useState } from 'react'
+import { MultiSelect } from 'primereact/multiselect'
 import { useCharacterContext } from '../../../context'
-import { DataTable, FilterChipGroup, Icon } from '../../../shared/components'
-import { statusTone } from '../../../shared/utils'
+import { DataTable, Icon } from '../../../shared/components'
 import type { CharacterStatus } from '../../../types/domain'
+
+type CharacterTypeFilter = 'NPC' | 'PG'
+
+type FilterOption<T extends string> = {
+  value: T
+  label: string
+  icon: string
+}
+
+const TYPE_FILTER_OPTIONS: Array<FilterOption<CharacterTypeFilter>> = [
+  { value: 'PG', label: 'Personaggio', icon: 'fa-solid fa-user' },
+  { value: 'NPC', label: 'NPC', icon: 'fa-solid fa-mask' },
+]
+
+const STATUS_FILTER_OPTIONS: Array<FilterOption<CharacterStatus>> = [
+  { value: 'ACTIVE', label: 'Active', icon: 'fa-solid fa-circle-check' },
+  { value: 'RETIRED', label: 'Retired', icon: 'fa-solid fa-hourglass-half' },
+  { value: 'DEAD', label: 'Dead', icon: 'fa-solid fa-circle-xmark' },
+]
 
 export function CharacterListPage() {
   const {
@@ -15,31 +34,11 @@ export function CharacterListPage() {
     openCreateCharacter: onCreateScreen,
     reloadCharacters: onReload,
   } = useCharacterContext()
-  const [typeFilters, setTypeFilters] = useState<Array<'NPC' | 'PG'>>(['NPC', 'PG'])
+  const [typeFilters, setTypeFilters] = useState<CharacterTypeFilter[]>(['NPC', 'PG'])
   const [statusFilters, setStatusFilters] = useState<CharacterStatus[]>(['ACTIVE', 'RETIRED', 'DEAD'])
   const [searchText, setSearchText] = useState('')
-  const [sortBy, setSortBy] = useState<'character' | 'profile' | 'campaign' | 'type' | 'status' | 'access'>('character')
+  const [sortBy, setSortBy] = useState<'character' | 'campaign'>('character')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
-
-  const toggleTypeFilter = (type: 'NPC' | 'PG') => {
-    setTypeFilters((prev) => {
-      if (prev.includes(type)) {
-        if (prev.length === 1) return prev
-        return prev.filter((item) => item !== type)
-      }
-      return [...prev, type]
-    })
-  }
-
-  const toggleStatusFilter = (status: CharacterStatus) => {
-    setStatusFilters((prev) => {
-      if (prev.includes(status)) {
-        if (prev.length === 1) return prev
-        return prev.filter((item) => item !== status)
-      }
-      return [...prev, status]
-    })
-  }
 
   const normalizedSearchText = searchText.trim().toLowerCase()
   const filteredCharacters = useMemo(() => {
@@ -56,26 +55,16 @@ export function CharacterListPage() {
 
     const directionMultiplier = sortDirection === 'asc' ? 1 : -1
     const sortString = (left: string, right: string) => left.localeCompare(right, 'it', { sensitivity: 'base' }) * directionMultiplier
-    const sortBoolean = (left: boolean, right: boolean) => (Number(left) - Number(right)) * directionMultiplier
-
     return [...list].sort((left, right) => {
       switch (sortBy) {
-        case 'profile':
-          return sortString(ownerProfileLabel(left.userId, left.ownerProfileName), ownerProfileLabel(right.userId, right.ownerProfileName))
         case 'campaign':
           return sortString(campaignNameForCharacter(left), campaignNameForCharacter(right))
-        case 'type':
-          return sortString(left.isNpc ? 'NPC' : 'PG', right.isNpc ? 'NPC' : 'PG')
-        case 'status':
-          return sortString(left.characterStatus || '', right.characterStatus || '')
-        case 'access':
-          return sortBoolean(canOpenCharacterSheet(left), canOpenCharacterSheet(right))
         case 'character':
         default:
           return sortString(left.name, right.name)
       }
     })
-  }, [characters, statusFilters, typeFilters, normalizedSearchText, sortBy, sortDirection, ownerProfileLabel, campaignNameForCharacter, canOpenCharacterSheet])
+  }, [characters, statusFilters, typeFilters, normalizedSearchText, sortBy, sortDirection, ownerProfileLabel, campaignNameForCharacter])
 
   const handleSortChange = (nextSortBy: string) => {
     setSortBy((prev) => {
@@ -93,48 +82,75 @@ export function CharacterListPage() {
     <section className="panel">
       <div className="row-between">
         <h2>Gestione Personaggi</h2>
-        <div className="inline-actions">
+        <div className="inline-actions character-page-actions">
           <button type="button" className="secondary-btn" onClick={onReload}>
+            <Icon name="fa-solid fa-rotate" />
             Reload
           </button>
           <button type="button" className="primary-btn" onClick={onCreateScreen}>
+            <Icon name="fa-solid fa-plus" />
             Crea Personaggio
           </button>
         </div>
       </div>
-      <div className="character-filter-toolbar">
-        <FilterChipGroup
-          label="Tipo"
-          options={[
-            { value: 'PG', label: 'Personaggio', title: 'Mostra i personaggi giocanti' },
-            { value: 'NPC', label: 'NPC', title: 'Mostra i personaggi non giocanti' },
-          ]}
-          selectedValues={typeFilters}
-          onToggle={toggleTypeFilter}
-        />
-        <FilterChipGroup
-          label="Stato"
-          options={[
-            { value: 'ACTIVE', label: 'ACTIVE', className: 'filter-chip--status-approved', title: 'Stato attivo' },
-            { value: 'RETIRED', label: 'RETIRED', className: 'filter-chip--status-rejected', title: 'Stato ritirato' },
-            { value: 'DEAD', label: 'DEAD', className: 'filter-chip--status-blocked', title: 'Stato morto' },
-          ]}
-          selectedValues={statusFilters}
-          onToggle={toggleStatusFilter}
-        />
-        <label className="character-filter-field">
-          <span className="muted">Ricerca</span>
-          <input value={searchText} onChange={(event) => setSearchText(event.target.value)} placeholder="Nome, profilo o campagna" />
-        </label>
+      <div className="member-filters-panel">
+        <div className="character-filter-toolbar">
+          <label className="member-filter-field">
+            <span className="muted">Tipo</span>
+            <MultiSelect
+              className="member-filter-select"
+              panelClassName="member-filter-select-panel"
+              value={typeFilters}
+              options={TYPE_FILTER_OPTIONS}
+              optionLabel="label"
+              optionValue="value"
+              onChange={(event) => setTypeFilters(event.value as CharacterTypeFilter[])}
+              placeholder="Tutti i tipi"
+              maxSelectedLabels={2}
+              selectedItemsLabel="{0} selezionati"
+              itemTemplate={(option: FilterOption<CharacterTypeFilter>) => (
+                <span className="member-filter-option-copy">
+                  <Icon name={option.icon} />
+                  <span>{option.label}</span>
+                </span>
+              )}
+            />
+          </label>
+          <label className="member-filter-field">
+            <span className="muted">Stato</span>
+            <MultiSelect
+              className="member-filter-select"
+              panelClassName="member-filter-select-panel"
+              value={statusFilters}
+              options={STATUS_FILTER_OPTIONS}
+              optionLabel="label"
+              optionValue="value"
+              onChange={(event) => setStatusFilters(event.value as CharacterStatus[])}
+              placeholder="Tutti gli stati"
+              maxSelectedLabels={2}
+              selectedItemsLabel="{0} selezionati"
+              itemTemplate={(option: FilterOption<CharacterStatus>) => (
+                <span className="member-filter-option-copy">
+                  <Icon name={option.icon} />
+                  <span>{option.label}</span>
+                </span>
+              )}
+            />
+          </label>
+          <label className="member-filter-field">
+            <span className="muted">Ricerca</span>
+            <input value={searchText} onChange={(event) => setSearchText(event.target.value)} placeholder="Nome, profilo o campagna" />
+          </label>
+        </div>
       </div>
       <DataTable
         columns={[
           { key: 'character', label: 'Personaggio', sortKey: 'character' },
-          { key: 'profile', label: 'Profilo', sortKey: 'profile' },
+          { key: 'status', label: 'Stato' },
+          { key: 'type', label: 'Tipo' },
           { key: 'campaign', label: 'Campagna', sortKey: 'campaign' },
-          { key: 'type', label: 'Tipo', sortKey: 'type' },
-          { key: 'status', label: 'Stato', sortKey: 'status' },
-          { key: 'access', label: 'Accesso', sortKey: 'access' },
+          { key: 'profile', label: 'Profilo' },
+          { key: 'edit', label: '' },
         ]}
         rows={filteredCharacters}
         getRowKey={(character) => character.id}
@@ -160,20 +176,41 @@ export function CharacterListPage() {
                 </button>
                 <p className="data-table-secondary">{character.nickname || 'no nickname'}</p>
               </td>
-              <td className="data-table-secondary">{ownerProfileLabel(character.userId, character.ownerProfileName)}</td>
-              <td className="data-table-secondary">{campaignNameForCharacter(character)}</td>
-              <td>{character.isNpc ? 'NPC' : 'PG'}</td>
               <td>
-                <span className={`status status-${statusTone(character.characterStatus)}`}>{character.characterStatus || 'N/A'}</span>
+                <span className={`member-state-badge character-state-badge is-${String(character.characterStatus || 'neutral').toLowerCase()}`}>
+                  <Icon
+                    name={
+                      character.characterStatus === 'ACTIVE'
+                        ? 'fa-solid fa-circle-check'
+                        : character.characterStatus === 'RETIRED'
+                          ? 'fa-solid fa-hourglass-half'
+                          : character.characterStatus === 'DEAD'
+                            ? 'fa-solid fa-circle-xmark'
+                            : 'fa-solid fa-circle-info'
+                    }
+                  />
+                  <span>{character.characterStatus || 'N/A'}</span>
+                </span>
               </td>
               <td>
-                <span
-                  className={`editability-icon ${canOpen ? 'is-editable' : 'is-readonly'}`}
-                  aria-label={canOpen ? 'Modificabile' : 'Non modificabile'}
-                  title={canOpen ? 'Modificabile' : 'Non modificabile'}
+                <span className={`character-kind-badge ${character.isNpc ? 'is-npc' : 'is-pg'}`}>
+                  <Icon name={character.isNpc ? 'fa-solid fa-mask' : 'fa-solid fa-user'} />
+                  <span>{character.isNpc ? 'NPC' : 'PG'}</span>
+                </span>
+              </td>
+              <td className="data-table-secondary">{campaignNameForCharacter(character)}</td>
+              <td className="data-table-secondary">{ownerProfileLabel(character.userId, character.ownerProfileName)}</td>
+              <td>
+                <button
+                  type="button"
+                  className="character-edit-btn"
+                  onClick={() => onSelectCharacter(character)}
+                  disabled={!canOpen}
+                  aria-label={canOpen ? `Modifica scheda ${character.name}` : `Scheda non modificabile ${character.name}`}
+                  title={canOpen ? 'Modifica scheda' : 'Scheda non modificabile'}
                 >
                   <Icon name={canOpen ? 'fa-solid fa-pen' : 'fa-solid fa-lock'} />
-                </span>
+                </button>
               </td>
             </tr>
           )

@@ -19,8 +19,6 @@ export function CampaignListPage() {
     applyCampaign: onApplyCampaign,
     applyInviteAccess: onApplyInviteAccess,
     previewInviteAccess: onPreviewInviteAccess,
-    openCreateCampaign: onCreateCampaign,
-    canCreateCampaign,
     activeCampaignName,
   } = useCampaignContext()
   const [membershipFilter, setMembershipFilter] = useState<'all' | 'inside' | 'outside' | 'pending' | 'blocked'>('all')
@@ -95,15 +93,6 @@ export function CampaignListPage() {
         <div className="inline-actions campaign-list-actions">
           <button type="button" className="secondary-btn" onClick={onDiscover}>
             Cerca campagne
-          </button>
-          <button
-            type="button"
-            className="primary-btn"
-            onClick={onCreateCampaign}
-            disabled={!canCreateCampaign}
-            title={canCreateCampaign ? 'Crea campagna' : 'Creazione campagne disabilitata per il tuo ruolo in questo realm'}
-          >
-            Crea campagna
           </button>
         </div>
       </div>

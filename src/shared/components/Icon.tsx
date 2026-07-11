@@ -1,3 +1,21 @@
+import type { LucideIcon } from 'lucide-react'
+import {
+  Bell,
+  BookOpen,
+  DoorOpen,
+  Eye,
+  Flag,
+  Gamepad2,
+  Map,
+  MessagesSquare,
+  MoonStar,
+  ScrollText,
+  Shield,
+  Swords,
+  UserRound,
+  Users,
+} from 'lucide-react'
+
 const PRIME_ICON_BY_FA_NAME: Record<string, string> = {
   'fa-address-book': 'pi pi-address-book',
   'fa-address-card': 'pi pi-id-card',
@@ -29,6 +47,7 @@ const PRIME_ICON_BY_FA_NAME: Record<string, string> = {
   'fa-dice-d20': 'pi pi-star',
   'fa-door-open': 'pi pi-door-open',
   'fa-dungeon': 'pi pi-building',
+  'fa-eye': 'pi pi-eye',
   'fa-eye-slash': 'pi pi-eye-slash',
   'fa-filter': 'pi pi-filter',
   'fa-flag-checkered': 'pi pi-flag',
@@ -89,6 +108,23 @@ const PRIME_ICON_BY_FA_NAME: Record<string, string> = {
   'fa-xmark': 'pi pi-times',
 }
 
+const LUCIDE_ICON_BY_NAME: Record<string, LucideIcon> = {
+  Bell,
+  BookOpen,
+  DoorOpen,
+  Eye,
+  Flag,
+  Gamepad2,
+  Map,
+  MessagesSquare,
+  MoonStar,
+  ScrollText,
+  Shield,
+  Swords,
+  UserRound,
+  Users,
+}
+
 function resolvePrimeIcon(name: string) {
   if (name.includes('pi ')) return name
   const tokens = name.split(/\s+/).filter(Boolean)
@@ -97,5 +133,12 @@ function resolvePrimeIcon(name: string) {
 }
 
 export function Icon({ name, className = '' }: { name: string; className?: string }) {
+  if (name.startsWith('lucide:')) {
+    const iconName = name.slice('lucide:'.length)
+    const LucideComponent = LUCIDE_ICON_BY_NAME[iconName]
+    if (LucideComponent) {
+      return <LucideComponent aria-hidden="true" className={`app-icon-lucide ${className}`.trim()} strokeWidth={2} />
+    }
+  }
   return <i aria-hidden="true" className={`${resolvePrimeIcon(name)} ${className}`.trim()} />
 }

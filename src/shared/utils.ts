@@ -108,8 +108,32 @@ export const CAMPAIGN_MODULE_UNAVAILABLE_HINT = 'Non attualmente disponibile'
 export const CAMPAIGN_MODULE_HIDDEN_CODES = new Set(['NOTIFICATIONS'])
 export const CAMPAIGN_MODULE_UNAVAILABLE_CODES = new Set(['STANZE'])
 
-export function campaignModuleIconName(_module: CampaignCatalogEntry): string {
-  return 'fa-solid fa-gamepad'
+export function campaignModuleIconName(module: CampaignCatalogEntry): string {
+  const token = `${module.code} ${module.label}`.toLowerCase()
+  if (token.includes('mission') || token.includes('quest') || token.includes('board') || token.includes('bacheca')) return 'lucide:Flag'
+  if (token.includes('stanza') || token.includes('room') || token.includes('door')) return 'lucide:DoorOpen'
+  if (token.includes('chat') || token.includes('messag') || token.includes('comment')) return 'lucide:MessagesSquare'
+  if (token.includes('notif')) return 'lucide:Bell'
+  return 'lucide:Gamepad2'
+}
+
+export function gameSystemIconName(value: string | null | undefined): string {
+  const token = String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s._-]+/g, '')
+
+  const matchesAny = (aliases: string[]) => aliases.some((alias) => token.includes(alias))
+
+  if (matchesAny(['DND', 'DND5E', 'DND2024', 'DUNGEONSANDDRAGONS', 'DUNGEONSDRAGONS'])) return 'lucide:Swords'
+  if (matchesAny(['PATHFINDER', 'PF2', 'PF2E', 'PF1', 'PF1E'])) return 'lucide:Map'
+  if (matchesAny(['CALL_OF_CTHULHU'.replace(/_/g, ''), 'CALLOFCTHULHU', 'CTHULHU', 'COC7', 'COC'])) return 'lucide:Eye'
+  if (matchesAny(['VAMPIRE', 'VTM', 'MASQUERADE', 'V5'])) return 'lucide:MoonStar'
+  if (matchesAny(['WARHAMMER', 'WH40K', 'WARHAMMER40K', 'ROGUETRADER'])) return 'lucide:Shield'
+  if (matchesAny(['CYBERPUNK', 'CPRED', 'CYBERPUNKRED'])) return 'lucide:Gamepad2'
+  if (matchesAny(['FABULAULTIMA', 'FABULA'])) return 'lucide:BookOpen'
+  if (matchesAny(['SEVENTHSEA', '7THSEA'])) return 'lucide:ScrollText'
+  return 'lucide:ScrollText'
 }
 
 export function campaignModuleTitle(module: CampaignCatalogEntry): string {

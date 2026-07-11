@@ -54,7 +54,7 @@ export function CampaignMemberProfilePage() {
       <div className="row-between">
         <h2>Profilo Membro Campagna</h2>
         <button type="button" className="secondary-btn" onClick={onRefresh}>
-          <Icon name="fa-solid fa-rotate-right" />
+          <Icon name="fa-solid fa-rotate" />
           Reload
         </button>
       </div>
