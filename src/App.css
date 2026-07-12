@@ -6275,6 +6275,18 @@ body {
   color: #8bf0b7;
 }
 
+.mission-share-inline-badge {
+  border-color: rgba(37, 211, 102, 0.28);
+  background: rgba(37, 211, 102, 0.16);
+  color: #7dffad;
+}
+
+.mission-share-inline-badge:hover,
+.mission-share-inline-badge:focus-visible {
+  background: rgba(37, 211, 102, 0.22);
+  color: #9cffc0;
+}
+
 .mission-chat-cell {
   display: flex;
   justify-content: flex-start;

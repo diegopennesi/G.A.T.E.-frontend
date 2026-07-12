@@ -159,6 +159,7 @@ const DEFAULT_FAVICON_URL = '/favicon.svg'
 
 
 type KnownCampaignMeta = { id: string; name: string }
+type MissionShareTarget = { campaignId: string; missionId: string }
 
 function readPendingApplicationsCache(userId?: string | null): Record<string, CampaignApplicationResponse[]> {
   return readStoredJson(sessionStorage, scopedStorageKey(PENDING_APPLICATIONS_CACHE_KEY, userId), {})
@@ -410,6 +411,8 @@ function App() {
   const [postLoginError, setPostLoginError] = useState('')
   const postLoginSummaryInFlightRef = useRef<Promise<void> | null>(null)
   const campaignSwitchSourceIdRef = useRef('')
+  const missionShareTargetRef = useRef<MissionShareTarget | null>(null)
+  const missionShareTargetAppliedRef = useRef(false)
 
   useEffect(() => {
     setRealmCode(realmCode)
@@ -428,6 +431,28 @@ function App() {
     syncRealmFromLocation()
     window.addEventListener('popstate', syncRealmFromLocation)
     return () => window.removeEventListener('popstate', syncRealmFromLocation)
+  }, [])
+
+  useEffect(() => {
+    const syncMissionShareTargetFromLocation = () => {
+      const params = new URLSearchParams(window.location.search)
+      const missionId = params.get('missionId')?.trim() || ''
+      if (!missionId) {
+        missionShareTargetRef.current = null
+        missionShareTargetAppliedRef.current = false
+        return
+      }
+
+      missionShareTargetRef.current = {
+        campaignId: params.get('campaignId')?.trim() || '',
+        missionId,
+      }
+      missionShareTargetAppliedRef.current = false
+    }
+
+    syncMissionShareTargetFromLocation()
+    window.addEventListener('popstate', syncMissionShareTargetFromLocation)
+    return () => window.removeEventListener('popstate', syncMissionShareTargetFromLocation)
   }, [])
 
   useEffect(() => {
@@ -642,6 +667,40 @@ function App() {
       return next
     })
   }
+
+  useEffect(() => {
+    const target = missionShareTargetRef.current
+    if (!target || missionShareTargetAppliedRef.current) return
+    if (!profile || !activeUserId) return
+
+    const targetCampaignId = target.campaignId.trim()
+    const currentCampaignId = campaignId.trim()
+
+    if (targetCampaignId && currentCampaignId !== targetCampaignId) {
+      setCampaignId(targetCampaignId)
+      const storageKey = scopedStorageKey(CAMPAIGN_ID_KEY, activeUserId)
+      localStorage.setItem(storageKey, targetCampaignId)
+      setKnownCampaignIds((prev) => {
+        const next = Array.from(new Set([targetCampaignId, ...prev]))
+        localStorage.setItem(scopedStorageKey(KNOWN_CAMPAIGNS_KEY, activeUserId), JSON.stringify(next))
+        return next
+      })
+      if (screen !== 'Missioni') {
+        setScreen('Missioni')
+      }
+      return
+    }
+
+    if (screen !== 'Missioni') {
+      setScreen('Missioni')
+      return
+    }
+
+    if (!missions.some((mission) => mission.id === target.missionId)) return
+
+    setSelectedMissionId(target.missionId)
+    missionShareTargetAppliedRef.current = true
+  }, [activeUserId, campaignId, missions, profile, screen, setCampaignId, setKnownCampaignIds, setScreen, setSelectedMissionId])
 
   const run = async (label: string, task: () => Promise<void>) => {
     setBusy(true)

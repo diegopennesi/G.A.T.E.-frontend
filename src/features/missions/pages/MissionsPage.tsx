@@ -6,6 +6,7 @@ import { useMissionContext } from '../../../context'
 import { MissionChatPanel } from '../../chat'
 import { ConfirmActionDialog, DataTable, FieldLabel, Icon } from '../../../shared/components'
 import { gameSystemIconName } from '../../../shared/utils'
+import { shareMissionOnWhatsApp } from '../utils/whatsappShare'
 import type {
   MissionParticipationType,
   MissionResponse,
@@ -364,6 +365,7 @@ export function MissionsPage() {
   const canUseCreateMode = canCreateMissions && hasActiveCampaign
   const visibleMode = mode === 'create' && canUseCreateMode ? 'create' : 'browse'
   const selectedMissionInActiveCampaign = Boolean(selectedMission && selectedMission.campaignId === activeCampaignId)
+  const canShareSelectedMission = Boolean(selectedMission) && selectedMissionInActiveCampaign
   const campaignFilter = activeCampaignId ? campaignFilters[activeCampaignId] || 'all' : 'all'
   const activeMissionView = missionViewFilters[0] || 'active'
   const showExpired = activeMissionView === 'expired'
@@ -763,6 +765,16 @@ export function MissionsPage() {
                   >
                     <Icon name="fa-solid fa-comments" />
                     <span>Chat</span>
+                  </button>
+                )}
+                {canShareSelectedMission && (
+                  <button
+                    type="button"
+                    className="mission-chat-inline-badge mission-share-inline-badge"
+                    onClick={() => shareMissionOnWhatsApp(selectedMission!)}
+                  >
+                    <Icon name="fa-whatsapp" />
+                    <span>WhatsApp</span>
                   </button>
                 )}
               </div>
