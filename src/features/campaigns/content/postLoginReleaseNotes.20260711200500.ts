@@ -4,7 +4,7 @@ export const POST_LOGIN_RELEASE_NOTES: PostLoginReleaseNotes = {
   version: '2026.07.11',
   eyebrow: 'What\'s new',
   title: 'Novita applicativo',
-  summary: 'Aggiornamenti introdotti sul nuovo ingresso post-login e sulla comunicazione delle novita applicative.',
+  summary: 'Aggiornamenti introdotti su ingresso post-login e sulla comunicazione delle novita applicative.',
   sections: [
     {
       title: 'Ingresso applicativo',
