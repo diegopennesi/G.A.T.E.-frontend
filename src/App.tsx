@@ -3245,6 +3245,8 @@ function App() {
     selectedMission,
     canCreateMissions,
     activeCampaignId: campaignId.trim(),
+    realmName: brandTitle,
+    realmLogoUrl: brandLogoUrl,
     activeCampaignRole,
     activeCampaignCharacterId: selectedMissionCharacterId,
     campaignNameById,

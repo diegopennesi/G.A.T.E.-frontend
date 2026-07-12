@@ -314,6 +314,8 @@ export function MissionsPage() {
     selectedMission,
     canCreateMissions,
     activeCampaignId,
+    realmName,
+    realmLogoUrl,
     activeCampaignRole,
     activeCampaignCharacterId,
     campaignNameById,
@@ -359,6 +361,7 @@ export function MissionsPage() {
   const [chatReturnTarget, setChatReturnTarget] = useState<'list' | 'summary'>('summary')
   const [confirmAction, setConfirmAction] = useState<null | 'leave' | 'complete' | 'cancel'>(null)
   const [isDetailMetaCollapsed, setIsDetailMetaCollapsed] = useState(false)
+  const [isSharingMission, setIsSharingMission] = useState(false)
   const { pendingCount } = useLoadingOverlayState()
 
   const hasActiveCampaign = Boolean(activeCampaignId)
@@ -771,10 +774,17 @@ export function MissionsPage() {
                   <button
                     type="button"
                     className="mission-chat-inline-badge mission-share-inline-badge"
-                    onClick={() => shareMissionOnWhatsApp(selectedMission!)}
+                    disabled={isSharingMission}
+                    onClick={() => {
+                      if (!selectedMission || isSharingMission) return
+                      setIsSharingMission(true)
+                      void shareMissionOnWhatsApp(selectedMission, { realmLogoUrl, realmName }).finally(() => {
+                        setIsSharingMission(false)
+                      })
+                    }}
                   >
-                    <Icon name="fa-whatsapp" />
-                    <span>WhatsApp</span>
+                    <Icon name={isSharingMission ? 'fa-solid fa-circle-notch' : 'fa-whatsapp'} />
+                    <span>{isSharingMission ? 'Apro...' : 'WhatsApp'}</span>
                   </button>
                 )}
               </div>

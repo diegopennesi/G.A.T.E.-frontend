@@ -14,6 +14,8 @@ export type MissionContextValue = {
   selectedMission: MissionResponse | null
   canCreateMissions: boolean
   activeCampaignId: string
+  realmName: string
+  realmLogoUrl: string | null
   activeCampaignRole: CampaignRole | null
   activeCampaignCharacterId: string
   campaignNameById: Record<string, string>
