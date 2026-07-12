@@ -10,11 +10,15 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "lucide-react": "^1.24.0",
+    "primeicons": "^7.0.0",
+    "primereact": "^10.9.8",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.54.2",
     "@types/node": "^24.12.3",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",

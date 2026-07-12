@@ -1,0 +1,1 @@
+export { SystemCatalogsPage } from './pages'
