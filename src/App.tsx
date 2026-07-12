@@ -409,10 +409,12 @@ function App() {
   const [postLoginCanCreateCampaign, setPostLoginCanCreateCampaign] = useState(false)
   const [postLoginLoading, setPostLoginLoading] = useState(false)
   const [postLoginError, setPostLoginError] = useState('')
+  const [campaignMembershipsLoaded, setCampaignMembershipsLoaded] = useState(false)
   const postLoginSummaryInFlightRef = useRef<Promise<void> | null>(null)
   const campaignSwitchSourceIdRef = useRef('')
   const missionShareTargetRef = useRef<MissionShareTarget | null>(null)
   const missionShareTargetAppliedRef = useRef(false)
+  const missionShareTargetActivationStartedRef = useRef(false)
 
   useEffect(() => {
     setRealmCode(realmCode)
@@ -672,22 +674,34 @@ function App() {
     const target = missionShareTargetRef.current
     if (!target || missionShareTargetAppliedRef.current) return
     if (!profile || !activeUserId) return
+    if (!campaignMembershipsLoaded) return
 
     const targetCampaignId = target.campaignId.trim()
     const currentCampaignId = campaignId.trim()
+    const targetCampaignIsApproved = myCampaigns.some(
+      (item) => item.campaignId === targetCampaignId && item.memberStatus === 'APPROVED',
+    )
+
+    if (!targetCampaignId || !targetCampaignIsApproved) {
+      missionShareTargetRef.current = null
+      missionShareTargetAppliedRef.current = true
+      missionShareTargetActivationStartedRef.current = false
+      return
+    }
 
     if (targetCampaignId && currentCampaignId !== targetCampaignId) {
-      setCampaignId(targetCampaignId)
-      const storageKey = scopedStorageKey(CAMPAIGN_ID_KEY, activeUserId)
-      localStorage.setItem(storageKey, targetCampaignId)
-      setKnownCampaignIds((prev) => {
-        const next = Array.from(new Set([targetCampaignId, ...prev]))
-        localStorage.setItem(scopedStorageKey(KNOWN_CAMPAIGNS_KEY, activeUserId), JSON.stringify(next))
-        return next
-      })
-      if (screen !== 'Missioni') {
-        setScreen('Missioni')
-      }
+      if (missionShareTargetActivationStartedRef.current) return
+
+      missionShareTargetActivationStartedRef.current = true
+      void (async () => {
+        try {
+          await activateCampaignAndNavigate(targetCampaignId, 'Missioni')
+        } catch {
+          missionShareTargetRef.current = null
+          missionShareTargetAppliedRef.current = true
+          missionShareTargetActivationStartedRef.current = false
+        }
+      })()
       return
     }
 
@@ -700,7 +714,8 @@ function App() {
 
     setSelectedMissionId(target.missionId)
     missionShareTargetAppliedRef.current = true
-  }, [activeUserId, campaignId, missions, profile, screen, setCampaignId, setKnownCampaignIds, setScreen, setSelectedMissionId])
+    missionShareTargetActivationStartedRef.current = false
+  }, [activeUserId, campaignId, campaignMembershipsLoaded, missions, myCampaigns, profile, screen, setScreen, setSelectedMissionId])
 
   const run = async (label: string, task: () => Promise<void>) => {
     setBusy(true)
@@ -753,6 +768,7 @@ function App() {
       }
       setProfile(me)
       setMyCampaigns(mine)
+      setCampaignMembershipsLoaded(true)
 
       if (mine.length === 0 && campaignId) {
         rememberCampaignId('', me.id)
@@ -2109,6 +2125,7 @@ function App() {
 
   const handleAuth = async (session: AuthSession) => {
     setProfile(session.user)
+    setCampaignMembershipsLoaded(false)
     setError('')
     setPostLoginError('')
     addEvent('Autenticazione completata', 'ok')
@@ -2167,6 +2184,10 @@ function App() {
     setPostLoginCanCreateCampaign(false)
     setPostLoginLoading(false)
     setPostLoginError('')
+    setCampaignMembershipsLoaded(false)
+    missionShareTargetRef.current = null
+    missionShareTargetAppliedRef.current = false
+    missionShareTargetActivationStartedRef.current = false
     addEvent('Logout eseguito', 'info')
   }
 
