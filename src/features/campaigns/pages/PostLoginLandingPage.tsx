@@ -36,6 +36,11 @@ type LandingOption = {
   createdAt: string
 }
 
+type CampaignActionButtonConfig = {
+  label: string
+  icon: string
+}
+
 function buildReleaseNotesKey(userId: string) {
   return `gate_release_notes_hidden:${userId}:${POST_LOGIN_RELEASE_NOTES.version}`
 }
@@ -153,7 +158,29 @@ function renderSelectedCampaignValue(option: LandingOption | null, placeholder: 
   if (!option) {
     return <span className="post-login-dropdown-placeholder">{placeholder}</span>
   }
-  return renderCampaignOption(option)
+  return (
+    <div className="post-login-option post-login-option--selected">
+      <div className="post-login-option-inline post-login-option-inline--selected">
+        <p className="data-table-title">{option.title}</p>
+        <span className="campaign-system-inline post-login-system-inline">
+          <Icon name={option.systemIcon} />
+          <span>{option.systemLabel}</span>
+        </span>
+        <CampaignAccessBadge item={option.badgeItem} />
+      </div>
+    </div>
+  )
+}
+
+function getCampaignActionButtonConfig(option: LandingOption | null): CampaignActionButtonConfig | null {
+  if (!option) return null
+  if (option.badgeItem.membershipStatus === 'APPROVED') {
+    return { label: 'Entra nella campagna', icon: 'lucide:LogIn' }
+  }
+  if (option.autoJoinEnabled) {
+    return { label: 'Entra con auto-adesione', icon: 'lucide:Users' }
+  }
+  return { label: 'Richiedi accesso', icon: 'lucide:Shield' }
 }
 
 export function PostLoginLandingPage({
@@ -247,12 +274,10 @@ export function PostLoginLandingPage({
   const selectedUnifiedOption = unifiedOptions.find((item) => item.id === selectedUnifiedCampaignId) || null
   const selectedMemberOption = accessibleOptions.find((item) => item.id === selectedMemberCampaignId) || null
   const selectedRequestOption = requestableOptions.find((item) => item.id === selectedRequestCampaignId) || null
-
-  const primaryActionLabel = selectedUnifiedOption?.action === 'enter'
-    ? 'Entra nella campagna'
-    : selectedUnifiedOption?.autoJoinEnabled
-      ? 'Entra con auto adesione'
-      : 'Richiedi accesso'
+  const isConstructionState = !canCreateCampaign && accessibleOptions.length === 0 && requestableOptions.length === 0
+  const unifiedActionButton = getCampaignActionButtonConfig(selectedUnifiedOption)
+  const memberActionButton = getCampaignActionButtonConfig(selectedMemberOption)
+  const requestActionButton = getCampaignActionButtonConfig(selectedRequestOption)
 
   return (
     <section className="post-login-landing">
@@ -318,13 +343,15 @@ export function PostLoginLandingPage({
       <div className="panel post-login-landing-panel">
         <div className="post-login-landing-head">
           <div>
-            <p className="menu-group-label">Realm di ingresso</p>
+            <p className="menu-group-label">Reame di ingresso</p>
             <h2>{realmName}</h2>
             <p className="post-login-landing-copy">
-              Accesso eseguito come <strong>{profileName}</strong> nel realm <strong>{realmCode}</strong>.
+              Accesso eseguito come <strong>{profileName}</strong> nel realm <strong>{realmName}</strong>
+              {realmCode.trim() ? <span> ({realmCode})</span> : null}.
             </p>
           </div>
           <button type="button" className="secondary-btn" disabled={busy || loading} onClick={onRefresh}>
+            <Icon name="lucide:RotateCcw" />
             Aggiorna elenco
           </button>
         </div>
@@ -334,6 +361,24 @@ export function PostLoginLandingPage({
         {loading ? (
           <div className="post-login-empty-state">
             <p>Caricamento campagne disponibili...</p>
+          </div>
+        ) : isConstructionState ? (
+          <div className="post-login-construction-state">
+            <div className="post-login-construction-copy">
+              <p className="menu-group-label"></p>
+              <h3>Questo reame non ha ancora campagne disponibili</h3>
+              <p>
+                Al momento non sei membro di nessuna campagna visibile o nascosta, non esistono campagne attive e non
+                hai i permessi per creare una nuova campagna.
+                Riprova piu tardi o attendi di ricevere sul tuo profilo autorizzazione alla creazione di nuove campagne
+              </p>
+            </div>
+            <div className="post-login-construction-actions">
+              <button type="button" className="primary-btn" disabled={busy || loading} onClick={onRefresh}>
+                <Icon name="lucide:RotateCcw" />
+                Aggiorna stato
+              </button>
+            </div>
           </div>
         ) : canCreateCampaign ? (
           <div className="post-login-grid">
@@ -365,7 +410,7 @@ export function PostLoginLandingPage({
                 <button
                   type="button"
                   className="primary-btn"
-                  disabled={busy || !selectedUnifiedOption}
+                  disabled={busy || !selectedUnifiedOption || !unifiedActionButton}
                   onClick={() => {
                     if (!selectedUnifiedOption) return
                     if (selectedUnifiedOption.action === 'enter') {
@@ -375,7 +420,8 @@ export function PostLoginLandingPage({
                     onApplyToCampaign(selectedUnifiedOption.id)
                   }}
                 >
-                  {primaryActionLabel}
+                  <Icon name={unifiedActionButton?.icon || 'lucide:LogIn'} />
+                  <span>{unifiedActionButton?.label || 'Seleziona campagna'}</span>
                 </button>
               </div>
             </section>
@@ -385,11 +431,12 @@ export function PostLoginLandingPage({
                 <p className="menu-group-label">Nuova campagna</p>
                 <h3>Crea una nuova campagna</h3>
                 <p>
-                  Hai i privilegi per aprire una campagna nel realm corrente. Le nuove richieste potranno poi seguire
-                  approvazione manuale o auto adesione.
+                  Apri una nuova campagna, racconta la tua storia o crea un tavolo virtuale dove coordinare te
+                  ed il tuo gruppo!
                 </p>
               </div>
               <button type="button" className="primary-btn" disabled={busy} onClick={onCreateCampaign}>
+                <Icon name="lucide:CirclePlus" />
                 Crea nuova campagna
               </button>
             </aside>
@@ -400,7 +447,7 @@ export function PostLoginLandingPage({
               <div className="post-login-section-head">
                 <div>
                   <h3>Le tue campagne attive</h3>
-                  <p>Puoi entrare solo nelle campagne dove risulti gia approvato come giocatore o master.</p>
+                  <p>Fai nuovamente accesso ad una campagna dove sei giá membro.</p>
                 </div>
               </div>
 
@@ -424,10 +471,11 @@ export function PostLoginLandingPage({
                 <button
                   type="button"
                   className="primary-btn"
-                  disabled={busy || !selectedMemberOption}
+                  disabled={busy || !selectedMemberOption || !memberActionButton}
                   onClick={() => selectedMemberOption && onEnterCampaign(selectedMemberOption.id)}
                 >
-                  Entra nella campagna
+                  <Icon name={memberActionButton?.icon || 'lucide:LogIn'} />
+                  <span>{memberActionButton?.label || 'Entra nella campagna'}</span>
                 </button>
               </div>
             </section>
@@ -436,7 +484,8 @@ export function PostLoginLandingPage({
               <div className="post-login-section-head">
                 <div>
                   <h3>Campagne aperte del realm</h3>
-                  <p>Qui puoi inviare una richiesta di accesso. Se la campagna usa auto adesione, l'ingresso sara immediato.</p>
+                  Richiedi accesso ad una campagna gia esistente, entra in uno dei vari mondi disponibili
+                  ed inizia subito la tua avventura!
                 </div>
               </div>
 
@@ -459,11 +508,12 @@ export function PostLoginLandingPage({
               <div className="post-login-actions">
                 <button
                   type="button"
-                  className="secondary-btn"
-                  disabled={busy || !selectedRequestOption}
+                  className="primary-btn"
+                  disabled={busy || !selectedRequestOption || !requestActionButton}
                   onClick={() => selectedRequestOption && onApplyToCampaign(selectedRequestOption.id)}
                 >
-                  {selectedRequestOption?.autoJoinEnabled ? 'Entra con auto adesione' : 'Richiedi accesso'}
+                  <Icon name={requestActionButton?.icon || 'lucide:Shield'} />
+                  <span>{requestActionButton?.label || 'Richiedi accesso'}</span>
                 </button>
               </div>
             </section>

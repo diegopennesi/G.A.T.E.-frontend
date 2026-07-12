@@ -4,24 +4,36 @@ This template provides a minimal setup to get React working in Vite with HMR and
 
 ## Campaign UX flows
 
-- A campaign is always either inactive or explicitly active in the shell.
-- `Scheda Campagna` and `Gestione Campagna` can open a campaign picker when no campaign is active.
-- `Stanze` follows the same rule: if no campaign is active, the picker opens instead of showing a dead page.
-- `Missioni` is a global search/join view across all approved campaigns; creation stays available only inside the active campaign when the role allows it.
-- In `Lista Campagne`, `Apri e attiva` appears only for campaigns where membership is already approved; otherwise the primary action is `Richiedi accesso`, which submits a join request that an admin will later handle in `Accessi`.
-- Picking a campaign activates it and redirects to the requested screen.
-- The active campaign is visible in the toolbar and can be changed from there.
-- Leaving a campaign opens a confirmation modal.
-- Leaving detaches the current campaign context from the profile and retires the active character tied to that membership.
-- After leave, the app returns to `Lista Campagne` and clears the campaign workspace.
-- Room creation is available only to `MASTER` and `SUPER_MASTER`, matching the backend permission matrix for `CREATE_ROOM`.
-- `Approvazione Accessi` loads the pending requests automatically on entry; the sidebar menu shows a badge when there are pending requests for the active campaign.
-- Realtime refresh is driven by SSE invalidation events from the backend:
-  - `campaigns:discover` refreshes the public campaign list
-  - `campaigns:{id}` refreshes the current campaign workspace
-  - `campaigns:{id}:missions` and `campaigns:{id}:characters` refresh the mission board and character views
-  - `users:{id}:profile` refreshes the current user profile and membership cache
-- The FE reconnects automatically and does not need polling for the common create/update flows.
+### Aggiornamento 2026-07-12
+
+- La sidebar è stata semplificata: rimosso il profilo in alto a sinistra e rimosso il blocco del realm nella parte alta.
+- Le informazioni del realm di login sono state spostate in basso, sopra il toggle tema, con icona dedicata.
+- Il vecchio `Exit` è stato trasformato in `Cambia campagna`.
+- Il cambio campagna ora segue un flusso unico: si esce dal contesto corrente, si atterra su `Ingresso`, poi la selezione della nuova campagna completa l'uscita dalla precedente e l'ingresso nella nuova.
+- Il flusso di landing continua a distinguere tra campagne già approvate, campagne ad accesso automatico e campagne con richiesta manuale.
+- I pulsanti principali della landing sono pieni, con icone esplicite e coerenza visiva tra le azioni.
+- Il dropdown delle campagne è stato reso più compatto e leggibile, con padding corretto sul testo selezionato.
+- Il refresh dinamico della landing via SSE è stato rimosso: l'aggiornamento della lista campagne avviene su ricarica esplicita della pagina o su azioni deliberate dell'utente.
+
+### Regole di navigazione
+
+- Una campagna è sempre o inattiva oppure attiva in modo esplicito nella shell.
+- `Scheda Campagna` e `Gestione Campagna` possono aprire il selettore campagne quando non esiste una campagna attiva.
+- `Stanze` segue la stessa regola: se non esiste una campagna attiva, viene aperto il selettore invece di mostrare una pagina vuota.
+- `Missioni` è una vista globale di ricerca/ingresso sulle campagne approvate; la creazione resta disponibile solo dentro la campagna attiva quando il ruolo lo consente.
+- In `Lista Campagne`, `Apri e attiva` appare solo per le campagne dove la membership è già approvata; altrimenti l'azione primaria è `Richiedi accesso`, che invia una richiesta gestita poi in `Accessi`.
+- Selezionare una campagna attiva porta alla schermata richiesta.
+- La campagna attiva è visibile nella shell e può essere cambiata da lì.
+- L'uscita campagna apre un modal di conferma.
+- L'uscita disattiva il contesto della campagna corrente e ritira l'eventuale personaggio attivo collegato a quella membership.
+- Dopo l'uscita, l'app torna alla landing di ingresso e pulisce il workspace della campagna.
+- La creazione stanze è disponibile solo a `MASTER` e `SUPER_MASTER`, in linea con la matrice permessi del backend per `CREATE_ROOM`.
+- `Approvazione Accessi` carica automaticamente le richieste pending all'ingresso; il menu laterale mostra il badge quando esistono richieste in attesa per la campagna attiva.
+
+### Bug Conosciuti
+
+- Se si tenta di cambiare campagna e si seleziona la medesima campagna, non accade nulla.
+- Il numero di chiamate verso il BE resta anomalo in alcuni flussi e può introdurre rallentamenti fisiologici nell'app.
 
 Currently, two official plugins are available:
 

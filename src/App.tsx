@@ -401,7 +401,6 @@ function App() {
   const isSystemSession = isSystemRole
   const effectiveTheme: EffectiveThemeMode = isSystemRole ? 'sysadmin' : theme
   const welcomeProfileName = profile?.profileName?.trim() || profile?.username?.trim() || 'profilo'
-  const profileAvatarLabel = welcomeProfileName.slice(0, 1).toUpperCase()
   const activeUserId = profile?.id ?? null
   const brandTitle = realmBranding?.name || DEFAULT_APP_TITLE
   const brandLogoUrl = realmBranding?.logoUrl || null
@@ -410,6 +409,7 @@ function App() {
   const [postLoginLoading, setPostLoginLoading] = useState(false)
   const [postLoginError, setPostLoginError] = useState('')
   const postLoginSummaryInFlightRef = useRef<Promise<void> | null>(null)
+  const campaignSwitchSourceIdRef = useRef('')
 
   useEffect(() => {
     setRealmCode(realmCode)
@@ -1317,12 +1317,26 @@ function App() {
     setSelectedCampaignMemberProfile(null)
   }
 
+  const leavePreviousCampaignIfNeeded = async (targetCampaignId: string) => {
+    const pendingSourceCampaignId = campaignSwitchSourceIdRef.current.trim()
+    const currentCampaignId = campaignId.trim()
+    const sourceCampaignId =
+      pendingSourceCampaignId || (currentCampaignId && currentCampaignId !== targetCampaignId ? currentCampaignId : '')
+
+    if (sourceCampaignId && sourceCampaignId !== targetCampaignId) {
+      await leaveCampaign(sourceCampaignId)
+    }
+
+    campaignSwitchSourceIdRef.current = ''
+  }
+
   const activateCampaignAndNavigate = async (targetCampaignId: string, targetScreen: Screen) => {
     const latestCampaign = await getCampaign(targetCampaignId)
     if (!isSystemRole && !latestCampaign.isActive) {
       throw new Error('Campagna disattivata: non selezionabile come attiva')
     }
-    await run('Campagna attivata', async () => {
+    await run('Cambio campagna', async () => {
+      await leavePreviousCampaignIfNeeded(targetCampaignId)
       rememberCampaignId(targetCampaignId)
       setSelectedCampaignMember(null)
       setSelectedCampaignMemberProfile(null)
@@ -1331,6 +1345,7 @@ function App() {
       setSelectedCharacterId('')
       setSelectedMissionId('')
       await loadCampaignBlockFor(targetCampaignId)
+      await refreshProfile()
       setScreen(targetScreen)
     })
   }
@@ -1339,9 +1354,10 @@ function App() {
     if (!campaignId.trim()) return
     await run('Uscita dalla campagna completata', async () => {
       await leaveCampaign(campaignId)
+      campaignSwitchSourceIdRef.current = ''
       rememberCampaignId('')
       clearCampaignWorkspace()
-      setScreen('Lista Campagne')
+      setScreen('Ingresso')
       closeLeaveCampaignModal()
       await refreshProfile()
     })
@@ -1349,9 +1365,10 @@ function App() {
 
   const detachActiveCampaign = () => {
     if (!campaignId.trim()) return
+    campaignSwitchSourceIdRef.current = campaignId
     rememberCampaignId('')
     clearCampaignWorkspace()
-    setScreen('Lista Campagne')
+    setScreen('Ingresso')
   }
 
   useEffect(() => {
@@ -4579,28 +4596,9 @@ function App() {
 
       <aside className={`sidebar-drawer ${isSidebarOpen ? 'is-open' : ''}`}>
         <div className="sidebar-top">
-          <div className="sidebar-user sidebar-user-top">
-            <div className="sidebar-user-avatar" aria-hidden="true">
-              {profileAvatarLabel}
-            </div>
-            <div className="sidebar-user-copy">
-              <p className="sidebar-user-name">{welcomeProfileName}</p>
-              <p className="sidebar-user-role">Profilo</p>
-            </div>
-          </div>
           <button type="button" className="drawer-close-btn" onClick={() => setIsSidebarOpen(false)}>
             <Icon name="fa-solid fa-xmark" />
           </button>
-        </div>
-
-        <div className="brand brand-realm-block">
-          <div className="brand-mark brand-mark-emphasis">
-            {brandLogoUrl ? <img className="brand-logo-image" src={brandLogoUrl} alt={brandTitle} /> : <Icon name="fa-solid fa-dungeon" />}
-          </div>
-          <div>
-            <p className="brand-title brand-title-realm">{brandTitle}</p>
-            <p className="brand-subtitle brand-subtitle-realm">Realm attivo</p>
-          </div>
         </div>
 
         <div className="sidebar-context">
@@ -4608,8 +4606,8 @@ function App() {
           <p className="sidebar-context-title">{hasActiveCampaign ? activeCampaignLabel : 'Nessuna campagna attiva'}</p>
           {hasActiveCampaign && (
             <button type="button" className="danger-btn sidebar-context-action" onClick={detachActiveCampaign}>
-              <Icon name="fa-solid fa-right-from-bracket" />
-              <span>Exit</span>
+              <Icon name="fa-right-left" />
+              <span>Cambia campagna</span>
             </button>
           )}
         </div>
@@ -4668,22 +4666,34 @@ function App() {
           })}
         </nav>
 
-          <div className="sidebar-footer">
-            {!isSystemRole && (
-              <button
-                type="button"
-                className="refresh-btn theme-toggle-btn sidebar-theme-toggle"
-                onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-              >
-                <Icon name={theme === 'light' ? 'fa-solid fa-moon' : 'fa-solid fa-sun'} />
-                <span>{theme === 'light' ? 'Tema scuro' : 'Tema chiaro'}</span>
-              </button>
-            )}
-            <button type="button" className="logout-btn" onClick={handleLogout}>
-              <Icon name="fa-solid fa-right-from-bracket" />
-              <span>Logout</span>
-            </button>
+        <div className="sidebar-footer">
+          <div className="sidebar-context sidebar-realm-login">
+            <p className="sidebar-user-kicker">Reame di login</p>
+            <div className="sidebar-realm-login-row">
+              <span className="sidebar-realm-login-icon" aria-hidden="true">
+                <Icon name="lucide:LogIn" />
+              </span>
+              <div className="sidebar-realm-login-copy">
+                <p className="sidebar-context-title">{brandTitle}</p>
+                <p className="sidebar-context-meta">{realmCode}</p>
+              </div>
+            </div>
           </div>
+          {!isSystemRole && (
+            <button
+              type="button"
+              className="refresh-btn theme-toggle-btn sidebar-theme-toggle"
+              onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+            >
+              <Icon name={theme === 'light' ? 'fa-solid fa-moon' : 'fa-solid fa-sun'} />
+              <span>{theme === 'light' ? 'Tema scuro' : 'Tema chiaro'}</span>
+            </button>
+          )}
+          <button type="button" className="logout-btn" onClick={handleLogout}>
+            <Icon name="fa-solid fa-right-from-bracket" />
+            <span>Logout</span>
+          </button>
+        </div>
       </aside>
 
       <main className="main">
