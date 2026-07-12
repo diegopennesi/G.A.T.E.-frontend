@@ -1,9 +1,9 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import { AuthScreen } from './features/auth'
 import {
   ApprovalPage, CreateCampaignPage,
-  CampaignListPage, CampaignDetailPage, CampaignManagementPage, CampaignMemberProfilePage,
+  CampaignListPage, PostLoginLandingPage, CampaignDetailPage, CampaignManagementPage, CampaignMemberProfilePage,
   LeaveCampaignModal,
 } from './features/campaigns'
 import { CreateCharacterPage, SelectCharacterPage, CharacterListPage, CharacterDetailPage } from './features/characters'
@@ -79,6 +79,7 @@ import {
   listCampaignGameSystems,
   listCampaignModules,
   listCampaignMembersForManagement,
+  getPostLoginCampaignSummary,
   getCharacter,
   getCharacterSheet,
   previewInviteToken,
@@ -143,6 +144,7 @@ import type {
   AdminSheetTypeUpsertRequest,
   CampaignInvitePreviewResponse,
   InviteTokenPreviewResponse,
+  PostLoginCampaignEntryResponse,
 } from './types/domain'
 import type { ResourceInvalidationPayload } from './types/realtime'
 
@@ -202,6 +204,7 @@ type SystemAdminView = 'users' | 'campaigns' | 'realms' | 'realmAccess' | 'sheet
 
 type RealtimeActionMap = {
   refreshProfile: () => Promise<void>
+  refreshPostLoginSummary: () => Promise<void>
   refreshCampaignBlock: () => Promise<void>
   refreshCharacterBlock: () => Promise<void>
   refreshMissions: (options?: { clearSelection?: boolean }) => Promise<void>
@@ -263,8 +266,6 @@ function App() {
     setRealmAvailabilityMessage,
     realmPermissions,
     setRealmPermissions,
-    realmWelcome,
-    setRealmWelcome,
   } = useRealmState(initialRealmContext)
   const {
     campaignId,
@@ -400,10 +401,15 @@ function App() {
   const isSystemSession = isSystemRole
   const effectiveTheme: EffectiveThemeMode = isSystemRole ? 'sysadmin' : theme
   const welcomeProfileName = profile?.profileName?.trim() || profile?.username?.trim() || 'profilo'
-  const profileAvatarLabel = welcomeProfileName.slice(0, 1).toUpperCase()
   const activeUserId = profile?.id ?? null
   const brandTitle = realmBranding?.name || DEFAULT_APP_TITLE
   const brandLogoUrl = realmBranding?.logoUrl || null
+  const [postLoginCampaigns, setPostLoginCampaigns] = useState<PostLoginCampaignEntryResponse[]>([])
+  const [postLoginCanCreateCampaign, setPostLoginCanCreateCampaign] = useState(false)
+  const [postLoginLoading, setPostLoginLoading] = useState(false)
+  const [postLoginError, setPostLoginError] = useState('')
+  const postLoginSummaryInFlightRef = useRef<Promise<void> | null>(null)
+  const campaignSwitchSourceIdRef = useRef('')
 
   useEffect(() => {
     setRealmCode(realmCode)
@@ -485,26 +491,6 @@ function App() {
       localStorage.setItem(THEME_KEY, theme)
     }
   }, [effectiveTheme, isSystemRole, theme])
-
-  useEffect(() => {
-    if (!profile || realmAvailability !== 'ready' || !realmBranding) {
-      setRealmWelcome(null)
-      return
-    }
-
-    const key = `${profile.id}:${realmCode}`
-    setRealmWelcome({
-      key,
-      realmCode,
-      realmName: realmBranding.name,
-    })
-
-    const timeoutId = window.setTimeout(() => {
-      setRealmWelcome((current) => (current?.key === key ? null : current))
-    }, 15000)
-
-    return () => window.clearTimeout(timeoutId)
-  }, [profile?.id, realmAvailability, realmBranding, realmCode])
 
   const selectedCharacter = useMemo(
     () => characters.find((character) => character.id === selectedCharacterId) || null,
@@ -592,6 +578,7 @@ function App() {
           summary: detail?.summary ?? existing.summary,
           coverImageUrl: detail?.coverImageUrl ?? existing.coverImageUrl,
           founderId: detail?.founderId || existing.founderId,
+          autoJoinEnabled: detail?.autoJoinEnabled ?? existing.autoJoinEnabled,
           gameSystem: detail?.gameSystem ?? existing.gameSystem,
           createdAt: detail?.createdAt || existing.createdAt,
         })
@@ -606,6 +593,7 @@ function App() {
           isOpen: detail?.isOpen ?? false,
           isActive: detail?.isActive ?? false,
           isSearchable: detail?.isSearchable ?? false,
+          autoJoinEnabled: detail?.autoJoinEnabled ?? false,
           inviteCode: detail?.inviteCode || '',
           gameSystem: detail?.gameSystem ?? null,
           createdAt: detail?.createdAt || '',
@@ -1329,12 +1317,26 @@ function App() {
     setSelectedCampaignMemberProfile(null)
   }
 
+  const leavePreviousCampaignIfNeeded = async (targetCampaignId: string) => {
+    const pendingSourceCampaignId = campaignSwitchSourceIdRef.current.trim()
+    const currentCampaignId = campaignId.trim()
+    const sourceCampaignId =
+      pendingSourceCampaignId || (currentCampaignId && currentCampaignId !== targetCampaignId ? currentCampaignId : '')
+
+    if (sourceCampaignId && sourceCampaignId !== targetCampaignId) {
+      await leaveCampaign(sourceCampaignId)
+    }
+
+    campaignSwitchSourceIdRef.current = ''
+  }
+
   const activateCampaignAndNavigate = async (targetCampaignId: string, targetScreen: Screen) => {
     const latestCampaign = await getCampaign(targetCampaignId)
     if (!isSystemRole && !latestCampaign.isActive) {
       throw new Error('Campagna disattivata: non selezionabile come attiva')
     }
-    await run('Campagna attivata', async () => {
+    await run('Cambio campagna', async () => {
+      await leavePreviousCampaignIfNeeded(targetCampaignId)
       rememberCampaignId(targetCampaignId)
       setSelectedCampaignMember(null)
       setSelectedCampaignMemberProfile(null)
@@ -1343,6 +1345,7 @@ function App() {
       setSelectedCharacterId('')
       setSelectedMissionId('')
       await loadCampaignBlockFor(targetCampaignId)
+      await refreshProfile()
       setScreen(targetScreen)
     })
   }
@@ -1351,9 +1354,10 @@ function App() {
     if (!campaignId.trim()) return
     await run('Uscita dalla campagna completata', async () => {
       await leaveCampaign(campaignId)
+      campaignSwitchSourceIdRef.current = ''
       rememberCampaignId('')
       clearCampaignWorkspace()
-      setScreen('Lista Campagne')
+      setScreen('Ingresso')
       closeLeaveCampaignModal()
       await refreshProfile()
     })
@@ -1361,9 +1365,10 @@ function App() {
 
   const detachActiveCampaign = () => {
     if (!campaignId.trim()) return
+    campaignSwitchSourceIdRef.current = campaignId
     rememberCampaignId('')
     clearCampaignWorkspace()
-    setScreen('Lista Campagne')
+    setScreen('Ingresso')
   }
 
   useEffect(() => {
@@ -1562,6 +1567,32 @@ function App() {
     const list = await discoverCampaigns(false)
     setDiscoverableCampaigns(list)
   }
+
+  const loadPostLoginCampaignSummary = useCallback(async () => {
+    if (!getAccessToken()) return
+    if (postLoginSummaryInFlightRef.current) {
+      await postLoginSummaryInFlightRef.current
+      return
+    }
+    const request = (async () => {
+      setPostLoginLoading(true)
+      setPostLoginError('')
+      try {
+        const summary = await getPostLoginCampaignSummary()
+        setPostLoginCanCreateCampaign(summary.canCreateCampaign)
+        setPostLoginCampaigns(summary.campaigns)
+      } catch (err) {
+        const message = toMessage(err)
+        setPostLoginError(message)
+        if (isUnauthorized(err)) handleLogout()
+      } finally {
+        setPostLoginLoading(false)
+        postLoginSummaryInFlightRef.current = null
+      }
+    })()
+    postLoginSummaryInFlightRef.current = request
+    await request
+  }, [])
 
   useEffect(() => {
     if (!getAccessToken()) return
@@ -1994,7 +2025,7 @@ function App() {
 
   useEffect(() => {
     if (!getAccessToken()) return
-    if (screen !== 'Crea Campagna') return
+    if (screen !== 'Crea Campagna' && screen !== 'Ingresso') return
     if (campaignGameSystems.length > 0) return
 
     let cancelled = false
@@ -2020,7 +2051,11 @@ function App() {
   const handleAuth = async (session: AuthSession) => {
     setProfile(session.user)
     setError('')
+    setPostLoginError('')
     addEvent('Autenticazione completata', 'ok')
+    if (session.user.platformRole !== 'SYSTEM') {
+      setScreen('Ingresso')
+    }
     await refreshProfile()
   }
 
@@ -2069,11 +2104,16 @@ function App() {
     setSelectedMissionId('')
     setError('')
     setSystemAdminView('users')
+    setPostLoginCampaigns([])
+    setPostLoginCanCreateCampaign(false)
+    setPostLoginLoading(false)
+    setPostLoginError('')
     addEvent('Logout eseguito', 'info')
   }
 
   const realtimeActionsRef = useRef<RealtimeActionMap>({
     refreshProfile: async () => {},
+    refreshPostLoginSummary: async () => {},
     refreshCampaignBlock: async () => {},
     refreshCharacterBlock: async () => {},
     refreshMissions: async () => {},
@@ -2102,6 +2142,7 @@ function App() {
   useEffect(() => {
     realtimeActionsRef.current = {
       refreshProfile,
+      refreshPostLoginSummary: loadPostLoginCampaignSummary,
       refreshCampaignBlock,
       refreshCharacterBlock,
       refreshMissions,
@@ -2180,8 +2221,15 @@ function App() {
       void realtimeActionsRef.current.loadDiscoverableCampaigns()
     }
 
+    if (keys.has('campaigns:discover') && snapshot.screen === 'Ingresso') {
+      void realtimeActionsRef.current.refreshPostLoginSummary()
+    }
+
     if (userProfileKey && keys.has(userProfileKey)) {
       void realtimeActionsRef.current.refreshProfile()
+      if (snapshot.screen === 'Ingresso') {
+        void realtimeActionsRef.current.refreshPostLoginSummary()
+      }
     }
 
     if (snapshot.isSystemSession) {
@@ -2261,6 +2309,12 @@ function App() {
     }
     void loadCurrentRealmPermissions()
   }, [profile?.id, realmCode])
+
+  useEffect(() => {
+    if (!profile?.id || !getAccessToken()) return
+    if (screen !== 'Ingresso') return
+    void loadPostLoginCampaignSummary()
+  }, [loadPostLoginCampaignSummary, profile?.id, screen])
 
   useEffect(() => {
     if (!isSystemSession) {
@@ -2382,20 +2436,6 @@ function App() {
     return <RealmStatusScreen realmCode={realmCode} state="unavailable" message={realmAvailabilityMessage} />
   }
 
-  const realmWelcomeNotice = realmWelcome ? (
-    <div className="realm-welcome-toast" role="status" aria-live="polite">
-      <div className="realm-welcome-copy">
-        <p className="menu-group-label">Realm {realmWelcome.realmCode}</p>
-        <strong>Benvenuto su {realmWelcome.realmName}</strong>
-        <span>{welcomeProfileName}</span>
-      </div>
-      <button type="button" className="realm-welcome-close" aria-label="Chiudi benvenuto realm" onClick={() => setRealmWelcome(null)}>
-        <Icon name="fa-solid fa-xmark" />
-      </button>
-      <span className="realm-welcome-progress" aria-hidden="true" />
-    </div>
-  ) : null
-
   if (!profile) {
     return (
       <RealmProvider
@@ -2422,6 +2462,39 @@ function App() {
           <AuthScreen key={`${realmCode}:${authMode}`} />
         </ProfileProvider>
       </RealmProvider>
+    )
+  }
+
+  if (screen === 'Ingresso') {
+    return (
+      <>
+        <PostLoginLandingPage
+          currentUserId={profile.id}
+          profileName={welcomeProfileName}
+          realmCode={realmCode}
+          realmName={brandTitle}
+          canCreateCampaign={postLoginCanCreateCampaign}
+          campaigns={postLoginCampaigns}
+          availableGameSystems={campaignGameSystems}
+          loading={postLoginLoading}
+          busy={busy}
+          error={postLoginError}
+          onRefresh={() => void loadPostLoginCampaignSummary()}
+          onEnterCampaign={(targetCampaignId) => void activateCampaignAndNavigate(targetCampaignId, 'Scheda Campagna')}
+          onApplyToCampaign={(targetCampaignId) => {
+            void runResult('Richiesta accesso elaborata', async () => {
+              const membership = await applyToCampaign(targetCampaignId)
+              await Promise.all([refreshProfile(), loadPostLoginCampaignSummary()])
+              return membership
+            }).then((membership) => {
+              if (membership.memberStatus === 'APPROVED') {
+                void activateCampaignAndNavigate(targetCampaignId, 'Scheda Campagna')
+              }
+            }).catch(() => {})
+          }}
+          onCreateCampaign={() => setScreen('Crea Campagna')}
+        />
+      </>
     )
   }
 
@@ -2908,7 +2981,19 @@ function App() {
         rememberCampaignMeta(updated.id, updated.name)
         setMyCampaigns((prev) => prev.map((item) => (item.campaignId === updated.id ? { ...item, campaignName: updated.name } : item)))
         setDiscoverableCampaigns((prev) =>
-          prev.map((item) => (item.id === updated.id ? { ...item, name: updated.name, summary: updated.summary, description: updated.description } : item)),
+          prev.map((item) => (
+            item.id === updated.id
+              ? {
+                  ...item,
+                  name: updated.name,
+                  summary: updated.summary,
+                  description: updated.description,
+                  isOpen: updated.isOpen,
+                  isSearchable: updated.isSearchable,
+                  autoJoinEnabled: updated.autoJoinEnabled,
+                }
+              : item
+          )),
         )
         setScreen('Lista Campagne')
       })
@@ -3402,7 +3487,6 @@ function App() {
   if (isSystemSession) {
     return (
       <div className="app-shell system-shell">
-        {realmWelcomeNotice}
         <aside className="sidebar-drawer is-open">
           <div className="sidebar-top">
             <div className="brand">
@@ -4501,7 +4585,6 @@ function App() {
 
   return (
     <div className="app-shell">
-      {realmWelcomeNotice}
       {isSidebarOpen && (
         <button
           type="button"
@@ -4513,28 +4596,9 @@ function App() {
 
       <aside className={`sidebar-drawer ${isSidebarOpen ? 'is-open' : ''}`}>
         <div className="sidebar-top">
-          <div className="sidebar-user sidebar-user-top">
-            <div className="sidebar-user-avatar" aria-hidden="true">
-              {profileAvatarLabel}
-            </div>
-            <div className="sidebar-user-copy">
-              <p className="sidebar-user-name">{welcomeProfileName}</p>
-              <p className="sidebar-user-role">Profilo</p>
-            </div>
-          </div>
           <button type="button" className="drawer-close-btn" onClick={() => setIsSidebarOpen(false)}>
             <Icon name="fa-solid fa-xmark" />
           </button>
-        </div>
-
-        <div className="brand brand-realm-block">
-          <div className="brand-mark brand-mark-emphasis">
-            {brandLogoUrl ? <img className="brand-logo-image" src={brandLogoUrl} alt={brandTitle} /> : <Icon name="fa-solid fa-dungeon" />}
-          </div>
-          <div>
-            <p className="brand-title brand-title-realm">{brandTitle}</p>
-            <p className="brand-subtitle brand-subtitle-realm">Realm attivo</p>
-          </div>
         </div>
 
         <div className="sidebar-context">
@@ -4542,8 +4606,8 @@ function App() {
           <p className="sidebar-context-title">{hasActiveCampaign ? activeCampaignLabel : 'Nessuna campagna attiva'}</p>
           {hasActiveCampaign && (
             <button type="button" className="danger-btn sidebar-context-action" onClick={detachActiveCampaign}>
-              <Icon name="fa-solid fa-right-from-bracket" />
-              <span>Exit</span>
+              <Icon name="fa-right-left" />
+              <span>Cambia campagna</span>
             </button>
           )}
         </div>
@@ -4602,22 +4666,34 @@ function App() {
           })}
         </nav>
 
-          <div className="sidebar-footer">
-            {!isSystemRole && (
-              <button
-                type="button"
-                className="refresh-btn theme-toggle-btn sidebar-theme-toggle"
-                onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-              >
-                <Icon name={theme === 'light' ? 'fa-solid fa-moon' : 'fa-solid fa-sun'} />
-                <span>{theme === 'light' ? 'Tema scuro' : 'Tema chiaro'}</span>
-              </button>
-            )}
-            <button type="button" className="logout-btn" onClick={handleLogout}>
-              <Icon name="fa-solid fa-right-from-bracket" />
-              <span>Logout</span>
-            </button>
+        <div className="sidebar-footer">
+          <div className="sidebar-context sidebar-realm-login">
+            <p className="sidebar-user-kicker">Reame di login</p>
+            <div className="sidebar-realm-login-row">
+              <span className="sidebar-realm-login-icon" aria-hidden="true">
+                <Icon name="lucide:LogIn" />
+              </span>
+              <div className="sidebar-realm-login-copy">
+                <p className="sidebar-context-title">{brandTitle}</p>
+                <p className="sidebar-context-meta">{realmCode}</p>
+              </div>
+            </div>
           </div>
+          {!isSystemRole && (
+            <button
+              type="button"
+              className="refresh-btn theme-toggle-btn sidebar-theme-toggle"
+              onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+            >
+              <Icon name={theme === 'light' ? 'fa-solid fa-moon' : 'fa-solid fa-sun'} />
+              <span>{theme === 'light' ? 'Tema scuro' : 'Tema chiaro'}</span>
+            </button>
+          )}
+          <button type="button" className="logout-btn" onClick={handleLogout}>
+            <Icon name="fa-solid fa-right-from-bracket" />
+            <span>Logout</span>
+          </button>
+        </div>
       </aside>
 
       <main className="main">

@@ -179,6 +179,7 @@ export function CampaignManagementPage() {
   const [coverImageUrl, setCoverImageUrl] = useState(campaign?.coverImageUrl || '')
   const [isOpen, setIsOpen] = useState(campaign?.isOpen ?? true)
   const [isSearchable, setIsSearchable] = useState(campaign?.isSearchable ?? true)
+  const [autoJoinEnabled, setAutoJoinEnabled] = useState(campaign?.autoJoinEnabled ?? false)
   const [selectedModules, setSelectedModules] = useState<string[]>(campaign?.allowedModules || [])
 
   const availableModuleCodes = useMemo(() => availableModules.map((module) => module.code), [availableModules])
@@ -192,13 +193,6 @@ export function CampaignManagementPage() {
     { action: 'APPROVE_OR_REJECT_APPLICATIONS', label: 'Gestire accessi', description: 'Approva o rifiuta le richieste pending.' },
     { action: 'TRANSFER_OWNERSHIP', label: 'Trasferire proprietà', description: 'Cedere la leadership della campagna.' },
     { action: 'MANAGE_CAMPAIGN_SETTINGS', label: 'Modificare impostazioni', description: 'Aggiornare regole, requisiti e visibilità.' },
-  ]
-
-  const permissionReminders: Array<{ role: string; items: string[] }> = [
-    { role: 'GIOCATORE', items: ['Giocare il tuo personaggio', 'Ritirare il tuo personaggio'] },
-    { role: 'CO_MASTER', items: ['Creare NPC', 'Gestire i tuoi NPC', 'Aprire o riaprire missioni'] },
-    { role: 'MASTER', items: ['Gestire qualsiasi NPC', 'Approvarе o rifiutare accessi', 'Creare stanze', 'Gestire le impostazioni campagna'] },
-    { role: 'SUPER_MASTER', items: ['Tutto quanto sopra', 'Eliminare stanze', 'Gestire moduli', 'Trasferire ownership', 'Chiudere o cancellare la campagna'] },
   ]
 
   const campaignVisibilityRows: CampaignToggleRow[] = [
@@ -220,10 +214,31 @@ export function CampaignManagementPage() {
       inactiveLabel: 'Nascosta',
       onToggle: () => setIsSearchable((prev) => !prev),
     },
+    {
+      key: 'auto-join',
+      title: 'Auto join',
+      description: "Approva automaticamente l'accesso da app quando la campagna e aperta e visibile.",
+      active: autoJoinEnabled,
+      activeLabel: 'Automatico',
+      inactiveLabel: 'Manuale',
+      onToggle: () => setAutoJoinEnabled((prev) => !prev),
+    },
   ]
 
   useEffect(() => {
     if (!campaign) return
+    setName(campaign.name || '')
+    setDescription(campaign.description || '')
+    setSummary(campaign.summary || '')
+    setSetting(campaign.setting || '')
+    setTone(campaign.tone || '')
+    setRules(campaign.rules || '')
+    setRequirements(campaign.requirements || '')
+    setCoverImageUrl(campaign.coverImageUrl || '')
+    setIsOpen(campaign.isOpen ?? true)
+    setIsSearchable(campaign.isSearchable ?? true)
+    setAutoJoinEnabled(campaign.autoJoinEnabled ?? false)
+    setSelectedModules(campaign.allowedModules || [])
     onRefreshPermissions()
   }, [campaign?.id])
 
@@ -456,6 +471,7 @@ export function CampaignManagementPage() {
                 coverImageUrl,
                 isOpen,
                 isSearchable,
+                autoJoinEnabled,
                 allowedModules: selectedAvailableModules,
               })
             }
@@ -501,33 +517,6 @@ export function CampaignManagementPage() {
                 </div>
               )
             })}
-          </div>
-        </div>
-      </details>
-
-      <details className="utility-box">
-        <summary className="utility-box-summary">
-          <div>
-            <p className="section-title">Accessi e opzioni per ruolo</p>
-            <p className="muted">Reminder rapido delle azioni disponibili per fascia di ruolo.</p>
-          </div>
-          <span className="readonly-chip">{permissionReminders.length} fasce</span>
-        </summary>
-        <div className="utility-box-body">
-          <div className="permission-reminders">
-            {permissionReminders.map((reminder) => (
-              <article key={reminder.role} className="permission-reminder-card">
-                <div className="row-between">
-                  <p className="permission-role-title">{reminder.role}</p>
-                  <span className="status status-info">Remind</span>
-                </div>
-                <ul className="permission-reminder-list">
-                  {reminder.items.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-              </article>
-            ))}
           </div>
         </div>
       </details>

@@ -62,6 +62,7 @@ export type CampaignContextValue = {
     coverImageUrl: string
     isOpen: boolean
     isSearchable: boolean
+    autoJoinEnabled?: boolean
     gameSystem: string
     allowedModules: string[]
   }) => void
@@ -77,6 +78,7 @@ export type CampaignContextValue = {
     coverImageUrl: string
     isOpen: boolean
     isSearchable: boolean
+    autoJoinEnabled?: boolean
     allowedModules: string[]
   }) => void
   refreshPermissionChecklist: () => void

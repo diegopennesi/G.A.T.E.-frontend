@@ -1,6 +1,7 @@
 export { ApprovalPage } from './ApprovalPage'
 export { CreateCampaignPage } from './CreateCampaignPage'
 export { CampaignListPage } from './CampaignListPage'
+export { PostLoginLandingPage } from './PostLoginLandingPage'
 export { CampaignDetailPage } from './CampaignDetailPage'
 export { CampaignManagementPage } from './CampaignManagementPage'
 export { CampaignMemberProfilePage } from './CampaignMemberProfilePage'
