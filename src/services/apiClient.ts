@@ -50,6 +50,14 @@ export function clearTokens() {
   localStorage.removeItem(REFRESH_TOKEN_KEY)
 }
 
+export type ApiRequestOptions = {
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH'
+  body?: unknown
+  auth?: boolean
+  retryOn401?: boolean
+  realm?: boolean
+}
+
 const buildHeaders = (token?: string, hasBody = false, includeRealm = true) => {
   const headers: Record<string, string> = {}
   const realmCode = getRealmCode()?.trim()
@@ -117,13 +125,7 @@ export async function refreshSession() {
 
 export async function apiRequest<T>(
   path: string,
-  options?: {
-    method?: 'GET' | 'POST' | 'PUT' | 'PATCH'
-    body?: unknown
-    auth?: boolean
-    retryOn401?: boolean
-    realm?: boolean
-  },
+  options?: ApiRequestOptions,
 ): Promise<T> {
   const loadingId = showLoading(options?.method === 'GET' ? 'Caricamento dati' : 'Salvataggio in corso')
   const method = options?.method ?? 'GET'
