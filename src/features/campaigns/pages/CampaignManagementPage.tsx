@@ -239,8 +239,10 @@ export function CampaignManagementPage() {
     setIsSearchable(campaign.isSearchable ?? true)
     setAutoJoinEnabled(campaign.autoJoinEnabled ?? false)
     setSelectedModules(campaign.allowedModules || [])
-    onRefreshPermissions()
-  }, [campaign?.id])
+    if (permissions.length === 0) {
+      onRefreshPermissions()
+    }
+  }, [campaign?.id, permissions.length])
 
   const toggleModule = (moduleCode: string) => {
     setSelectedModules((prev) =>

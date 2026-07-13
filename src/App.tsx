@@ -48,8 +48,6 @@ import {
   createAdminRealm,
   createAdminGameSystem,
   createAdminSheetType,
-  getCurrentRealmPermissions,
-  getPublicRealmBranding,
   listAdminRealmUserRoles,
   listAdminCampaigns,
   listAdminGameSystems,
@@ -68,7 +66,6 @@ import {
   createCampaign,
   createInviteToken,
   createCharacter,
-  discoverCampaigns,
   createMission,
   createRoom,
   applyToCampaignViaInviteCode,
@@ -79,7 +76,6 @@ import {
   listCampaignGameSystems,
   listCampaignModules,
   listCampaignMembersForManagement,
-  getPostLoginCampaignSummary,
   getCharacter,
   getCharacterSheet,
   previewInviteToken,
@@ -89,7 +85,6 @@ import {
   leaveMission,
   listCharacters,
   listMissionParticipants,
-  listMyCampaignMemberships,
   listPendingApplications,
   listMissions,
   listRooms,
@@ -118,6 +113,9 @@ import {
   updateMe,
 } from './services/gateApi'
 import { connectResourceInvalidationStream } from './services/realtime'
+import { applyRealtimeInvalidation, type RealtimeInvalidationActions, type RealtimeInvalidationState } from './services/realtimeInvalidation'
+import { clearUserScopedBootstrapCache, loadCachedAdminCampaigns, loadCachedAdminGameSystems, loadCachedAdminRealms, loadCachedAdminRealmUserRoles, loadCachedAdminSheetTypes, loadCachedAdminUsers, loadCachedCampaignMember, loadCachedCampaignMembers, loadCachedCampaignMembersForManagement, loadCachedCampaignCharacters, loadCachedCampaignDetails, loadCachedCampaignGameSystems, loadCachedCampaignModules, loadCachedCampaignPermission, loadCachedCampaignRooms, loadCachedCampaignMissions, loadCachedDiscoverCampaigns, loadCachedCharacterDetail, loadCachedCharacterSheet, loadCachedMissionChat, loadCachedMissionParticipants, loadCachedPendingApplications, loadCachedMemberships, loadCachedPostLoginSummary, loadCachedProfile, loadCachedPublicProfile, loadCachedPublicRealmBranding, loadCachedRealmPermissions, primeCachedCampaignDetails, primeCachedMemberships, primeCachedProfile } from './services/cachedGateApi'
+import type { ResourceInvalidationPayload } from './types/realtime'
 import type {
   AdminCampaignPage,
   AdminRealmListItem,
@@ -132,7 +130,6 @@ import type {
   Character,
   CharacterStatus,
   CreateInviteTokenRequest,
-  MyCampaignMembershipResponse,
   MissionParticipantResponse,
   MissionParticipationType,
   MissionStatus,
@@ -145,8 +142,9 @@ import type {
   CampaignInvitePreviewResponse,
   InviteTokenPreviewResponse,
   PostLoginCampaignEntryResponse,
+  MyCampaignMembershipResponse,
+  UserProfile,
 } from './types/domain'
-import type { ResourceInvalidationPayload } from './types/realtime'
 
 const CAMPAIGN_ID_KEY = 'gate_campaign_id'
 const KNOWN_CAMPAIGNS_KEY = 'gate_known_campaign_ids'
@@ -160,6 +158,10 @@ const DEFAULT_FAVICON_URL = '/favicon.svg'
 
 type KnownCampaignMeta = { id: string; name: string }
 type MissionShareTarget = { campaignId: string; missionId: string }
+
+function publicProfileDisplayName(profile: Pick<UserProfile, 'profileName' | 'username'>): string {
+  return profile.profileName || profile.username || 'Profilo non disponibile'
+}
 
 function readPendingApplicationsCache(userId?: string | null): Record<string, CampaignApplicationResponse[]> {
   return readStoredJson(sessionStorage, scopedStorageKey(PENDING_APPLICATIONS_CACHE_KEY, userId), {})
@@ -201,37 +203,6 @@ function isLegacyInviteCode(value: string) {
 
 const ADMIN_PLATFORM_ROLES: PlatformRole[] = ['USER', 'ADMIN', 'SYSTEM']
 const REALM_TYPE_OPTIONS: RealmType[] = ['STORE', 'ASSOCIATION', 'PRIVATE_GROUP', 'EVENT']
-type SystemAdminView = 'users' | 'campaigns' | 'realms' | 'realmAccess' | 'sheets'
-
-type RealtimeActionMap = {
-  refreshProfile: () => Promise<void>
-  refreshPostLoginSummary: () => Promise<void>
-  refreshCampaignBlock: () => Promise<void>
-  refreshCharacterBlock: () => Promise<void>
-  refreshMissions: (options?: { clearSelection?: boolean }) => Promise<void>
-  refreshMissionChat: () => Promise<void>
-  loadDiscoverableCampaigns: () => Promise<void>
-  loadCharactersForManagement: () => Promise<void>
-  loadPendingForActiveCampaign: () => Promise<void>
-  refreshPendingApplicationsForCampaign: (campaignId: string) => Promise<void>
-  loadAdminUsers: (page: number, query?: string) => Promise<void>
-  loadAdminCampaigns: (page: number) => Promise<void>
-  loadAdminRealms: (page?: number, query?: string) => Promise<void>
-  loadAdminRealmUserRoles: (realmId?: string) => Promise<void>
-  loadAdminSheetCatalogs: () => Promise<void>
-}
-
-type RealtimeStateSnapshot = {
-  screen: Screen
-  campaignId: string
-  activeUserId: string | null
-  isSystemSession: boolean
-  systemAdminView: SystemAdminView
-  adminUsersPageIndex: number
-  adminCampaignsPageIndex: number
-  adminRealmsPageIndex: number
-}
-
 const CAMPAIGN_REQUIRED_TOOLTIP = 'Caricare prima la campagna'
 const MODULE_REQUIRED_BY_SCREEN: Partial<Record<Screen, string>> = {
   Stanze: 'STANZE',
@@ -410,11 +381,49 @@ function App() {
   const [postLoginLoading, setPostLoginLoading] = useState(false)
   const [postLoginError, setPostLoginError] = useState('')
   const [campaignMembershipsLoaded, setCampaignMembershipsLoaded] = useState(false)
+  const refreshProfileInFlightRef = useRef<Promise<void> | null>(null)
   const postLoginSummaryInFlightRef = useRef<Promise<void> | null>(null)
+  const postLoginSummaryQueuedRefreshRef = useRef(false)
   const campaignSwitchSourceIdRef = useRef('')
   const missionShareTargetRef = useRef<MissionShareTarget | null>(null)
   const missionShareTargetAppliedRef = useRef(false)
   const missionShareTargetActivationStartedRef = useRef(false)
+  const bootstrapScope = useCallback((userId: string) => ({ userId, realmCode }), [realmCode])
+  const loadResolvedPublicProfiles = useCallback(
+    async (userIds: string[], options: { force?: boolean } = {}): Promise<Record<string, UserProfile | null>> => {
+      const uniqueUserIds = Array.from(new Set(userIds.map((value) => value.trim()).filter(Boolean)))
+      if (uniqueUserIds.length === 0) return {}
+
+      const settled = await Promise.allSettled(
+        uniqueUserIds.map((userId) =>
+          activeUserId
+            ? loadCachedPublicProfile(bootstrapScope(activeUserId), userId, { force: options.force })
+            : getPublicProfile(userId),
+        ),
+      )
+
+      const next: Record<string, UserProfile | null> = {}
+      for (let index = 0; index < settled.length; index += 1) {
+        const userId = uniqueUserIds[index]
+        const result = settled[index]
+        next[userId] = result.status === 'fulfilled' ? result.value : null
+      }
+      return next
+    },
+    [activeUserId, bootstrapScope],
+  )
+  const resolveMemberNames = useCallback(
+    async (userIds: string[], options: { force?: boolean } = {}): Promise<Record<string, string>> => {
+      const profilesByUserId = await loadResolvedPublicProfiles(userIds, options)
+      return Object.fromEntries(
+        Object.entries(profilesByUserId).map(([userId, profileValue]) => [
+          userId,
+          profileValue ? publicProfileDisplayName(profileValue) : 'Profilo non disponibile',
+        ]),
+      )
+    },
+    [loadResolvedPublicProfiles],
+  )
 
   useEffect(() => {
     setRealmCode(realmCode)
@@ -486,7 +495,7 @@ function App() {
 
     void (async () => {
       try {
-        const branding = await getPublicRealmBranding(realmCode)
+        const branding = await loadCachedPublicRealmBranding({ userId: '__realm__', realmCode }, realmCode)
         if (cancelled) return
         setRealmBranding(branding)
         setRealmAvailability('ready')
@@ -755,56 +764,66 @@ function App() {
     }
   }
 
-  const refreshProfile = async () => {
+  const refreshProfile = async (options: { force?: boolean } = {}) => {
+    if (refreshProfileInFlightRef.current) {
+      await refreshProfileInFlightRef.current
+      return
+    }
     await run('Profilo caricato', async () => {
-      const me = await getMe()
-      let mine: MyCampaignMembershipResponse[] = []
-      try {
-        mine = await listMyCampaignMemberships()
-      } catch (err) {
-        if (!(err instanceof ApiError) || err.status !== 404) {
-          throw err
-        }
-      }
-      setProfile(me)
-      setMyCampaigns(mine)
-      setCampaignMembershipsLoaded(true)
+      const request = (async () => {
+        const cachedUserId = activeUserId?.trim() || ''
+        const me = cachedUserId
+          ? await loadCachedProfile(bootstrapScope(cachedUserId), { force: options.force })
+          : await getMe()
+        const mine = await loadCachedMemberships(bootstrapScope(me.id), { force: options.force })
+        primeCachedProfile(bootstrapScope(me.id), me)
+        primeCachedMemberships(bootstrapScope(me.id), mine)
+        setProfile(me)
+        setMyCampaigns(mine)
+        setCampaignMembershipsLoaded(true)
 
-      if (mine.length === 0 && campaignId) {
-        rememberCampaignId('', me.id)
-        setCampaign(null)
-        setMembers([])
-        setCampaignMembersForManagement([])
-        setCanManageCampaignMembers(false)
-        setPendingApplications([])
-        setSelectedCampaignMember(null)
-        setSelectedCampaignMemberProfile(null)
-        setCharacters([])
-        setMissions([])
-        setMissionParticipantsById({})
-        setMyMissionParticipationById({})
-        setMissionParticipantCharacterLabelById({})
-        setRooms([])
-      } else if (campaignId && !mine.some((item) => item.campaignId === campaignId && item.memberStatus === 'APPROVED')) {
-        rememberCampaignId('', me.id)
-        setCampaign(null)
-        setMembers([])
-        setCampaignMembersForManagement([])
-        setCanManageCampaignMembers(false)
-        setPendingApplications([])
-        setSelectedCampaignMember(null)
-        setSelectedCampaignMemberProfile(null)
-        setCharacters([])
-        setMissions([])
-        setMissionParticipantsById({})
-        setMyMissionParticipationById({})
-        setMissionParticipantCharacterLabelById({})
-        setRooms([])
+        if (mine.length === 0 && campaignId) {
+          rememberCampaignId('', me.id)
+          setCampaign(null)
+          setMembers([])
+          setCampaignMembersForManagement([])
+          setCanManageCampaignMembers(false)
+          setPendingApplications([])
+          setSelectedCampaignMember(null)
+          setSelectedCampaignMemberProfile(null)
+          setCharacters([])
+          setMissions([])
+          setMissionParticipantsById({})
+          setMyMissionParticipationById({})
+          setMissionParticipantCharacterLabelById({})
+          setRooms([])
+        } else if (campaignId && !mine.some((item) => item.campaignId === campaignId && item.memberStatus === 'APPROVED')) {
+          rememberCampaignId('', me.id)
+          setCampaign(null)
+          setMembers([])
+          setCampaignMembersForManagement([])
+          setCanManageCampaignMembers(false)
+          setPendingApplications([])
+          setSelectedCampaignMember(null)
+          setSelectedCampaignMemberProfile(null)
+          setCharacters([])
+          setMissions([])
+          setMissionParticipantsById({})
+          setMyMissionParticipationById({})
+          setMissionParticipantCharacterLabelById({})
+          setRooms([])
+        }
+      })()
+      refreshProfileInFlightRef.current = request
+      try {
+        await request
+      } finally {
+        refreshProfileInFlightRef.current = null
       }
     })
   }
 
-  const loadCampaignBlockFor = async (targetCampaignId: string) => {
+  const loadCampaignBlockFor = async (targetCampaignId: string, options: { force?: boolean } = {}) => {
     setPendingApplications(readPendingApplicationsForCampaign(activeUserId, targetCampaignId))
     const [
       campaignValue,
@@ -815,22 +834,40 @@ function App() {
       canManageMembersPermission,
       pendingValue,
     ] = await Promise.all([
-      getCampaign(targetCampaignId),
-      getCampaignMembers(targetCampaignId),
-      listCharacters(targetCampaignId),
-      listMissions(targetCampaignId, missionWindowSince()),
-      listRooms(targetCampaignId),
-      checkPermission(targetCampaignId, 'PROMOTE_CO_MASTER_OR_MASTER')
-        .then((permission) => permission.allowed)
-        .catch(() => false),
-      listPendingApplications(targetCampaignId)
+      profile?.id ? loadCachedCampaignDetails(bootstrapScope(profile.id), targetCampaignId, { force: options.force }) : getCampaign(targetCampaignId),
+      profile?.id
+        ? loadCachedCampaignMembers(bootstrapScope(profile.id), targetCampaignId, { force: options.force })
+        : getCampaignMembers(targetCampaignId),
+      profile?.id
+        ? loadCachedCampaignCharacters(bootstrapScope(profile.id), targetCampaignId, { force: options.force })
+        : listCharacters(targetCampaignId),
+      profile?.id
+        ? loadCachedCampaignMissions(bootstrapScope(profile.id), targetCampaignId, missionWindowSince(), { force: options.force })
+        : listMissions(targetCampaignId, missionWindowSince()),
+      profile?.id
+        ? loadCachedCampaignRooms(bootstrapScope(profile.id), targetCampaignId, { force: options.force })
+        : listRooms(targetCampaignId),
+      profile?.id
+        ? loadCachedCampaignPermission(bootstrapScope(profile.id), targetCampaignId, 'PROMOTE_CO_MASTER_OR_MASTER', { force: options.force })
+            .then((permission) => permission.allowed)
+            .catch(() => false)
+        : checkPermission(targetCampaignId, 'PROMOTE_CO_MASTER_OR_MASTER')
+            .then((permission) => permission.allowed)
+            .catch(() => false),
+      (profile?.id
+        ? loadCachedPendingApplications(bootstrapScope(profile.id), targetCampaignId, { force: options.force })
+        : listPendingApplications(targetCampaignId))
         .catch((err) => {
           if (err instanceof ApiError && (err.status === 403 || err.status === 404)) return []
           throw err
         }),
     ])
     const memberManagementValue = canManageMembersPermission
-      ? await listCampaignMembersForManagement(targetCampaignId).catch(() => [])
+      ? await (
+        profile?.id
+          ? loadCachedCampaignMembersForManagement(bootstrapScope(profile.id), targetCampaignId, { force: options.force })
+          : listCampaignMembersForManagement(targetCampaignId)
+      ).catch(() => [])
       : []
     setCampaign(campaignValue)
     setCampaignDetailsById((prev) => ({ ...prev, [campaignValue.id]: campaignValue }))
@@ -899,22 +936,28 @@ function App() {
     } else {
       await applyToCampaignViaInviteToken(trimmed)
     }
-    const [discover, mine] = await Promise.all([discoverCampaigns(false), listMyCampaignMemberships()])
-    setDiscoverableCampaigns(discover)
-    setMyCampaigns(mine)
+    await Promise.all([
+      refreshProfile({ force: true }),
+      loadDiscoverableCampaigns({ force: true }),
+      loadPostLoginCampaignSummary({ force: true }),
+    ])
   }
 
-  const refreshCampaignBlock = async () => {
+  const refreshCampaignBlock = async (options: { force?: boolean } = {}) => {
     if (!campaignId.trim()) return
     await run('Dati campagna caricati', async () => {
-      await loadCampaignBlockFor(campaignId)
+      await loadCampaignBlockFor(campaignId, { force: options.force ?? true })
     })
   }
 
   const loadCharacterDetailBlock = async (targetCampaignId: string, targetCharacterId: string) => {
     const [detailValue, sheetValue] = await Promise.all([
-      getCharacter(targetCampaignId, targetCharacterId),
-      getCharacterSheet(targetCampaignId, targetCharacterId),
+      profile?.id
+        ? loadCachedCharacterDetail(bootstrapScope(profile.id), targetCampaignId, targetCharacterId)
+        : getCharacter(targetCampaignId, targetCharacterId),
+      profile?.id
+        ? loadCachedCharacterSheet(bootstrapScope(profile.id), targetCampaignId, targetCharacterId)
+        : getCharacterSheet(targetCampaignId, targetCharacterId),
     ])
     setCharacterDetail(detailValue)
     setCharacterSheetDetail(sheetValue)
@@ -932,7 +975,9 @@ function App() {
     setBusy(true)
     setError('')
     try {
-      const response = await listAdminUsers(page, query)
+      const response = activeUserId
+        ? await loadCachedAdminUsers(bootstrapScope(activeUserId), page, query)
+        : await listAdminUsers(page, query)
       setAdminUsersPage(response)
       setAdminUsersPageIndex(response.page)
       setAdminUsersDrafts(
@@ -963,7 +1008,9 @@ function App() {
     setBusy(true)
     setError('')
     try {
-      const response = await listAdminCampaigns(page)
+      const response = activeUserId
+        ? await loadCachedAdminCampaigns(bootstrapScope(activeUserId), page)
+        : await listAdminCampaigns(page)
       setAdminCampaignsPage(response)
       setAdminCampaignsPageIndex(response.page)
       setAdminCampaignsDrafts(
@@ -997,7 +1044,9 @@ function App() {
     setBusy(true)
     setError('')
     try {
-      const response = await listAdminRealms(page, query)
+      const response = activeUserId
+        ? await loadCachedAdminRealms(bootstrapScope(activeUserId), page, query)
+        : await listAdminRealms(page, query)
       const items = response.items ?? []
       setAdminRealmsPage(response)
       setAdminRealmsPageIndex(response.page)
@@ -1016,9 +1065,10 @@ function App() {
     }
   }
 
-  const loadCurrentRealmPermissions = async () => {
+  const loadCurrentRealmPermissions = async (options: { force?: boolean } = {}) => {
     try {
-      const response = await getCurrentRealmPermissions()
+      if (!profile?.id) return
+      const response = await loadCachedRealmPermissions(bootstrapScope(profile.id), { force: options.force })
       setRealmPermissions(response)
     } catch (err) {
       const message = toMessage(err)
@@ -1036,7 +1086,9 @@ function App() {
     setBusy(true)
     setError('')
     try {
-      const response = await listAdminRealmUserRoles({ realmId: targetRealmId })
+      const response = activeUserId
+        ? await loadCachedAdminRealmUserRoles(bootstrapScope(activeUserId), targetRealmId)
+        : await listAdminRealmUserRoles({ realmId: targetRealmId })
       setAdminRealmUserRoles(response)
       setAdminRealmRoleDrafts(
         Object.fromEntries(
@@ -1068,7 +1120,9 @@ function App() {
     setError('')
     setRealmAccessSearchMessage('')
     try {
-      const response = await listAdminUsers(0, query)
+      const response = activeUserId
+        ? await loadCachedAdminUsers(bootstrapScope(activeUserId), 0, query)
+        : await listAdminUsers(0, query)
       setRealmAccessSearchResults(response.items)
       setRealmAccessSearchMessage(response.items.length === 0 ? 'Nessun profilo trovato.' : `${response.items.length} profili trovati.`)
     } catch (err) {
@@ -1089,7 +1143,14 @@ function App() {
     setError('')
     setAdminSheetCatalogsLoaded(true)
     try {
-      const [gameSystems, sheetTypes] = await Promise.all([listAdminGameSystems(), listAdminSheetTypes()])
+      const [gameSystems, sheetTypes] = await Promise.all([
+        activeUserId
+          ? loadCachedAdminGameSystems(bootstrapScope(activeUserId))
+          : listAdminGameSystems(),
+        activeUserId
+          ? loadCachedAdminSheetTypes(bootstrapScope(activeUserId))
+          : listAdminSheetTypes(),
+      ])
       setAdminGameSystems(gameSystems)
       setAdminSheetTypes(sheetTypes)
       addEvent('Cataloghi schede caricati', 'ok')
@@ -1370,14 +1431,6 @@ function App() {
     setCanManageCampaignMembers(false)
     setPendingApplications([])
     setPermissions([])
-    setCampaignModules([])
-    setCampaignGameSystems([])
-    setAdminUsersPage(null)
-    setAdminUsersPageIndex(0)
-    setAdminUsersDrafts({})
-    setAdminCampaignsPage(null)
-    setAdminCampaignsPageIndex(0)
-    setAdminCampaignsDrafts({})
     setCharacters([])
     setSelectedCharacterId('')
     setCharacterDetail(null)
@@ -1406,7 +1459,9 @@ function App() {
   }
 
   const activateCampaignAndNavigate = async (targetCampaignId: string, targetScreen: Screen) => {
-    const latestCampaign = await getCampaign(targetCampaignId)
+    const latestCampaign = activeUserId
+      ? await loadCachedCampaignDetails(bootstrapScope(activeUserId), targetCampaignId)
+      : await getCampaign(targetCampaignId)
     if (!isSystemRole && !latestCampaign.isActive) {
       throw new Error('Campagna disattivata: non selezionabile come attiva')
     }
@@ -1419,8 +1474,6 @@ function App() {
       setCharacterSheetDetail(null)
       setSelectedCharacterId('')
       setSelectedMissionId('')
-      await loadCampaignBlockFor(targetCampaignId)
-      await refreshProfile()
       setScreen(targetScreen)
     })
   }
@@ -1434,7 +1487,7 @@ function App() {
       clearCampaignWorkspace()
       setScreen('Ingresso')
       closeLeaveCampaignModal()
-      await refreshProfile()
+      await refreshProfile({ force: true })
     })
   }
 
@@ -1456,7 +1509,7 @@ function App() {
     void (async () => {
       try {
         await run('Richieste pending caricate', async () => {
-          await loadPendingForActiveCampaign()
+          await loadPendingForActiveCampaign({ force: true })
         })
       } catch (err) {
         if (cancelled) return
@@ -1495,7 +1548,7 @@ function App() {
     }
   }, [campaignId, canAccessCampaignManagement])
 
-  const refreshMissions = async (options: { clearSelection?: boolean } = {}) => {
+  const refreshMissions = async (options: { clearSelection?: boolean; force?: boolean } = {}) => {
     const approvedCampaignIds = approvedCampaignMemberships.map((membership) => membership.campaignId)
     if (approvedCampaignIds.length === 0) {
       setMissions([])
@@ -1509,8 +1562,12 @@ function App() {
     const settled = await Promise.allSettled(
       approvedCampaignIds.map(async (targetCampaignId) => {
         const [missionRows, characterRows] = await Promise.all([
-          listMissions(targetCampaignId, missionWindowSince()),
-          listCharacters(targetCampaignId).catch(() => []),
+          profile?.id
+            ? loadCachedCampaignMissions(bootstrapScope(profile.id), targetCampaignId, missionWindowSince(), { force: options.force })
+            : listMissions(targetCampaignId, missionWindowSince()),
+          (profile?.id
+            ? loadCachedCampaignCharacters(bootstrapScope(profile.id), targetCampaignId, { force: options.force })
+            : listCharacters(targetCampaignId)).catch(() => []),
         ])
         return {
           missions: missionRows.map((mission) => ({ ...mission, campaignId: targetCampaignId })),
@@ -1569,7 +1626,9 @@ function App() {
     const participantSettled = await Promise.allSettled(
       nextMissions.map(async (mission) => ({
         missionId: mission.id,
-        participants: await listMissionParticipants(mission.campaignId, mission.id),
+        participants: profile?.id
+          ? await loadCachedMissionParticipants(bootstrapScope(profile.id), mission.campaignId, mission.id, { force: options.force })
+          : await listMissionParticipants(mission.campaignId, mission.id),
       })),
     )
     const nextParticipantsById: Record<string, MissionParticipantResponse[]> = {}
@@ -1600,20 +1659,8 @@ function App() {
       (userId) => userId !== profile?.id && !memberNames[userId],
     )
     if (missingUserIds.length > 0) {
-      const settledProfiles = await Promise.allSettled(missingUserIds.map((userId) => getPublicProfile(userId)))
-      setMemberNames((prev) => {
-        const next = { ...prev }
-        for (let index = 0; index < settledProfiles.length; index += 1) {
-          const userId = missingUserIds[index]
-          const result = settledProfiles[index]
-          if (result.status === 'fulfilled') {
-            next[userId] = result.value.profileName || result.value.username || 'Profilo non disponibile'
-          } else if (!next[userId]) {
-            next[userId] = 'Profilo non disponibile'
-          }
-        }
-        return next
-      })
+      const resolvedNames = await resolveMemberNames(missingUserIds)
+      setMemberNames((prev) => ({ ...prev, ...resolvedNames }))
     }
   }
 
@@ -1621,7 +1668,9 @@ function App() {
     setMissionChatBusy(true)
     setMissionChatError('')
     try {
-      const value = await getMissionChat(targetCampaignId, missionId)
+      const value = profile?.id
+        ? await loadCachedMissionChat(bootstrapScope(profile.id), targetCampaignId, missionId)
+        : await getMissionChat(targetCampaignId, missionId)
       setSelectedMissionChatContext({ campaignId: targetCampaignId, missionId })
       setMissionChat(value)
     } catch (err) {
@@ -1638,22 +1687,29 @@ function App() {
     await loadMissionChat(selectedMissionChatContext.campaignId, selectedMissionChatContext.missionId)
   }
 
-  const loadDiscoverableCampaigns = async () => {
-    const list = await discoverCampaigns(false)
+  const loadDiscoverableCampaigns = async (options: { force?: boolean } = {}) => {
+    if (!activeUserId) return
+    const list = await loadCachedDiscoverCampaigns(bootstrapScope(activeUserId), { force: options.force })
     setDiscoverableCampaigns(list)
   }
 
-  const loadPostLoginCampaignSummary = useCallback(async () => {
+  const loadPostLoginCampaignSummary = useCallback(async (options: { force?: boolean } = {}) => {
     if (!getAccessToken()) return
+    if (!activeUserId) return
     if (postLoginSummaryInFlightRef.current) {
+      postLoginSummaryQueuedRefreshRef.current = true
       await postLoginSummaryInFlightRef.current
+      if (postLoginSummaryQueuedRefreshRef.current) {
+        postLoginSummaryQueuedRefreshRef.current = false
+        await loadPostLoginCampaignSummary({ force: true })
+      }
       return
     }
     const request = (async () => {
       setPostLoginLoading(true)
       setPostLoginError('')
       try {
-        const summary = await getPostLoginCampaignSummary()
+        const summary = await loadCachedPostLoginSummary(bootstrapScope(activeUserId), { force: options.force })
         setPostLoginCanCreateCampaign(summary.canCreateCampaign)
         setPostLoginCampaigns(summary.campaigns)
       } catch (err) {
@@ -1666,8 +1722,15 @@ function App() {
       }
     })()
     postLoginSummaryInFlightRef.current = request
-    await request
-  }, [])
+    try {
+      await request
+    } finally {
+      if (postLoginSummaryQueuedRefreshRef.current) {
+        postLoginSummaryQueuedRefreshRef.current = false
+        await loadPostLoginCampaignSummary({ force: true })
+      }
+    }
+  }, [activeUserId, realmCode])
 
   useEffect(() => {
     if (!getAccessToken()) return
@@ -1679,7 +1742,13 @@ function App() {
 
     let cancelled = false
     void (async () => {
-      const settled = await Promise.allSettled(missingCampaignIds.map((membershipCampaignId) => getCampaign(membershipCampaignId)))
+      const settled = await Promise.allSettled(
+        missingCampaignIds.map((membershipCampaignId) =>
+          activeUserId
+            ? loadCachedCampaignDetails(bootstrapScope(activeUserId), membershipCampaignId)
+            : getCampaign(membershipCampaignId),
+        ),
+      )
       if (cancelled) return
       setCampaignDetailsById((prev) => {
         const next = { ...prev }
@@ -1720,7 +1789,7 @@ function App() {
     }
   }, [screen, approvedCampaignMemberships, campaignId])
 
-  const loadCharactersForManagement = async () => {
+  const loadCharactersForManagement = async (options: { force?: boolean } = {}) => {
     const approvedCampaignIds = approvedCampaignMemberships.map((item) => item.campaignId)
     if (approvedCampaignIds.length === 0) {
       setCharacters([])
@@ -1733,8 +1802,12 @@ function App() {
     const settled = await Promise.allSettled(
       approvedCampaignIds.map(async (targetCampaignId) => {
         const [memberRows, characterRows] = await Promise.all([
-          getCampaignMembers(targetCampaignId),
-          listCharacters(targetCampaignId),
+          profile?.id
+            ? loadCachedCampaignMembers(bootstrapScope(profile.id), targetCampaignId, { force: options.force })
+            : getCampaignMembers(targetCampaignId),
+          profile?.id
+            ? loadCachedCampaignCharacters(bootstrapScope(profile.id), targetCampaignId, { force: options.force })
+            : listCharacters(targetCampaignId),
         ])
         return { campaignId: targetCampaignId, members: memberRows, characters: characterRows }
       }),
@@ -1790,20 +1863,8 @@ function App() {
 
     const missingUserIds = Array.from(userNamesToResolve).filter((userId) => !memberNames[userId])
     if (missingUserIds.length > 0) {
-      const settledProfiles = await Promise.allSettled(missingUserIds.map((userId) => getPublicProfile(userId)))
-      setMemberNames((prev) => {
-        const next = { ...prev }
-        for (let index = 0; index < settledProfiles.length; index += 1) {
-          const userId = missingUserIds[index]
-          const result = settledProfiles[index]
-          if (result.status === 'fulfilled') {
-            next[userId] = result.value.profileName || result.value.username || 'Profilo non disponibile'
-          } else if (!next[userId]) {
-            next[userId] = 'Profilo non disponibile'
-          }
-        }
-        return next
-      })
+      const resolvedNames = await resolveMemberNames(missingUserIds)
+      setMemberNames((prev) => ({ ...prev, ...resolvedNames }))
     }
 
     setSelectedCharacterId((prev) => {
@@ -1815,9 +1876,12 @@ function App() {
     })
   }
 
-  const loadPendingForCampaign = async (targetCampaignId: string) => {
+  const loadPendingForCampaign = async (targetCampaignId: string, options: { force?: boolean } = {}) => {
     if (!targetCampaignId.trim()) return
-    const list = await listPendingApplications(targetCampaignId)
+    const list =
+      profile?.id
+        ? await loadCachedPendingApplications(bootstrapScope(profile.id), targetCampaignId, { force: options.force })
+        : await listPendingApplications(targetCampaignId)
     setPendingApplicationsByCampaignId((prev) => ({
       ...prev,
       [targetCampaignId]: list,
@@ -1829,21 +1893,21 @@ function App() {
     return list
   }
 
-  async function loadPendingForActiveCampaign() {
+  async function loadPendingForActiveCampaign(options: { force?: boolean } = {}) {
     if (!campaignId.trim()) return
-    await loadPendingForCampaign(campaignId)
+    await loadPendingForCampaign(campaignId, options)
   }
 
   const approvePendingForActiveCampaign = async (userId: string) => {
     if (!campaignId.trim()) return
     await approveApplication(campaignId, userId)
-    await loadPendingForActiveCampaign()
+    await loadPendingForActiveCampaign({ force: true })
   }
 
   const rejectPendingForActiveCampaign = async (userId: string) => {
     if (!campaignId.trim()) return
     await rejectApplication(campaignId, userId)
-    await loadPendingForActiveCampaign()
+    await loadPendingForActiveCampaign({ force: true })
   }
 
   useEffect(() => {
@@ -1861,7 +1925,13 @@ function App() {
 
     let cancelled = false
     void (async () => {
-      const settled = await Promise.allSettled(missingIds.map((id) => getCampaign(id)))
+      const settled = await Promise.allSettled(
+        missingIds.map((id) => (
+          activeUserId
+            ? loadCachedCampaignDetails(bootstrapScope(activeUserId), id)
+            : getCampaign(id)
+        )),
+      )
       if (cancelled) return
       const resolved = settled
         .filter((item): item is PromiseFulfilledResult<CampaignResponse> => item.status === 'fulfilled')
@@ -1883,7 +1953,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [knownCampaignIds, knownCampaignMeta, screen])
+  }, [activeUserId, knownCampaignIds, knownCampaignMeta, screen])
 
   useEffect(() => {
     const allMemberships = [...members, ...campaignMembersForManagement]
@@ -1895,27 +1965,15 @@ function App() {
 
     let cancelled = false
     void (async () => {
-      const settled = await Promise.allSettled(missingUserIds.map((userId) => getPublicProfile(userId)))
+      const resolvedNames = await resolveMemberNames(missingUserIds)
       if (cancelled) return
-      setMemberNames((prev) => {
-        const next = { ...prev }
-        for (let index = 0; index < settled.length; index += 1) {
-          const userId = missingUserIds[index]
-          const result = settled[index]
-          if (result.status === 'fulfilled') {
-            next[userId] = result.value.profileName || result.value.username || 'Profilo non disponibile'
-          } else {
-            next[userId] = 'Profilo non disponibile'
-          }
-        }
-        return next
-      })
+      setMemberNames((prev) => ({ ...prev, ...resolvedNames }))
     })()
 
     return () => {
       cancelled = true
     }
-  }, [members, campaignMembersForManagement, memberNames])
+  }, [members, campaignMembersForManagement, memberNames, resolveMemberNames])
 
   useEffect(() => {
     const missingFounderIds = campaignsForList
@@ -1926,27 +1984,15 @@ function App() {
 
     let cancelled = false
     void (async () => {
-      const settled = await Promise.allSettled(missingFounderIds.map((founderId) => getPublicProfile(founderId)))
+      const resolvedNames = await resolveMemberNames(missingFounderIds)
       if (cancelled) return
-      setCampaignFounderNames((prev) => {
-        const next = { ...prev }
-        for (let index = 0; index < settled.length; index += 1) {
-          const founderId = missingFounderIds[index]
-          const result = settled[index]
-          if (result.status === 'fulfilled') {
-            next[founderId] = result.value.profileName || result.value.username || 'Profilo non disponibile'
-          } else {
-            next[founderId] = 'Profilo non disponibile'
-          }
-        }
-        return next
-      })
+      setCampaignFounderNames((prev) => ({ ...prev, ...resolvedNames }))
     })()
 
     return () => {
       cancelled = true
     }
-  }, [campaignsForList, campaignFounderNames])
+  }, [campaignsForList, campaignFounderNames, resolveMemberNames])
 
   const activeCampaignListEntry = campaignId ? campaignsForList.find((item) => item.id === campaignId) : undefined
   const activeCampaignIsEnabled = isSystemRole || campaign?.isActive === true || activeCampaignListEntry?.isActive === true
@@ -2001,7 +2047,7 @@ function App() {
     let cancelled = false
     void (async () => {
       try {
-        await refreshCampaignBlock()
+        await loadCampaignBlockFor(campaignId)
       } catch (err) {
         if (cancelled) return
         const message = toMessage(err)
@@ -2034,8 +2080,7 @@ function App() {
     let cancelled = false
     void (async () => {
       try {
-        const list = await discoverCampaigns(false)
-        if (!cancelled) setDiscoverableCampaigns(list)
+        await loadDiscoverableCampaigns()
       } catch (err) {
         if (cancelled) return
         const message = toMessage(err)
@@ -2081,7 +2126,9 @@ function App() {
     let cancelled = false
     void (async () => {
       try {
-        const modulesResult = await listCampaignModules()
+        const modulesResult = activeUserId
+          ? await loadCachedCampaignModules(bootstrapScope(activeUserId))
+          : await listCampaignModules()
         if (cancelled) return
         setCampaignModules(modulesResult)
       } catch (err) {
@@ -2096,7 +2143,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [screen, campaignModules.length])
+  }, [activeUserId, bootstrapScope, screen, campaignModules.length])
 
   useEffect(() => {
     if (!getAccessToken()) return
@@ -2106,7 +2153,9 @@ function App() {
     let cancelled = false
     void (async () => {
       try {
-        const systemsResult = await listCampaignGameSystems()
+        const systemsResult = activeUserId
+          ? await loadCachedCampaignGameSystems(bootstrapScope(activeUserId))
+          : await listCampaignGameSystems()
         if (cancelled) return
         setCampaignGameSystems(systemsResult)
       } catch (err) {
@@ -2121,10 +2170,11 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [screen, campaignGameSystems.length])
+  }, [activeUserId, bootstrapScope, screen, campaignGameSystems.length])
 
   const handleAuth = async (session: AuthSession) => {
     setProfile(session.user)
+    primeCachedProfile(bootstrapScope(session.user.id), session.user)
     setCampaignMembershipsLoaded(false)
     setError('')
     setPostLoginError('')
@@ -2132,10 +2182,13 @@ function App() {
     if (session.user.platformRole !== 'SYSTEM') {
       setScreen('Ingresso')
     }
-    await refreshProfile()
+    await refreshProfile({ force: true })
   }
 
   function handleLogout() {
+    if (activeUserId) {
+      clearUserScopedBootstrapCache(bootstrapScope(activeUserId))
+    }
     logout()
     setProfile(null)
     setAuthMode('login')
@@ -2191,7 +2244,7 @@ function App() {
     addEvent('Logout eseguito', 'info')
   }
 
-  const realtimeActionsRef = useRef<RealtimeActionMap>({
+  const realtimeActionsRef = useRef<RealtimeInvalidationActions>({
     refreshProfile: async () => {},
     refreshPostLoginSummary: async () => {},
     refreshCampaignBlock: async () => {},
@@ -2208,7 +2261,7 @@ function App() {
     loadAdminRealmUserRoles: async () => {},
     loadAdminSheetCatalogs: async () => {},
   })
-  const realtimeStateRef = useRef<RealtimeStateSnapshot>({
+  const realtimeStateRef = useRef<RealtimeInvalidationState>({
     screen,
     campaignId,
     activeUserId,
@@ -2238,7 +2291,7 @@ function App() {
             membership.membershipRole === 'MASTER' ||
             membership.membershipRole === 'SUPER_MASTER')
         if (!canManageTarget) return
-        await loadPendingForCampaign(targetCampaignId)
+        await loadPendingForCampaign(targetCampaignId, { force: true })
       },
       loadAdminUsers,
       loadAdminCampaigns,
@@ -2283,94 +2336,10 @@ function App() {
   ])
 
   const handleRealtimeInvalidation = useCallback((payload: ResourceInvalidationPayload) => {
-    const snapshot = realtimeStateRef.current
-    const keys = new Set(payload.keys)
-    const currentCampaignKey = snapshot.campaignId.trim() ? `campaigns:${snapshot.campaignId}` : ''
-    const campaignKeyMatch = currentCampaignKey
-      ? payload.keys.some((key) => key === currentCampaignKey || key.startsWith(`${currentCampaignKey}:`))
-      : false
-    const missionKeyMatch = payload.keys.some((key) => key.startsWith('campaigns:') && key.endsWith(':missions'))
-    const chatKeyMatch = payload.keys.some((key) => key.startsWith('campaigns:') && key.endsWith(':chat'))
-    const characterKeyMatch = payload.keys.some((key) => key.startsWith('campaigns:') && key.endsWith(':characters'))
-    const pendingApplicationsCampaignIds = payload.keys
-      .filter((key) => key.startsWith('campaigns:') && key.endsWith(':pending-applications'))
-      .map((key) => key.split(':')[1])
-    const userProfileKey = snapshot.activeUserId ? `users:${snapshot.activeUserId}:profile` : ''
-
-    if (keys.has('campaigns:discover') && snapshot.screen === 'Lista Campagne') {
-      void realtimeActionsRef.current.loadDiscoverableCampaigns()
-    }
-
-    if (keys.has('campaigns:discover') && snapshot.screen === 'Ingresso') {
-      void realtimeActionsRef.current.refreshPostLoginSummary()
-    }
-
-    if (userProfileKey && keys.has(userProfileKey)) {
-      void realtimeActionsRef.current.refreshProfile()
-      if (snapshot.screen === 'Ingresso') {
-        void realtimeActionsRef.current.refreshPostLoginSummary()
-      }
-    }
-
-    if (snapshot.isSystemSession) {
-      if (snapshot.systemAdminView === 'users' && keys.has('admin:users')) {
-        void realtimeActionsRef.current.loadAdminUsers(snapshot.adminUsersPageIndex)
-      }
-      if (snapshot.systemAdminView === 'campaigns' && keys.has('admin:campaigns')) {
-        void realtimeActionsRef.current.loadAdminCampaigns(snapshot.adminCampaignsPageIndex)
-      }
-      if (snapshot.systemAdminView === 'realms' && keys.has('admin:realms')) {
-        void realtimeActionsRef.current.loadAdminRealms(snapshot.adminRealmsPageIndex)
-      }
-      if (snapshot.systemAdminView === 'realmAccess' && (keys.has('admin:users') || keys.has('admin:realms'))) {
-        void realtimeActionsRef.current.loadAdminRealmUserRoles()
-      }
-      if (snapshot.systemAdminView === 'sheets' && keys.has('admin:catalogs')) {
-        void realtimeActionsRef.current.loadAdminSheetCatalogs()
-      }
-    }
-
-    if (pendingApplicationsCampaignIds.length > 0) {
-      for (const targetCampaignId of pendingApplicationsCampaignIds) {
-        void realtimeActionsRef.current.refreshPendingApplicationsForCampaign(targetCampaignId)
-      }
-      if (snapshot.campaignId.trim() && pendingApplicationsCampaignIds.includes(snapshot.campaignId)) {
-        void realtimeActionsRef.current.loadPendingForActiveCampaign()
-      }
-      if (snapshot.screen === 'Approvazione Accessi') return
-    }
-
-    if (snapshot.screen === 'Missioni' && chatKeyMatch) {
-      void realtimeActionsRef.current.refreshMissionChat()
-      return
-    }
-
-    if (snapshot.screen === 'Missioni' && (campaignKeyMatch || missionKeyMatch || characterKeyMatch)) {
-      void realtimeActionsRef.current.refreshMissions({ clearSelection: true })
-      return
-    }
-
-    if (!campaignKeyMatch) return
-
-    if (snapshot.screen === 'Scheda PG' && characterKeyMatch) {
-      void realtimeActionsRef.current.refreshCharacterBlock()
-      return
-    }
-
-    if (snapshot.screen === 'Gestione Personaggi' && characterKeyMatch) {
-      void realtimeActionsRef.current.loadCharactersForManagement()
-      return
-    }
-
-    if (snapshot.screen === 'Approvazione Accessi') {
-      void realtimeActionsRef.current.refreshCampaignBlock()
-      return
-    }
-
-    if (snapshot.screen === 'Scheda Campagna' || snapshot.screen === 'Gestione Campagna' || snapshot.screen === 'Stanze') {
-      void realtimeActionsRef.current.refreshCampaignBlock()
-    }
-  }, [])
+    applyRealtimeInvalidation(payload, realtimeStateRef.current, realtimeActionsRef.current, {
+      currentUserScope: activeUserId ? bootstrapScope(activeUserId) : null,
+    })
+  }, [activeUserId, bootstrapScope])
 
   useEffect(() => {
     if (!getAccessToken()) return
@@ -2454,7 +2423,9 @@ function App() {
     if (campaignModules.length === 0) {
       void (async () => {
         try {
-          const modulesResult = await listCampaignModules()
+          const modulesResult = activeUserId
+            ? await loadCachedCampaignModules(bootstrapScope(activeUserId), { force: true })
+            : await listCampaignModules()
           setCampaignModules(modulesResult)
         } catch (err) {
           const message = toMessage(err)
@@ -2467,7 +2438,9 @@ function App() {
     if (campaignGameSystems.length === 0) {
       void (async () => {
         try {
-          const systemsResult = await listCampaignGameSystems()
+          const systemsResult = activeUserId
+            ? await loadCachedCampaignGameSystems(bootstrapScope(activeUserId), { force: true })
+            : await listCampaignGameSystems()
           setCampaignGameSystems(systemsResult)
         } catch (err) {
           const message = toMessage(err)
@@ -2477,7 +2450,7 @@ function App() {
         }
       })()
     }
-  }, [isSystemSession, systemAdminView, campaignModules.length, campaignGameSystems.length])
+  }, [activeUserId, bootstrapScope, isSystemSession, systemAdminView, campaignModules.length, campaignGameSystems.length])
 
   useEffect(() => {
     if (!profile || !activeUserId) return
@@ -2559,12 +2532,16 @@ function App() {
           loading={postLoginLoading}
           busy={busy}
           error={postLoginError}
-          onRefresh={() => void loadPostLoginCampaignSummary()}
+          onRefresh={() => void loadPostLoginCampaignSummary({ force: true })}
           onEnterCampaign={(targetCampaignId) => void activateCampaignAndNavigate(targetCampaignId, 'Scheda Campagna')}
           onApplyToCampaign={(targetCampaignId) => {
             void runResult('Richiesta accesso elaborata', async () => {
               const membership = await applyToCampaign(targetCampaignId)
-              await Promise.all([refreshProfile(), loadPostLoginCampaignSummary()])
+              await Promise.all([
+                refreshProfile({ force: true }),
+                loadDiscoverableCampaigns({ force: true }),
+                loadPostLoginCampaignSummary({ force: true }),
+              ])
               return membership
             }).then((membership) => {
               if (membership.memberStatus === 'APPROVED') {
@@ -2955,16 +2932,17 @@ function App() {
     pendingApplicationsByCampaignId,
     discoverCampaigns: () =>
       void run('Campagne disponibili caricate', async () => {
-        const list = await discoverCampaigns(false)
-        setDiscoverableCampaigns(list)
+        await loadDiscoverableCampaigns({ force: true })
       }),
     openCampaign: (targetCampaignId: string) => void activateCampaignAndNavigate(targetCampaignId, 'Scheda Campagna'),
     applyCampaign: (targetCampaignId: string) =>
       void run('Richiesta accesso inviata', async () => {
         await applyToCampaign(targetCampaignId)
-        const [discover, mine] = await Promise.all([discoverCampaigns(false), listMyCampaignMemberships()])
-        setDiscoverableCampaigns(discover)
-        setMyCampaigns(mine)
+        await Promise.all([
+          refreshProfile({ force: true }),
+          loadDiscoverableCampaigns({ force: true }),
+          loadPostLoginCampaignSummary({ force: true }),
+        ])
       }),
     applyInviteAccess: (inviteValue: string) => run('Richiesta accesso invito inviata', async () => applyInviteAccess(inviteValue)),
     previewInviteAccess,
@@ -2988,8 +2966,12 @@ function App() {
           return
         }
         const [membership, profileValue] = await Promise.all([
-          getCampaignMember(campaignId, member.userId),
-          getPublicProfile(member.userId),
+          profile?.id
+            ? loadCachedCampaignMember(bootstrapScope(profile.id), campaignId, member.userId)
+            : getCampaignMember(campaignId, member.userId),
+          profile?.id
+            ? loadCachedPublicProfile(bootstrapScope(profile.id), member.userId)
+            : getPublicProfile(member.userId),
         ])
         setSelectedCampaignMember(membership)
         setSelectedCampaignMemberProfile(profileValue)
@@ -3006,9 +2988,11 @@ function App() {
       if (!campaign?.id) return
       void run('Apply campagna inviato', async () => {
         await applyToCampaign(campaign.id)
-        const [discover, mine] = await Promise.all([discoverCampaigns(false), listMyCampaignMemberships()])
-        setDiscoverableCampaigns(discover)
-        setMyCampaigns(mine)
+        await Promise.all([
+          refreshProfile({ force: true }),
+          loadDiscoverableCampaigns({ force: true }),
+          loadPostLoginCampaignSummary({ force: true }),
+        ])
       })
     },
     activateCurrentCampaign: () => {
@@ -3033,10 +3017,14 @@ function App() {
     createCampaign: (payload: Parameters<typeof createCampaign>[0]) =>
       void run('Campagna creata', async () => {
         const created = await createCampaign(payload)
+        if (profile?.id) {
+          const scope = bootstrapScope(profile.id)
+          primeCachedCampaignDetails(scope, created)
+        }
         rememberCampaignId(created.id)
         rememberCampaignMeta(created.id, created.name)
-        setMyCampaigns((prev) => [
-          {
+        setMyCampaigns((prev) => {
+          const founderMembership: MyCampaignMembershipResponse = {
             campaignId: created.id,
             campaignName: created.name,
             role: 'SUPER_MASTER',
@@ -3044,11 +3032,23 @@ function App() {
             characterStatus: null,
             moderationReason: null,
             isFounder: true,
-          },
-          ...prev.filter((item) => item.campaignId !== created.id),
-        ])
+          }
+          const next: MyCampaignMembershipResponse[] = [
+            founderMembership,
+            ...prev.filter((item) => item.campaignId !== created.id),
+          ]
+          if (profile?.id) {
+            primeCachedMemberships(bootstrapScope(profile.id), next)
+          }
+          return next
+        })
         setCampaign(created)
+        setCampaignDetailsById((prev) => ({ ...prev, [created.id]: created }))
         setCanManageCampaignMembers(true)
+        await Promise.all([
+          loadDiscoverableCampaigns({ force: true }),
+          loadPostLoginCampaignSummary({ force: true }),
+        ])
         setScreen('Scheda Campagna')
       }),
     permissions,
@@ -3056,6 +3056,9 @@ function App() {
       if (!campaign?.id) return
       void run('Campagna aggiornata', async () => {
         const updated = await updateCampaign(campaign.id, payload)
+        if (profile?.id) {
+          primeCachedCampaignDetails(bootstrapScope(profile.id), updated)
+        }
         setCampaign(updated)
         setCampaignDetailsById((prev) => ({ ...prev, [updated.id]: updated }))
         rememberCampaignMeta(updated.id, updated.name)
@@ -3081,7 +3084,13 @@ function App() {
     refreshPermissionChecklist: () =>
       void run('Checklist permessi aggiornata', async () => {
         const actions = ['CREATE_ROOM', 'APPROVE_OR_REJECT_APPLICATIONS', 'TRANSFER_OWNERSHIP', 'MANAGE_CAMPAIGN_SETTINGS']
-        const settled = await Promise.all(actions.map(async (actionValue) => checkPermission(campaignId, actionValue)))
+        const settled = await Promise.all(
+          actions.map(async (actionValue) =>
+            profile?.id
+              ? loadCachedCampaignPermission(bootstrapScope(profile.id), campaignId, actionValue, { force: true })
+              : checkPermission(campaignId, actionValue),
+          ),
+        )
         setPermissions(settled)
       }),
     transferCampaignOwnership: (newOwnerId: string) =>
@@ -3103,8 +3112,12 @@ function App() {
       void run('Profilo membro aggiornato', async () => {
         if (!campaignId.trim() || !selectedCampaignMember) return
         const [membership, allMembers] = await Promise.all([
-          getCampaignMember(campaignId, selectedCampaignMember.userId),
-          listCampaignMembersForManagement(campaignId).catch(() => campaignMembersForManagement),
+          profile?.id
+            ? loadCachedCampaignMember(bootstrapScope(profile.id), campaignId, selectedCampaignMember.userId, { force: true })
+            : getCampaignMember(campaignId, selectedCampaignMember.userId),
+          (profile?.id
+            ? loadCachedCampaignMembersForManagement(bootstrapScope(profile.id), campaignId, { force: true })
+            : listCampaignMembersForManagement(campaignId)).catch(() => campaignMembersForManagement),
         ])
         setSelectedCampaignMember(membership)
         setCampaignMembersForManagement(allMembers)
@@ -3114,8 +3127,12 @@ function App() {
         if (!campaignId.trim() || !selectedCampaignMember) return
         const [updated, approvedMembers, allMembers] = await Promise.all([
           updateCampaignMemberRole(campaignId, selectedCampaignMember.userId, role),
-          getCampaignMembers(campaignId),
-          listCampaignMembersForManagement(campaignId).catch(() => campaignMembersForManagement),
+          profile?.id
+            ? loadCachedCampaignMembers(bootstrapScope(profile.id), campaignId, { force: true })
+            : getCampaignMembers(campaignId),
+          (profile?.id
+            ? loadCachedCampaignMembersForManagement(bootstrapScope(profile.id), campaignId, { force: true })
+            : listCampaignMembersForManagement(campaignId)).catch(() => campaignMembersForManagement),
         ])
         setSelectedCampaignMember(updated)
         setMembers(approvedMembers)
@@ -3126,8 +3143,12 @@ function App() {
         if (!campaignId.trim() || !selectedCampaignMember) return
         const [updated, approvedMembers, allMembers] = await Promise.all([
           banCampaignMember(campaignId, selectedCampaignMember.userId, reason),
-          getCampaignMembers(campaignId),
-          listCampaignMembersForManagement(campaignId).catch(() => campaignMembersForManagement),
+          profile?.id
+            ? loadCachedCampaignMembers(bootstrapScope(profile.id), campaignId, { force: true })
+            : getCampaignMembers(campaignId),
+          (profile?.id
+            ? loadCachedCampaignMembersForManagement(bootstrapScope(profile.id), campaignId, { force: true })
+            : listCampaignMembersForManagement(campaignId)).catch(() => campaignMembersForManagement),
         ])
         setSelectedCampaignMember(updated)
         setMembers(approvedMembers)
@@ -3138,8 +3159,12 @@ function App() {
         if (!campaignId.trim() || !selectedCampaignMember) return
         const [updated, approvedMembers, allMembers] = await Promise.all([
           suspendCampaignMember(campaignId, selectedCampaignMember.userId, reason),
-          getCampaignMembers(campaignId),
-          listCampaignMembersForManagement(campaignId).catch(() => campaignMembersForManagement),
+          profile?.id
+            ? loadCachedCampaignMembers(bootstrapScope(profile.id), campaignId, { force: true })
+            : getCampaignMembers(campaignId),
+          (profile?.id
+            ? loadCachedCampaignMembersForManagement(bootstrapScope(profile.id), campaignId, { force: true })
+            : listCampaignMembersForManagement(campaignId)).catch(() => campaignMembersForManagement),
         ])
         setSelectedCampaignMember(updated)
         setMembers(approvedMembers)
@@ -3150,8 +3175,12 @@ function App() {
         if (!campaignId.trim() || !selectedCampaignMember) return
         const [updated, approvedMembers, allMembers] = await Promise.all([
           unsuspendCampaignMember(campaignId, selectedCampaignMember.userId),
-          getCampaignMembers(campaignId),
-          listCampaignMembersForManagement(campaignId).catch(() => campaignMembersForManagement),
+          profile?.id
+            ? loadCachedCampaignMembers(bootstrapScope(profile.id), campaignId, { force: true })
+            : getCampaignMembers(campaignId),
+          (profile?.id
+            ? loadCachedCampaignMembersForManagement(bootstrapScope(profile.id), campaignId, { force: true })
+            : listCampaignMembersForManagement(campaignId)).catch(() => campaignMembersForManagement),
         ])
         setSelectedCampaignMember(updated)
         setMembers(approvedMembers)
@@ -3162,8 +3191,12 @@ function App() {
         if (!campaignId.trim() || !selectedCampaignMember) return
         const [updated, approvedMembers, allMembers] = await Promise.all([
           unbanCampaignMember(campaignId, selectedCampaignMember.userId),
-          getCampaignMembers(campaignId),
-          listCampaignMembersForManagement(campaignId).catch(() => campaignMembersForManagement),
+          profile?.id
+            ? loadCachedCampaignMembers(bootstrapScope(profile.id), campaignId, { force: true })
+            : getCampaignMembers(campaignId),
+          (profile?.id
+            ? loadCachedCampaignMembersForManagement(bootstrapScope(profile.id), campaignId, { force: true })
+            : listCampaignMembersForManagement(campaignId)).catch(() => campaignMembersForManagement),
         ])
         setSelectedCampaignMember(updated)
         setMembers(approvedMembers)
@@ -3174,8 +3207,12 @@ function App() {
         if (!campaignId.trim() || !selectedCampaignMember) return
         const [updated, approvedMembers, allMembers] = await Promise.all([
           approveCampaignMember(campaignId, selectedCampaignMember.userId),
-          getCampaignMembers(campaignId),
-          listCampaignMembersForManagement(campaignId).catch(() => campaignMembersForManagement),
+          profile?.id
+            ? loadCachedCampaignMembers(bootstrapScope(profile.id), campaignId, { force: true })
+            : getCampaignMembers(campaignId),
+          (profile?.id
+            ? loadCachedCampaignMembersForManagement(bootstrapScope(profile.id), campaignId, { force: true })
+            : listCampaignMembersForManagement(campaignId)).catch(() => campaignMembersForManagement),
         ])
         setSelectedCampaignMember(updated)
         setMembers(approvedMembers)
@@ -3218,7 +3255,7 @@ function App() {
     openCreateCharacter: () => setScreen('Crea Personaggio'),
     reloadCharacters: () =>
       void run('Lista personaggi caricata', async () => {
-        await loadCharactersForManagement()
+        await loadCharactersForManagement({ force: true })
       }),
     selectedCharacter,
     characterDetail,
@@ -3242,7 +3279,7 @@ function App() {
         const updated = await updateCharacterStatus(targetCampaignId, selectedCharacter.id, status)
         setCharacters((prev) => prev.map((item) => (item.id === updated.id ? updated : item)))
         setCharacterDetail(updated)
-        await refreshMissions()
+        await refreshMissions({ force: true })
       }),
     preferredCharacterId: activeCampaignCharacterId,
     applyCharacterToCampaign: (characterId: string) =>
@@ -3289,7 +3326,7 @@ function App() {
       void run('Missione creata', async () => {
         const created = await createMission(campaignId, payload)
         setSelectedMissionId(created.id)
-        await refreshMissions()
+        await refreshMissions({ force: true })
       }),
     selectMission: setSelectedMissionId,
     openMissionChat: (targetCampaignId: string, missionId: string) =>
@@ -3335,7 +3372,7 @@ function App() {
           const withoutCurrentUser = current.filter((item) => item.userId !== participant.userId)
           return { ...prev, [missionId]: [...withoutCurrentUser, participant] }
         })
-        await refreshMissions({ clearSelection: false })
+        await refreshMissions({ clearSelection: false, force: true })
         setSelectedMissionId(missionId)
       }),
     leaveMission: (missionId: string) =>
@@ -3353,7 +3390,7 @@ function App() {
           const current = prev[missionId] || []
           return { ...prev, [missionId]: current.filter((item) => item.userId !== participant.userId) }
         })
-        await refreshMissions()
+        await refreshMissions({ force: true })
       }),
     openMissionCampaign: (targetCampaignId: string) => void activateCampaignAndNavigate(targetCampaignId, 'Missioni'),
     browseCampaigns: () => setScreen('Lista Campagne'),
@@ -3374,7 +3411,7 @@ function App() {
         if (payload.autoReopenOnDrop === true && wasConfirmedBelowQuorum) {
           await reopenMission(campaignId, missionId)
         }
-        await refreshMissions()
+        await refreshMissions({ force: true })
       }),
     completeMission: (missionId: string) =>
       void run('Missione completata', async () => {
@@ -3382,7 +3419,7 @@ function App() {
           throw new Error('Campagna non attiva.')
         }
         await completeMission(campaignId, missionId)
-        await refreshMissions()
+        await refreshMissions({ force: true })
       }),
     cancelMission: (missionId: string) =>
       void run('Missione cancellata', async () => {
@@ -3390,7 +3427,7 @@ function App() {
           throw new Error('Campagna non attiva.')
         }
         await cancelMission(campaignId, missionId)
-        await refreshMissions()
+        await refreshMissions({ force: true })
       }),
   }
 
