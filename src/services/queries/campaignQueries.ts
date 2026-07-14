@@ -2,9 +2,13 @@ import { queryOptions } from '@tanstack/react-query'
 import {
   checkPermission,
   getCampaign,
+  getCampaignMember,
   getCampaignMembers,
   getMissionChat,
+  listInviteTokens,
   listCampaignMembersForManagement,
+  listCampaignGameSystems,
+  listCampaignModules,
   listCharacters,
   listMissionParticipants,
   listMissions,
@@ -23,6 +27,11 @@ export const campaignQueries = {
     queryOptions({
       queryKey: queryKeys.campaignMembers(campaignId),
       queryFn: () => getCampaignMembers(campaignId),
+    }),
+  member: (campaignId: string, userId: string) =>
+    queryOptions({
+      queryKey: queryKeys.campaignMember(campaignId, userId),
+      queryFn: () => getCampaignMember(campaignId, userId),
     }),
   membersForManagement: (campaignId: string) =>
     queryOptions({
@@ -43,6 +52,21 @@ export const campaignQueries = {
     queryOptions({
       queryKey: queryKeys.campaignRooms(campaignId),
       queryFn: () => listRooms(campaignId),
+    }),
+  inviteTokens: (campaignId: string) =>
+    queryOptions({
+      queryKey: queryKeys.campaignInviteTokens(campaignId),
+      queryFn: () => listInviteTokens(campaignId),
+    }),
+  modules: () =>
+    queryOptions({
+      queryKey: queryKeys.campaignModules(),
+      queryFn: () => listCampaignModules(),
+    }),
+  gameSystems: () =>
+    queryOptions({
+      queryKey: queryKeys.campaignGameSystems(),
+      queryFn: () => listCampaignGameSystems(),
     }),
   permission: (campaignId: string, action: string) =>
     queryOptions({

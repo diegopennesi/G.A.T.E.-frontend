@@ -365,6 +365,10 @@ export async function createInviteToken(
   })
 }
 
+export async function listInviteTokens(campaignId: string): Promise<InviteTokenResponse[]> {
+  return apiRequest<InviteTokenResponse[]>(`/campaigns/${campaignId}/invite-tokens`)
+}
+
 export async function previewInviteToken(token: string): Promise<InviteTokenPreviewResponse> {
   return apiRequest<InviteTokenPreviewResponse>(`/campaigns/tokens/${encodeURIComponent(token)}`)
 }

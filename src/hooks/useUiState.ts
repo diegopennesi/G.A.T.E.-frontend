@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import type { Screen, ThemeMode, UiEvent } from '../types/ui'
 
 const THEME_KEY = 'gate_theme'
@@ -14,14 +14,14 @@ export function useUiState(initialScreen: Screen) {
     return saved === 'dark' || saved === 'light' ? saved : 'light'
   })
 
-  const addEvent = (text: string, level: UiEvent['level']) => {
+  const addEvent = useCallback((text: string, level: UiEvent['level']) => {
     const id =
       typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
         ? crypto.randomUUID()
         : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 
     setEvents((prev) => [{ id, ts: new Date().toISOString(), text, level }, ...prev].slice(0, 50))
-  }
+  }, [])
 
   return {
     screen,

@@ -1,5 +1,7 @@
 import { useCallback } from 'react'
 import { ApiError } from '../services/apiClient'
+import { checkPermission, listCampaignMembersForManagement, listPendingApplications } from '../services/gateApi'
+import { readOrFetchQuery } from '../services/queryCache'
 import { queryClient } from '../services/queryClient'
 import { campaignQueries } from '../services/queries/campaignQueries'
 import { toMessage } from '../shared/utils'
@@ -55,63 +57,81 @@ type CampaignDataFlowDeps = {
 }
 
 export function useCampaignDataFlow(deps: CampaignDataFlowDeps) {
+  const readMembersForManagement = useCallback(
+    async (campaignId: string, options: { force?: boolean } = {}) => {
+      const query = campaignQueries.membersForManagement(campaignId)
+      return readOrFetchQuery(
+        queryClient,
+        {
+          ...query,
+          queryFn: () => listCampaignMembersForManagement(campaignId),
+        },
+        options,
+      ).catch(() => [])
+    },
+    [],
+  )
+
+  const readPendingApplications = useCallback(
+    async (campaignId: string, options: { force?: boolean } = {}) => {
+      const query = campaignQueries.pendingApplications(campaignId)
+      return readOrFetchQuery(
+        queryClient,
+        {
+          ...query,
+          queryFn: () => listPendingApplications(campaignId),
+        },
+        options,
+      ).catch((err) => {
+        if (err instanceof ApiError && (err.status === 403 || err.status === 404)) {
+          queryClient.setQueryData(query.queryKey, [])
+          return []
+        }
+        throw err
+      })
+    },
+    [],
+  )
+
   const loadCampaignBlockFor = useCallback(
     async ({ campaignId, force = false }: LoadCampaignBlockArgs) => {
+      const detailsQuery = campaignQueries.details(campaignId)
+      const membersQuery = campaignQueries.members(campaignId)
+      const charactersQuery = campaignQueries.characters(campaignId)
+      const missionsQuery = campaignQueries.missions(campaignId, deps.missionWindowSince())
+      const roomsQuery = campaignQueries.rooms(campaignId)
+      const permissionQuery = campaignQueries.permission(campaignId, 'PROMOTE_CO_MASTER_OR_MASTER')
+
       const [
         campaignValue,
         memberValue,
         characterValue,
         missionValue,
         roomValue,
-        canManageMembersPermission,
-        pendingValue,
+        permissionValue,
       ] = await Promise.all([
-        queryClient.fetchQuery({
-          ...campaignQueries.details(campaignId),
-          staleTime: force ? 0 : undefined,
-        }),
-        queryClient.fetchQuery({
-          ...campaignQueries.members(campaignId),
-          staleTime: force ? 0 : undefined,
-        }),
-        queryClient.fetchQuery({
-          ...campaignQueries.characters(campaignId),
-          staleTime: force ? 0 : undefined,
-        }),
-        queryClient.fetchQuery({
-          ...campaignQueries.missions(campaignId, deps.missionWindowSince()),
-          staleTime: force ? 0 : undefined,
-        }),
-        queryClient.fetchQuery({
-          ...campaignQueries.rooms(campaignId),
-          staleTime: force ? 0 : undefined,
-        }),
-        queryClient
-          .fetchQuery({
-            ...campaignQueries.permission(campaignId, 'PROMOTE_CO_MASTER_OR_MASTER'),
-            staleTime: force ? 0 : undefined,
-          })
-          .then((permission) => permission.allowed)
-          .catch(() => false),
-        queryClient
-          .fetchQuery({
-            ...campaignQueries.pendingApplications(campaignId),
-            staleTime: force ? 0 : undefined,
-          })
-          .catch((err) => {
-            if (err instanceof ApiError && (err.status === 403 || err.status === 404)) return []
-            throw err
-          }),
+        readOrFetchQuery(queryClient, detailsQuery, { force }),
+        readOrFetchQuery(queryClient, membersQuery, { force }),
+        readOrFetchQuery(queryClient, charactersQuery, { force }),
+        readOrFetchQuery(queryClient, missionsQuery, { force }),
+        readOrFetchQuery(queryClient, roomsQuery, { force }),
+        readOrFetchQuery(
+          queryClient,
+          {
+            ...permissionQuery,
+            queryFn: () => checkPermission(campaignId, 'PROMOTE_CO_MASTER_OR_MASTER'),
+          },
+          { force },
+        ).catch(() => ({
+          campaignId,
+          action: 'PROMOTE_CO_MASTER_OR_MASTER',
+          allowed: false,
+        })),
       ])
 
-      const memberManagementValue = canManageMembersPermission
-        ? await queryClient
-            .fetchQuery({
-              ...campaignQueries.membersForManagement(campaignId),
-              staleTime: force ? 0 : undefined,
-            })
-            .catch(() => [])
-        : []
+      const canManageMembersPermission = permissionValue.allowed
+      const pendingValue = canManageMembersPermission ? await readPendingApplications(campaignId, { force }) : []
+      const memberManagementValue = canManageMembersPermission ? await readMembersForManagement(campaignId, { force }) : []
 
       deps.setCampaign(campaignValue)
       deps.setCampaignDetailsById((prev) => ({ ...prev, [campaignValue.id]: campaignValue }))
@@ -126,14 +146,14 @@ export function useCampaignDataFlow(deps: CampaignDataFlowDeps) {
       deps.setSelectedCharacterId((prev) => prev || characterValue[0]?.id || '')
       deps.setSelectedMissionId('')
     },
-    [deps],
+    [deps, readMembersForManagement, readPendingApplications],
   )
 
   const refreshCampaignBlock = useCallback(
     async (options: { force?: boolean } = {}) => {
       if (!deps.campaignId.trim()) return
       await deps.run('Dati campagna caricati', async () => {
-        await loadCampaignBlockFor({ campaignId: deps.campaignId, force: options.force ?? true })
+        await loadCampaignBlockFor({ campaignId: deps.campaignId, force: options.force ?? false })
       })
     },
     [deps, loadCampaignBlockFor],
@@ -154,16 +174,16 @@ export function useCampaignDataFlow(deps: CampaignDataFlowDeps) {
       const settled = await Promise.allSettled(
         approvedCampaignIds.map(async (targetCampaignId) => {
           const [missionRows, characterRows] = await Promise.all([
-            queryClient.fetchQuery({
-              ...campaignQueries.missions(targetCampaignId, deps.missionWindowSince()),
-              staleTime: options.force ? 0 : undefined,
-            }),
-            queryClient
-              .fetchQuery({
-                ...campaignQueries.characters(targetCampaignId),
-                staleTime: options.force ? 0 : undefined,
-              })
-              .catch(() => [] as import('../types/domain').Character[]),
+            readOrFetchQuery(
+              queryClient,
+              campaignQueries.missions(targetCampaignId, deps.missionWindowSince()),
+              options,
+            ),
+            readOrFetchQuery(
+              queryClient,
+              campaignQueries.characters(targetCampaignId),
+              options,
+            ).catch(() => [] as import('../types/domain').Character[]),
           ])
           return {
             missions: missionRows.map((mission) => ({ ...mission, campaignId: targetCampaignId })),
@@ -205,10 +225,11 @@ export function useCampaignDataFlow(deps: CampaignDataFlowDeps) {
       const participantSettled = await Promise.allSettled(
         nextMissions.map(async (mission) => ({
           missionId: mission.id,
-          participants: await queryClient.fetchQuery({
-            ...campaignQueries.missionParticipants(mission.campaignId, mission.id),
-            staleTime: options.force ? 0 : undefined,
-          }),
+          participants: await readOrFetchQuery(
+            queryClient,
+            campaignQueries.missionParticipants(mission.campaignId, mission.id),
+            options,
+          ),
         })),
       )
 
@@ -246,17 +267,14 @@ export function useCampaignDataFlow(deps: CampaignDataFlowDeps) {
   const loadPendingForCampaign = useCallback(
     async (targetCampaignId: string, options: { force?: boolean } = {}) => {
       if (!targetCampaignId.trim()) return []
-      const list = await queryClient.fetchQuery({
-        ...campaignQueries.pendingApplications(targetCampaignId),
-        staleTime: options.force ? 0 : undefined,
-      })
+      const list = await readPendingApplications(targetCampaignId, options)
       if (targetCampaignId === deps.campaignId) {
         deps.setPendingApplications(list)
       }
       deps.writePendingApplicationsForCampaign(deps.activeUserId, targetCampaignId, list)
       return list
     },
-    [deps],
+    [deps, readPendingApplications],
   )
 
   const loadPendingForActiveCampaign = useCallback(
@@ -272,10 +290,10 @@ export function useCampaignDataFlow(deps: CampaignDataFlowDeps) {
       deps.setMissionChatBusy(true)
       deps.setMissionChatError('')
       try {
-        const value = await queryClient.fetchQuery({
-          ...campaignQueries.missionChat(targetCampaignId, missionId),
-          staleTime: 0,
-        })
+        const value = await readOrFetchQuery(
+          queryClient,
+          campaignQueries.missionChat(targetCampaignId, missionId),
+        )
         deps.setSelectedMissionChatContext({ campaignId: targetCampaignId, missionId })
         deps.setMissionChat(value)
       } catch (err) {

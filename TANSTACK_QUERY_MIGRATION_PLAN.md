@@ -15,32 +15,33 @@ Objective: replace the custom cache/realtime reduction layer with a more standar
 
 ### Phase 1: contract and key catalog
 
-- [ ] Publish a single authoritative catalog of realtime invalidation keys.
-- [ ] Map every existing resource mutation to the keys it invalidates.
-- [ ] Decide which aggregates are first-class resources and which are derived UI state.
-- [ ] Document resource ownership boundaries: campaign, mission, character, chat, profile, admin.
-- [ ] Verify that each key is stable and not coupled to screen names.
+- [x] Publish a single authoritative catalog of realtime invalidation keys.
+- [x] Map the main current resource mutations to the keys they invalidate.
+- [x] Decide which aggregates are first-class resources and which are derived UI state.
+- [x] Document resource ownership boundaries: campaign, mission, character, chat, profile, admin.
+- [x] Verify that each key is stable and not coupled to screen names.
 
 ### Phase 2: SSE consistency
 
-- [ ] Keep SSE payloads minimal: `reason`, `keys`, `occurredAt`.
-- [ ] Ensure `/api/v1/realtime/events` stays stable and authenticated.
-- [ ] Add integration coverage for the invalidation stream.
-- [ ] Verify reconnect and heartbeat behavior do not produce duplicate invalidations.
+- [x] Keep SSE payloads minimal: `reason`, `keys`, `occurredAt`.
+- [x] Ensure `/api/v1/realtime/events` stays stable and authenticated.
+- [x] Add integration coverage for the invalidation stream.
+- [x] Verify reconnect and heartbeat behavior do not produce duplicate invalidations.
 
 ### Phase 3: mutation coverage
 
-- [ ] Audit mission mutations and confirm they invalidate campaign-level and mission-level keys where needed.
-- [ ] Audit campaign mutations and confirm they invalidate discover, campaign details and dependent lists.
-- [ ] Audit character mutations and confirm they invalidate character lists, details and sheets.
-- [ ] Audit chat mutations and confirm they invalidate chat-related keys only.
-- [ ] Audit profile and realm mutations and confirm they invalidate user-scoped keys only.
+- [x] Audit mission mutations and confirm they invalidate campaign-level and mission-level keys where needed.
+- [x] Audit campaign mutations and confirm they invalidate discover, campaign details and dependent lists.
+- [x] Audit character mutations and confirm they invalidate character lists, details and sheets.
+- [x] Audit chat mutations and confirm they invalidate chat-related keys only.
+- [x] Audit profile and realm mutations and confirm they invalidate user-scoped keys only.
+- [x] Audit invite-token writes and remaining catalog mutations that need explicit invalidation.
 
 ### Backend acceptance criteria
 
-- [ ] Every mutation publishes the smallest correct invalidation set.
-- [ ] No mutation relies on frontend screen state to know what to invalidate.
-- [ ] New resources can be added by extending the key catalog, not by changing the SSE transport.
+- [x] Every mutation publishes the smallest correct invalidation set for the covered resources.
+- [x] No mutation relies on frontend screen state to know what to invalidate.
+- [x] New resources can be added by extending the key catalog, not by changing the SSE transport.
 
 ## Frontend roadmap
 
@@ -59,12 +60,15 @@ Objective: replace the custom cache/realtime reduction layer with a more standar
 - [x] Standardize query key parameters so they include every variable used by the fetch.
 - [x] Define a small wrapper around `apiClient.ts` for TanStack Query query functions.
 - [x] Create the first query option module for bootstrap data.
+- [x] Add query option modules for campaign, character, profile, realm and admin reads.
 
 ### Phase 3: first migrations
 
 - [x] Migrate the highest-churn reads first.
 - [x] Migrate bootstrap reads: profile, memberships, realm permissions, post-login summary.
 - [x] Migrate campaign reads: campaign details, members, rooms, missions, characters.
+- [x] Migrate auxiliary campaign reads used by navigation and management: member detail, campaign members for management, modules, game systems, permission checks.
+- [x] Migrate public realm branding reads.
 - [x] Extract bootstrap TanStack query orchestration out of `App.tsx` into a dedicated hook.
 - [x] Extract campaign TanStack query orchestration out of `App.tsx` into a dedicated hook.
 - [x] Migrate mission reads: mission participants and mission chat.
@@ -77,6 +81,7 @@ Objective: replace the custom cache/realtime reduction layer with a more standar
 - [x] Keep the mapping declarative and data-driven.
 - [x] Avoid screen-specific invalidation logic unless a screen has a unique UI concern.
 - [x] If a mutation affects multiple slices, invalidate all affected query keys from one place.
+- [x] Keep the FE translator aligned with the backend key catalog as new invalidation keys are added.
 
 ### Phase 5: mutations
 
@@ -95,7 +100,11 @@ Objective: replace the custom cache/realtime reduction layer with a more standar
 - [x] Remove the custom `scopedCache.ts` layer when the migrated queries cover the required screens.
 - [x] Remove `cachedGateApi.ts` once its responsibilities are fully replaced.
 - [x] Remove screen-specific cache priming and stale flags.
+- [x] Keep campaign and mission re-entry cache-first by default; reserve forced refresh for explicit user actions and realtime invalidations.
+- [x] Stabilize mission-window query keys so navigation does not create artificial cache misses.
+- [x] Audit navigation loaders and convert campaign, mission, character and bootstrap screen-entry reads to explicit cache-first query helpers.
 - [x] Keep `apiClient.ts` as the shared transport/auth module.
+- [x] Keep `useBootstrapDataFlow` recursion and batching behavior consistent with TanStack query orchestration.
 
 ## Suggested migration order
 

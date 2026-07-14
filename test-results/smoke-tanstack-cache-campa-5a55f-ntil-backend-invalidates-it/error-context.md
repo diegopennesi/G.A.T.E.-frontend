@@ -1,0 +1,60 @@
+# Page snapshot
+
+```yaml
+- complementary:
+  - button
+  - paragraph: Campagna attiva
+  - paragraph: TanStack Cache 1784016722943
+  - button "Cambia campagna"
+  - navigation "Navigazione principale":
+    - paragraph: Essenziali
+    - button "Profilo"
+    - button "Campagne"
+    - button "Missioni"
+    - button "Personaggi"
+    - button "Log"
+    - paragraph: Strumenti
+    - button "Crea campagna"
+    - button "Scheda campagna"
+    - button "Accessi"
+    - button "Gestione campagna"
+    - button "Stanze"
+    - button "Modifica profilo"
+    - button "Crea personaggio"
+  - paragraph: Reame di login
+  - paragraph: G.A.T.E. Open
+  - paragraph: gate
+  - button "Tema scuro"
+  - button "Logout"
+- main:
+  - button "Apri menu"
+  - navigation "Percorso":
+    - button "Campagne"
+    - text: TanStack Cache 1784016722943
+  - heading "Scheda Campagna" [level=2]
+  - button "Reload"
+  - paragraph: Scheda Campagna
+  - heading "TanStack Cache 1784016722943" [level=2]
+  - text: DND5E Attiva Campagna aperta Visibile nella ricerca
+  - button "Gestione Campagna"
+  - button "Gestione Personaggi"
+  - paragraph: Nessuna descrizione
+  - heading "Addon campagna" [level=3]
+  - paragraph: Moduli disponibili per questa campagna.
+  - list "Addon campagna":
+    - 'listitem "Missioni attivo: Abilita il flusso di missioni, iscrizioni, chiusure e partecipazione dei personaggi."': Missioni
+    - 'listitem "Stanze attivo: Abilita spazi dedicati alla campagna, utili per aree separate di discussione o gestione."': Stanze
+    - 'listitem "Chat attivo: Abilita la messaggistica trasversale alla campagna e ai suoi sottogruppi."': Chat
+  - heading "Membri Campagna" [level=3]
+  - text: Cerca membro per nome
+  - textbox "Cerca membro per nome"
+  - text: Stato
+  - combobox "Stato 3 selezionati": 3 selezionati
+  - text: 3 selezionati
+  - img
+  - text: Grado
+  - combobox "Grado 4 selezionati": 4 selezionati
+  - text: 4 selezionati
+  - img
+  - paragraph: Nessun membro trovato con questo filtro.
+```

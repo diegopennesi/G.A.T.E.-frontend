@@ -1,4 +1,5 @@
 import { useCallback, useRef } from 'react'
+import { getFreshQueryData, readOrFetchQuery } from '../services/queryCache'
 import { queryClient } from '../services/queryClient'
 import { bootstrapQueries } from '../services/queries/bootstrapQueries'
 import { isUnauthorized, toMessage } from '../shared/utils'
@@ -8,6 +9,7 @@ import type {
   CurrentRealmPermissionsResponse,
   MyCampaignMembershipResponse,
   PostLoginCampaignEntryResponse,
+  PostLoginCampaignSummaryResponse,
   UserProfile,
 } from '../types/domain'
 
@@ -38,6 +40,28 @@ type BootstrapDataFlowDeps = {
 }
 
 export function useBootstrapDataFlow(deps: BootstrapDataFlowDeps) {
+  const {
+    realmCode,
+    activeUserId,
+    campaignId,
+    profileId,
+    run,
+    setProfile,
+    setMyCampaigns,
+    setCampaignMembershipsLoaded,
+    setCampaign,
+    setRealmPermissions,
+    setDiscoverableCampaigns,
+    setPostLoginLoading,
+    setPostLoginError,
+    setPostLoginCanCreateCampaign,
+    setPostLoginCampaigns,
+    setError,
+    addEvent,
+    handleLogout,
+    clearCampaignWorkspace,
+    rememberCampaignId,
+  } = deps
   const refreshProfileInFlightRef = useRef<Promise<void> | null>(null)
   const postLoginSummaryInFlightRef = useRef<Promise<void> | null>(null)
   const postLoginSummaryQueuedRefreshRef = useRef(false)
@@ -49,26 +73,26 @@ export function useBootstrapDataFlow(deps: BootstrapDataFlowDeps) {
         return
       }
 
-      await deps.run('Profilo caricato', async () => {
+      await run('Profilo caricato', async () => {
         const request = (async () => {
           const me = await queryClient.fetchQuery({
-            ...bootstrapQueries.profile({ userId: deps.activeUserId || 'anonymous', realmCode: deps.realmCode }),
+            ...bootstrapQueries.profile({ userId: activeUserId || 'anonymous', realmCode }),
             staleTime: options.force ? 0 : undefined,
           })
           const mine = await queryClient.fetchQuery({
-            ...bootstrapQueries.memberships({ userId: me.id, realmCode: deps.realmCode }),
+            ...bootstrapQueries.memberships({ userId: me.id, realmCode }),
             staleTime: options.force ? 0 : undefined,
           })
-          queryClient.setQueryData(bootstrapQueries.profile({ userId: me.id, realmCode: deps.realmCode }).queryKey, me)
-          queryClient.setQueryData(bootstrapQueries.memberships({ userId: me.id, realmCode: deps.realmCode }).queryKey, mine)
-          deps.setProfile(me)
-          deps.setMyCampaigns(mine)
-          deps.setCampaignMembershipsLoaded(true)
+          queryClient.setQueryData(bootstrapQueries.profile({ userId: me.id, realmCode }).queryKey, me)
+          queryClient.setQueryData(bootstrapQueries.memberships({ userId: me.id, realmCode }).queryKey, mine)
+          setProfile(me)
+          setMyCampaigns(mine)
+          setCampaignMembershipsLoaded(true)
 
-          if (mine.length === 0 && deps.campaignId) {
-            deps.rememberCampaignId('', me.id)
-            deps.setCampaign(null)
-            deps.clearCampaignWorkspace()
+          if (mine.length === 0 && campaignId) {
+            rememberCampaignId('', me.id)
+            setCampaign(null)
+            clearCampaignWorkspace()
           }
         })()
 
@@ -80,45 +104,49 @@ export function useBootstrapDataFlow(deps: BootstrapDataFlowDeps) {
         }
       })
     },
-    [deps],
+    [activeUserId, campaignId, clearCampaignWorkspace, realmCode, rememberCampaignId, run, setCampaign, setCampaignMembershipsLoaded, setMyCampaigns, setProfile],
   )
 
   const loadCurrentRealmPermissions = useCallback(
     async (options: { force?: boolean } = {}) => {
       try {
-        if (!deps.profileId) return
-        const response = await queryClient.fetchQuery({
-          ...bootstrapQueries.realmPermissions({ userId: deps.profileId, realmCode: deps.realmCode }),
-          staleTime: options.force ? 0 : undefined,
-        })
-        deps.setRealmPermissions(response)
+        if (!profileId) return
+        const response = await readOrFetchQuery(
+          queryClient,
+          bootstrapQueries.realmPermissions({ userId: profileId, realmCode }),
+          options,
+        )
+        setRealmPermissions(response)
       } catch (err) {
         const message = toMessage(err)
-        deps.setError(message)
-        deps.addEvent(`Permessi realm: ${message}`, 'error')
+        setError(message)
+        addEvent(`Permessi realm: ${message}`, 'error')
         if (isUnauthorized(err)) {
-          deps.handleLogout()
+          handleLogout()
         }
       }
     },
-    [deps],
+    [addEvent, handleLogout, profileId, realmCode, setError, setRealmPermissions],
   )
 
   const loadDiscoverableCampaigns = useCallback(
     async (options: { force?: boolean } = {}) => {
-      if (!deps.activeUserId) return
-      const list = await queryClient.fetchQuery({
-        ...bootstrapQueries.discoverCampaigns({ userId: deps.activeUserId, realmCode: deps.realmCode }),
-        staleTime: options.force ? 0 : undefined,
-      })
-      deps.setDiscoverableCampaigns(list)
+      if (!activeUserId) return
+      const list = await readOrFetchQuery(
+        queryClient,
+        bootstrapQueries.discoverCampaigns({ userId: activeUserId, realmCode }),
+        options,
+      )
+      setDiscoverableCampaigns(list)
     },
-    [deps],
+    [activeUserId, realmCode, setDiscoverableCampaigns],
   )
 
   const loadPostLoginCampaignSummary = useCallback(
-    async (options: { force?: boolean } = {}) => {
-      if (!deps.activeUserId) return
+    async function loadPostLoginCampaignSummary(options: { force?: boolean } = {}) {
+      if (!activeUserId) return
+      const summaryQuery = bootstrapQueries.postLoginSummary({ userId: activeUserId as string, realmCode })
+      const cachedSummary = getFreshQueryData<PostLoginCampaignSummaryResponse>(queryClient, summaryQuery.queryKey)
       if (postLoginSummaryInFlightRef.current) {
         postLoginSummaryQueuedRefreshRef.current = true
         await postLoginSummaryInFlightRef.current
@@ -129,25 +157,28 @@ export function useBootstrapDataFlow(deps: BootstrapDataFlowDeps) {
         return
       }
 
+      if (!options.force && cachedSummary) {
+        setPostLoginCanCreateCampaign(cachedSummary.canCreateCampaign)
+        setPostLoginCampaigns(cachedSummary.campaigns)
+        return
+      }
+
       const request = (async () => {
-        deps.setPostLoginLoading(true)
-        deps.setPostLoginError('')
+        setPostLoginLoading(true)
+        setPostLoginError('')
         try {
-          const summary = await queryClient.fetchQuery({
-            ...bootstrapQueries.postLoginSummary({ userId: deps.activeUserId as string, realmCode: deps.realmCode }),
-            staleTime: options.force ? 0 : undefined,
-          })
-          deps.setPostLoginCanCreateCampaign(summary.canCreateCampaign)
-          deps.setPostLoginCampaigns(summary.campaigns)
+          const summary = await readOrFetchQuery(queryClient, summaryQuery, options)
+          setPostLoginCanCreateCampaign(summary.canCreateCampaign)
+          setPostLoginCampaigns(summary.campaigns)
         } catch (err) {
           const message = toMessage(err)
-          deps.setPostLoginError(message)
-          deps.addEvent(`Ingresso: ${message}`, 'error')
+          setPostLoginError(message)
+          addEvent(`Ingresso: ${message}`, 'error')
           if (isUnauthorized(err)) {
-            deps.handleLogout()
+            handleLogout()
           }
         } finally {
-          deps.setPostLoginLoading(false)
+          setPostLoginLoading(false)
         }
       })()
 
@@ -162,7 +193,16 @@ export function useBootstrapDataFlow(deps: BootstrapDataFlowDeps) {
         }
       }
     },
-    [deps],
+    [
+      activeUserId,
+      addEvent,
+      handleLogout,
+      realmCode,
+      setPostLoginCanCreateCampaign,
+      setPostLoginCampaigns,
+      setPostLoginError,
+      setPostLoginLoading,
+    ],
   )
 
   return {

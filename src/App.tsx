@@ -52,23 +52,11 @@ import {
 import type { Screen, BreadcrumbItem, EffectiveThemeMode, InviteAccessPreview } from './types/ui'
 import { SCREEN_LABELS, SCREEN_ICONS, NAVIGATION_SECTIONS } from './types/ui'
 import {
-  checkPermission,
   completeMission,
   createMission,
-  getCampaign,
   getCampaignByInviteCode,
-  getCampaignMember,
-  getCampaignMembers,
-  listCampaignGameSystems,
-  listCampaignModules,
-  listCampaignMembersForManagement,
-  getCharacter,
-  getCharacterSheet,
   previewInviteToken,
-  getPublicProfile,
-  getPublicRealmBranding,
   leaveCampaign,
-  listCharacters,
   logout,
   updateMission,
   updateMe,
@@ -76,14 +64,19 @@ import {
 import { connectResourceInvalidationStream } from './services/realtime'
 import { applyRealtimeInvalidation, type RealtimeInvalidationActions, type RealtimeInvalidationState } from './services/realtimeInvalidation'
 import { invalidateQueriesForResourceEvent } from './services/realtimeQueryInvalidation'
+import { readOrFetchQuery } from './services/queryCache'
 import { queryClient } from './services/queryClient'
 import { adminQueries } from './services/queries/adminQueries'
-import { queryKeys } from './services/queryKeys'
+import { campaignQueries } from './services/queries/campaignQueries'
+import { characterQueries } from './services/queries/characterQueries'
+import { profileQueries } from './services/queries/profileQueries'
+import { realmQueries } from './services/queries/realmQueries'
 import { useBootstrapDataFlow } from './hooks/useBootstrapDataFlow'
 import type { ResourceInvalidationPayload } from './types/realtime'
 import type {
   AdminCampaignPage,
   AdminRealmListItem,
+  AdminRealmPage,
   AdminRealmUserRoleResponse,
   AdminUserPage,
   AuthSession,
@@ -338,7 +331,6 @@ function App() {
   const [postLoginLoading, setPostLoginLoading] = useState(false)
   const [postLoginError, setPostLoginError] = useState('')
   const [campaignMembershipsLoaded, setCampaignMembershipsLoaded] = useState(false)
-  const campaignSwitchSourceIdRef = useRef('')
   const missionShareTargetRef = useRef<MissionShareTarget | null>(null)
   const missionShareTargetAppliedRef = useRef(false)
   const missionShareTargetActivationStartedRef = useRef(false)
@@ -351,8 +343,7 @@ function App() {
       const settled = await Promise.allSettled(
         uniqueUserIds.map((userId) =>
           queryClient.fetchQuery({
-            queryKey: queryKeys.publicProfile(userId),
-            queryFn: () => getPublicProfile(userId),
+            ...profileQueries.publicProfile(userId),
             staleTime: options.force ? 0 : undefined,
           }),
         ),
@@ -452,9 +443,7 @@ function App() {
     void (async () => {
       try {
         const branding = await queryClient.fetchQuery({
-          queryKey: queryKeys.publicRealmBranding(realmCode),
-          queryFn: () => getPublicRealmBranding(realmCode),
-          staleTime: 0,
+          ...realmQueries.publicBranding(realmCode),
         })
         if (cancelled) return
         setRealmBranding(branding)
@@ -550,7 +539,8 @@ function App() {
     activeCampaignHasMissionsModule &&
     (activeCampaignRole === 'CO_MASTER' || activeCampaignRole === 'MASTER' || activeCampaignRole === 'SUPER_MASTER')
   const canAccessCampaignManagement = activeCampaignRole === 'MASTER' || activeCampaignRole === 'SUPER_MASTER'
-  const missionWindowSince = () => new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
+  const missionWindowSinceRef = useRef(new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString())
+  const missionWindowSince = useCallback(() => missionWindowSinceRef.current, [])
   const campaignsForList = useMemo(() => {
     const byId = new Map<string, CampaignDiscoverResponse>()
     for (const item of discoverableCampaigns) {
@@ -768,16 +758,8 @@ function App() {
 
   const loadCharacterDetailBlock = async (targetCampaignId: string, targetCharacterId: string) => {
     const [detailValue, sheetValue] = await Promise.all([
-      queryClient.fetchQuery({
-        queryKey: queryKeys.campaignCharacterDetail(targetCampaignId, targetCharacterId),
-        queryFn: () => getCharacter(targetCampaignId, targetCharacterId),
-        staleTime: 0,
-      }),
-      queryClient.fetchQuery({
-        queryKey: queryKeys.campaignCharacterSheet(targetCampaignId, targetCharacterId),
-        queryFn: () => getCharacterSheet(targetCampaignId, targetCharacterId),
-        staleTime: 0,
-      }),
+      readOrFetchQuery(queryClient, characterQueries.detail(targetCampaignId, targetCharacterId)),
+      readOrFetchQuery(queryClient, characterQueries.sheet(targetCampaignId, targetCharacterId)),
     ])
     setCharacterDetail(detailValue)
     setCharacterSheetDetail(sheetValue)
@@ -795,9 +777,8 @@ function App() {
     setBusy(true)
     setError('')
     try {
-      const response = await queryClient.fetchQuery({
+      const response: AdminUserPage = await queryClient.fetchQuery({
         ...adminQueries.users(page, query),
-        staleTime: 0,
       })
       setAdminUsersPage(response)
       setAdminUsersPageIndex(response.page)
@@ -829,9 +810,8 @@ function App() {
     setBusy(true)
     setError('')
     try {
-      const response = await queryClient.fetchQuery({
+      const response: AdminCampaignPage = await queryClient.fetchQuery({
         ...adminQueries.campaigns(page),
-        staleTime: 0,
       })
       setAdminCampaignsPage(response)
       setAdminCampaignsPageIndex(response.page)
@@ -866,9 +846,8 @@ function App() {
     setBusy(true)
     setError('')
     try {
-      const response = await queryClient.fetchQuery({
+      const response: AdminRealmPage = await queryClient.fetchQuery({
         ...adminQueries.realms(page, query),
-        staleTime: 0,
       })
       const items = response.items ?? []
       setAdminRealmsPage(response)
@@ -894,9 +873,8 @@ function App() {
     setBusy(true)
     setError('')
     try {
-      const response = await queryClient.fetchQuery({
+      const response: AdminRealmUserRoleResponse[] = await queryClient.fetchQuery({
         ...adminQueries.realmUserRoles(targetRealmId),
-        staleTime: 0,
       })
       setAdminRealmUserRoles(response)
       setAdminRealmRoleDrafts(
@@ -931,7 +909,6 @@ function App() {
     try {
       const response = await queryClient.fetchQuery({
         ...adminQueries.users(0, query),
-        staleTime: 0,
       })
       setRealmAccessSearchResults(response.items)
       setRealmAccessSearchMessage(response.items.length === 0 ? 'Nessun profilo trovato.' : `${response.items.length} profili trovati.`)
@@ -956,11 +933,9 @@ function App() {
       const [gameSystems, sheetTypes] = await Promise.all([
         queryClient.fetchQuery({
           ...adminQueries.gameSystems(),
-          staleTime: 0,
         }),
         queryClient.fetchQuery({
           ...adminQueries.sheetTypes(),
-          staleTime: 0,
         }),
       ])
       setAdminGameSystems(gameSystems)
@@ -1184,6 +1159,63 @@ function App() {
     setIsLeaveCampaignOpen(false)
   }
 
+  const handleLogout = useCallback(() => {
+    queryClient.clear()
+    logout()
+    setProfile(null)
+    setAuthMode('login')
+    setScreen('Profilo')
+    setCampaignId('')
+    setKnownCampaignIds([])
+    setKnownCampaignMeta([])
+    setPendingApplications([])
+    setCampaign(null)
+    setMembers([])
+    setCampaignMembersForManagement([])
+    setPendingApplications([])
+    setSelectedCampaignMember(null)
+    setSelectedCampaignMemberProfile(null)
+    setCampaignModules([])
+    setCampaignGameSystems([])
+    setAdminUsersPage(null)
+    setAdminUsersPageIndex(0)
+    setAdminUsersDrafts({})
+    setAdminRealmUserRoles([])
+    setAdminRealmRoleDrafts({})
+    setSelectedRealmAccessRealmId('')
+    setRealmAccessSearch('')
+    setRealmAccessSearchResults([])
+    setRealmAccessSearchMessage('')
+    setRealmPermissions(null)
+    setAdminRealms([])
+    setSelectedAdminRealmId('')
+    setCharacters([])
+    setAdminGameSystems([])
+    setAdminSheetTypes([])
+    setAdminSheetCatalogsLoaded(false)
+    setMissions([])
+    setMissionParticipantsById({})
+    setMyMissionParticipationById({})
+    setMissionParticipantCharacterLabelById({})
+    setRooms([])
+    setPermissions([])
+    setCharacterDetail(null)
+    setCharacterSheetDetail(null)
+    setSelectedCharacterId('')
+    setSelectedMissionId('')
+    setError('')
+    setSystemAdminView('users')
+    setPostLoginCampaigns([])
+    setPostLoginCanCreateCampaign(false)
+    setPostLoginLoading(false)
+    setPostLoginError('')
+    setCampaignMembershipsLoaded(false)
+    missionShareTargetRef.current = null
+    missionShareTargetAppliedRef.current = false
+    missionShareTargetActivationStartedRef.current = false
+    addEvent('Logout eseguito', 'info')
+  }, [addEvent, logout])
+
   const clearCampaignWorkspace = () => {
       setCampaign(null)
       setMembers([])
@@ -1283,14 +1315,10 @@ function App() {
       if (!campaignId.trim() || !selectedCampaignMember) return
       const [membership, allMembers] = await Promise.all([
         queryClient.fetchQuery({
-          queryKey: queryKeys.campaignMember(campaignId, selectedCampaignMember.userId),
-          queryFn: () => getCampaignMember(campaignId, selectedCampaignMember.userId),
-          staleTime: 0,
+          ...campaignQueries.member(campaignId, selectedCampaignMember.userId),
         }),
         queryClient.fetchQuery({
-          queryKey: queryKeys.campaignMembersForManagement(campaignId),
-          queryFn: () => listCampaignMembersForManagement(campaignId),
-          staleTime: 0,
+          ...campaignQueries.membersForManagement(campaignId),
         }).catch(() => campaignMembersForManagement),
       ])
       setSelectedCampaignMember(membership)
@@ -1301,14 +1329,10 @@ function App() {
       if (!campaignId.trim()) return
       const [approvedMembers, allMembers] = await Promise.all([
         queryClient.fetchQuery({
-          queryKey: queryKeys.campaignMembers(campaignId),
-          queryFn: () => getCampaignMembers(campaignId),
-          staleTime: 0,
+          ...campaignQueries.members(campaignId),
         }),
         queryClient.fetchQuery({
-          queryKey: queryKeys.campaignMembersForManagement(campaignId),
-          queryFn: () => listCampaignMembersForManagement(campaignId),
-          staleTime: 0,
+          ...campaignQueries.membersForManagement(campaignId),
         }).catch(() => campaignMembersForManagement),
       ])
       setMembers(approvedMembers)
@@ -1391,30 +1415,14 @@ function App() {
       loadAdminRealms,
     })
 
-    const leavePreviousCampaignIfNeeded = async (targetCampaignId: string) => {
-      const pendingSourceCampaignId = campaignSwitchSourceIdRef.current.trim()
-      const currentCampaignId = campaignId.trim()
-    const sourceCampaignId =
-      pendingSourceCampaignId || (currentCampaignId && currentCampaignId !== targetCampaignId ? currentCampaignId : '')
-
-    if (sourceCampaignId && sourceCampaignId !== targetCampaignId) {
-      await leaveCampaign(sourceCampaignId)
-    }
-
-    campaignSwitchSourceIdRef.current = ''
-  }
-
   const activateCampaignAndNavigate = async (targetCampaignId: string, targetScreen: Screen) => {
     const latestCampaign = await queryClient.fetchQuery({
-      queryKey: queryKeys.campaignDetails(targetCampaignId),
-      queryFn: () => getCampaign(targetCampaignId),
-      staleTime: 0,
+      ...campaignQueries.details(targetCampaignId),
     })
     if (!isSystemRole && !latestCampaign.isActive) {
       throw new Error('Campagna disattivata: non selezionabile come attiva')
     }
     await run('Cambio campagna', async () => {
-      await leavePreviousCampaignIfNeeded(targetCampaignId)
       rememberCampaignId(targetCampaignId)
       setSelectedCampaignMember(null)
       setSelectedCampaignMemberProfile(null)
@@ -1430,7 +1438,6 @@ function App() {
     if (!campaignId.trim()) return
     await run('Uscita dalla campagna completata', async () => {
       await leaveCampaign(campaignId)
-      campaignSwitchSourceIdRef.current = ''
       rememberCampaignId('')
       clearCampaignWorkspace()
       setScreen('Ingresso')
@@ -1441,7 +1448,6 @@ function App() {
 
   const detachActiveCampaign = () => {
     if (!campaignId.trim()) return
-    campaignSwitchSourceIdRef.current = campaignId
     rememberCampaignId('')
     clearCampaignWorkspace()
     setScreen('Ingresso')
@@ -1457,7 +1463,7 @@ function App() {
     void (async () => {
       try {
         await run('Richieste pending caricate', async () => {
-          await loadPendingForActiveCampaign({ force: true })
+          await loadPendingForActiveCampaign()
         })
       } catch (err) {
         if (cancelled) return
@@ -1509,16 +1515,8 @@ function App() {
     const settled = await Promise.allSettled(
       approvedCampaignIds.map(async (targetCampaignId) => {
         const [memberRows, characterRows] = await Promise.all([
-          queryClient.fetchQuery({
-            queryKey: queryKeys.campaignMembers(targetCampaignId),
-            queryFn: () => getCampaignMembers(targetCampaignId),
-            staleTime: options.force ? 0 : undefined,
-          }),
-          queryClient.fetchQuery({
-            queryKey: queryKeys.campaignCharacters(targetCampaignId),
-            queryFn: () => listCharacters(targetCampaignId),
-            staleTime: options.force ? 0 : undefined,
-          }),
+          readOrFetchQuery(queryClient, campaignQueries.members(targetCampaignId), options),
+          readOrFetchQuery(queryClient, campaignQueries.characters(targetCampaignId), options),
         ])
         return { campaignId: targetCampaignId, members: memberRows, characters: characterRows }
       }),
@@ -1629,9 +1627,7 @@ function App() {
       const settled = await Promise.allSettled(
         missingIds.map((id) =>
           queryClient.fetchQuery({
-            queryKey: queryKeys.campaignDetails(id),
-            queryFn: () => getCampaign(id),
-            staleTime: 0,
+            ...campaignQueries.details(id),
           }),
         ),
       )
@@ -1830,9 +1826,7 @@ function App() {
     void (async () => {
       try {
         const modulesResult = await queryClient.fetchQuery({
-          queryKey: queryKeys.campaignModules(),
-          queryFn: () => listCampaignModules(),
-          staleTime: 0,
+          ...campaignQueries.modules(),
         })
         if (cancelled) return
         setCampaignModules(modulesResult)
@@ -1859,9 +1853,7 @@ function App() {
     void (async () => {
       try {
         const systemsResult = await queryClient.fetchQuery({
-          queryKey: queryKeys.campaignGameSystems(),
-          queryFn: () => listCampaignGameSystems(),
-          staleTime: 0,
+          ...campaignQueries.gameSystems(),
         })
         if (cancelled) return
         setCampaignGameSystems(systemsResult)
@@ -1889,63 +1881,6 @@ function App() {
       setScreen('Ingresso')
     }
     await refreshProfile({ force: true })
-  }
-
-  function handleLogout() {
-    queryClient.clear()
-    logout()
-    setProfile(null)
-    setAuthMode('login')
-    setScreen('Profilo')
-    setCampaignId('')
-    setKnownCampaignIds([])
-    setKnownCampaignMeta([])
-    setPendingApplications([])
-    setCampaign(null)
-    setMembers([])
-    setCampaignMembersForManagement([])
-    setPendingApplications([])
-    setSelectedCampaignMember(null)
-    setSelectedCampaignMemberProfile(null)
-    setCampaignModules([])
-    setCampaignGameSystems([])
-    setAdminUsersPage(null)
-    setAdminUsersPageIndex(0)
-    setAdminUsersDrafts({})
-    setAdminRealmUserRoles([])
-    setAdminRealmRoleDrafts({})
-    setSelectedRealmAccessRealmId('')
-    setRealmAccessSearch('')
-    setRealmAccessSearchResults([])
-    setRealmAccessSearchMessage('')
-    setRealmPermissions(null)
-    setAdminRealms([])
-    setSelectedAdminRealmId('')
-    setCharacters([])
-    setAdminGameSystems([])
-    setAdminSheetTypes([])
-    setAdminSheetCatalogsLoaded(false)
-    setMissions([])
-    setMissionParticipantsById({})
-    setMyMissionParticipationById({})
-    setMissionParticipantCharacterLabelById({})
-    setRooms([])
-    setPermissions([])
-    setCharacterDetail(null)
-    setCharacterSheetDetail(null)
-    setSelectedCharacterId('')
-    setSelectedMissionId('')
-    setError('')
-    setSystemAdminView('users')
-    setPostLoginCampaigns([])
-    setPostLoginCanCreateCampaign(false)
-    setPostLoginLoading(false)
-    setPostLoginError('')
-    setCampaignMembershipsLoaded(false)
-    missionShareTargetRef.current = null
-    missionShareTargetAppliedRef.current = false
-    missionShareTargetActivationStartedRef.current = false
-    addEvent('Logout eseguito', 'info')
   }
 
   const realtimeActionsRef = useRef<RealtimeInvalidationActions>({
@@ -2127,9 +2062,7 @@ function App() {
       void (async () => {
         try {
           const modulesResult = await queryClient.fetchQuery({
-            queryKey: queryKeys.campaignModules(),
-            queryFn: () => listCampaignModules(),
-            staleTime: 0,
+            ...campaignQueries.modules(),
           })
           setCampaignModules(modulesResult)
         } catch (err) {
@@ -2144,9 +2077,7 @@ function App() {
       void (async () => {
         try {
           const systemsResult = await queryClient.fetchQuery({
-            queryKey: queryKeys.campaignGameSystems(),
-            queryFn: () => listCampaignGameSystems(),
-            staleTime: 0,
+            ...campaignQueries.gameSystems(),
           })
           setCampaignGameSystems(systemsResult)
         } catch (err) {
@@ -2653,7 +2584,7 @@ function App() {
     memberNames,
     availableModules: campaignModules,
     availableGameSystems: campaignGameSystems,
-    reloadCampaign: () => void refreshCampaignBlock(),
+    reloadCampaign: () => void refreshCampaignBlock({ force: true }),
     openMember: (member: CampaignMembershipResponse) =>
       void run('Profilo membro caricato', async () => {
         if (!campaignId.trim()) return
@@ -2664,14 +2595,10 @@ function App() {
         }
         const [membership, profileValue] = await Promise.all([
           queryClient.fetchQuery({
-            queryKey: queryKeys.campaignMember(campaignId, member.userId),
-            queryFn: () => getCampaignMember(campaignId, member.userId),
-            staleTime: 0,
+            ...campaignQueries.member(campaignId, member.userId),
           }),
           queryClient.fetchQuery({
-            queryKey: queryKeys.publicProfile(member.userId),
-            queryFn: () => getPublicProfile(member.userId),
-            staleTime: 0,
+            ...profileQueries.publicProfile(member.userId),
           }),
         ])
         setSelectedCampaignMember(membership)
@@ -2727,9 +2654,7 @@ function App() {
         const settled = await Promise.all(
           actions.map(async (actionValue) =>
             queryClient.fetchQuery({
-              queryKey: queryKeys.campaignPermission(campaignId, actionValue),
-              queryFn: () => checkPermission(campaignId, actionValue),
-              staleTime: 0,
+              ...campaignQueries.permission(campaignId, actionValue),
             }),
           ),
         )

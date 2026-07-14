@@ -39,9 +39,10 @@ export function applyRealtimeInvalidation(
   const campaignKeyMatch = currentCampaignKey
     ? payload.keys.some((key) => key === currentCampaignKey || key.startsWith(`${currentCampaignKey}:`))
     : false
-  const missionKeyMatch = payload.keys.some((key) => key.startsWith('campaigns:') && key.endsWith(':missions'))
-  const chatKeyMatch = payload.keys.some((key) => key.startsWith('campaigns:') && key.endsWith(':chat'))
-  const characterKeyMatch = payload.keys.some((key) => key.startsWith('campaigns:') && key.endsWith(':characters'))
+  const missionKeyMatch = payload.keys.some((key) => /^campaigns:[^:]+:missions(?:$|:)/.test(key))
+  const missionChatKeyMatch = payload.keys.some((key) => /^campaigns:[^:]+:missions:[^:]+:chat$/.test(key))
+  const missionParticipantsKeyMatch = payload.keys.some((key) => /^campaigns:[^:]+:missions:[^:]+:participants$/.test(key))
+  const characterKeyMatch = payload.keys.some((key) => /^campaigns:[^:]+:characters(?:$|:)/.test(key))
   const pendingApplicationsCampaignIds = payload.keys
     .filter((key) => key.startsWith('campaigns:') && key.endsWith(':pending-applications'))
     .map((key) => key.split(':')[1])
@@ -72,7 +73,10 @@ export function applyRealtimeInvalidation(
     if (state.systemAdminView === 'realms' && keys.has('admin:realms')) {
       void actions.loadAdminRealms(state.adminRealmsPageIndex)
     }
-    if (state.systemAdminView === 'realmAccess' && (keys.has('admin:users') || keys.has('admin:realms'))) {
+    if (
+      state.systemAdminView === 'realmAccess' &&
+      (keys.has('admin:users') || keys.has('admin:realms') || keys.has('admin:realm-user-roles'))
+    ) {
       void actions.loadAdminRealmUserRoles()
     }
     if (state.systemAdminView === 'sheets' && keys.has('admin:catalogs')) {
@@ -90,12 +94,12 @@ export function applyRealtimeInvalidation(
     if (state.screen === 'Approvazione Accessi') return
   }
 
-  if (state.screen === 'Missioni' && chatKeyMatch) {
+  if (state.screen === 'Missioni' && missionChatKeyMatch) {
     void actions.refreshMissionChat()
     return
   }
 
-  if (state.screen === 'Missioni' && (campaignKeyMatch || missionKeyMatch || characterKeyMatch)) {
+  if (state.screen === 'Missioni' && (campaignKeyMatch || missionKeyMatch || missionParticipantsKeyMatch || characterKeyMatch)) {
     void actions.refreshMissions({ clearSelection: true })
     return
   }

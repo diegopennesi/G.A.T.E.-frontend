@@ -69,7 +69,13 @@ export function invalidateQueriesForResourceEvent(
       const campaignId = parseCampaignId(key)
       if (!campaignId) continue
       invalidateCampaign(queryClient, campaignId)
-      if (key.endsWith(':missions') || key.endsWith(':chat') || key.endsWith(':characters') || key.endsWith(':pending-applications')) {
+      if (
+        key.endsWith(':missions') ||
+        key.endsWith(':chat') ||
+        key.endsWith(':characters') ||
+        key.endsWith(':pending-applications') ||
+        key.endsWith(':invite-tokens')
+      ) {
         invalidateCampaign(queryClient, campaignId)
       }
       continue

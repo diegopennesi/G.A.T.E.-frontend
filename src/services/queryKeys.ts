@@ -20,6 +20,7 @@ export const queryKeys = {
   campaignMissions: (campaignId: string, since?: string) =>
     ['campaigns', campaignId, 'missions', { since: since?.trim() || '' }] as const,
   campaignPendingApplications: (campaignId: string) => ['campaigns', campaignId, 'pending-applications'] as const,
+  campaignInviteTokens: (campaignId: string) => ['campaigns', campaignId, 'invite-tokens'] as const,
   missionParticipants: (campaignId: string, missionId: string) =>
     ['campaigns', campaignId, 'missions', missionId, 'participants'] as const,
   campaignChat: (campaignId: string, missionId: string) => ['campaigns', campaignId, 'missions', missionId, 'chat'] as const,

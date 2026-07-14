@@ -113,6 +113,9 @@ export function useCampaignCommandMutations(deps: CampaignCommandDeps) {
   const createInviteTokenMutation = useMutation({
     mutationFn: ({ campaignId, payload }: { campaignId: string; payload: CreateInviteTokenRequest }) =>
       createInviteToken(campaignId, payload),
+    onSuccess: async (_created, variables) => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.campaignInviteTokens(variables.campaignId), exact: false })
+    },
   })
 
   const createRoomMutation = useMutation({
