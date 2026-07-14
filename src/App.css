@@ -6292,6 +6292,87 @@ body {
   justify-content: flex-start;
 }
 
+.mission-mobile-list {
+  display: none;
+}
+
+.mission-mobile-card {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.mission-mobile-card.is-selected {
+  border-color: rgba(201, 168, 76, 0.26);
+  background: rgba(201, 168, 76, 0.08);
+}
+
+.mission-mobile-card-head,
+.mission-mobile-title-block {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.mission-mobile-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.98rem;
+  font-weight: 700;
+}
+
+.mission-mobile-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem 0.85rem;
+}
+
+.mission-mobile-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.65rem;
+}
+
+.mission-mobile-action-btn {
+  justify-content: center;
+  width: 100%;
+  min-height: 2.5rem;
+}
+
+.mission-mobile-action-btn.is-disabled,
+.mission-mobile-action-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.mission-mobile-empty {
+  padding: 1rem;
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.mission-mobile-summary .mission-card-section {
+  gap: 0.2rem;
+}
+
+.mission-mobile-summary .mission-card-label {
+  font-size: 0.68rem;
+}
+
+.mission-mobile-summary .mission-card-value {
+  font-size: 0.95rem;
+  line-height: 1.25;
+}
+
+.mission-mobile-summary .mission-module-chip {
+  min-height: 1.8rem;
+  padding-inline: 0.55rem;
+}
+
 .mission-summary-row-btn {
   display: inline-flex;
   align-items: center;
@@ -6357,6 +6438,51 @@ body {
 
 .mission-session-text {
   font-weight: 500;
+}
+
+@media (max-width: 900px) {
+  .mission-detail-head {
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .mission-title-inline-badges {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, max-content));
+    justify-content: flex-start;
+    align-items: start;
+    gap: 0.55rem;
+  }
+
+  .mission-title-status-group {
+    display: inline-flex;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .mission-chat-inline-badge {
+    justify-content: center;
+  }
+
+  .mission-data-table {
+    display: none;
+  }
+
+  .mission-mobile-list {
+    display: grid;
+    gap: 0.85rem;
+    margin-top: 1rem;
+  }
+}
+
+@media (max-width: 360px) {
+  .mission-title-inline-badges {
+    grid-template-columns: 1fr;
+  }
+
+  .mission-mobile-summary {
+    grid-template-columns: 1fr;
+  }
 }
 
 .mission-detail-block .mission-chat-panel {

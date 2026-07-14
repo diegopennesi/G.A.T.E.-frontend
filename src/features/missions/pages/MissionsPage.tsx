@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
 import { MultiSelect } from 'primereact/multiselect'
 import { Skeleton } from 'primereact/skeleton'
@@ -220,6 +220,18 @@ function missionStatusReasonLabel(reason: MissionStatusReason | null | undefined
     default:
       return ''
   }
+}
+
+function missionRoleBadge(participationType: MissionParticipationType | undefined) {
+  if (!participationType) {
+    return <span className="status status-neutral">Non iscritto</span>
+  }
+
+  return (
+    <span className={`status ${participationType === 'TITOLARE' ? 'status-success' : 'status-warning'}`}>
+      {participationLabel(participationType)}
+    </span>
+  )
 }
 
 function missionStatusClassName(status: MissionResponse['status']) {
@@ -515,6 +527,14 @@ export function MissionsPage() {
     mission.status !== 'CANCELLED' &&
     (mission.createdBy === currentUserId || Boolean(myMissionParticipationById[mission.id]))
   const showMissionSkeleton = pendingCount > 0 && missions.length === 0
+
+  useEffect(() => {
+    if (selectedMission || !isDetailVisible) return
+    setIsDetailVisible(false)
+    setDetailPane('summary')
+    setChatReturnTarget('summary')
+    onCloseMissionChat()
+  }, [isDetailVisible, onCloseMissionChat, selectedMission])
 
   const submitCreate = () => {
     const payload = missionDraftToPayload(createDraft, setCreateError)
@@ -1156,15 +1176,7 @@ export function MissionsPage() {
                     {missionStatusLabel(mission.status)}
                   </span>
                 </td>
-                <td className="mission-center-cell">
-                  {myMissionParticipationById[mission.id] ? (
-                    <span className={`status ${myMissionParticipationById[mission.id] === 'TITOLARE' ? 'status-success' : 'status-warning'}`}>
-                      {participationLabel(myMissionParticipationById[mission.id])}
-                    </span>
-                  ) : (
-                    <span className="status status-neutral">Non iscritto</span>
-                  )}
-                </td>
+                <td className="mission-center-cell">{missionRoleBadge(myMissionParticipationById[mission.id])}</td>
                 <td>
                   <div className="mission-chat-cell">
                     {canOpenMissionChat(mission) ? (
@@ -1214,6 +1226,112 @@ export function MissionsPage() {
               </tr>
             )}
           />)}
+          {!showMissionSkeleton && (
+            <div className="mission-mobile-list" role="list" aria-label="Lista missioni">
+              {sortedMissions.length === 0 ? (
+                <div className="mission-mobile-empty">Nessuna missione corrisponde ai filtri.</div>
+              ) : (
+                sortedMissions.map((mission) => {
+                  const isSelected =
+                    selectedMission != null && selectedMission.id === mission.id && selectedMission.campaignId === mission.campaignId
+                  const canOpenChat = canOpenMissionChat(mission)
+                  return (
+                    <article
+                      key={`${mission.campaignId}-${mission.id}`}
+                      className={`mission-mobile-card ${isSelected ? 'is-selected' : ''}`}
+                      role="listitem"
+                    >
+                      <div className="mission-mobile-card-head">
+                        <div className="mission-mobile-title-block">
+                          <p className="mission-mobile-title">{mission.title}</p>
+                          <div className="mission-title-inline-badges">
+                            <span className="mission-participants-pill">
+                              <Icon name="fa-solid fa-people-group" />
+                              <span>{formatMissionParticipants(mission)}</span>
+                            </span>
+                            <span
+                              className={missionStatusClassName(mission.status)}
+                              title={missionStatusReasonLabel(mission.statusReason) || undefined}
+                            >
+                              <Icon name={missionStatusIcon(mission.status)} />
+                              {missionStatusLabel(mission.status)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mission-mobile-summary">
+                        <div className="mission-card-section">
+                          <p className="mission-card-label">Sessione</p>
+                          <p className="mission-card-value">{`${formatMissionShortDay(mission.sessionAt)} H ${formatMissionTime(mission.sessionAt)}`}</p>
+                        </div>
+                        <div className="mission-card-section">
+                          <p className="mission-card-label">Campagna</p>
+                          <p className="mission-card-value">{campaignNameById[mission.campaignId] || mission.campaignId}</p>
+                        </div>
+                        <div className="mission-card-section">
+                          <p className="mission-card-label">Modulo di gioco</p>
+                          <div className="mission-card-value">
+                            <span className="campaign-system-inline mission-module-chip">
+                              <Icon name={missionGameSystemIcon(campaignGameSystemById[mission.campaignId])} />
+                              <span>{missionGameSystemLabel(campaignGameSystemById[mission.campaignId])}</span>
+                            </span>
+                          </div>
+                        </div>
+                        <div className="mission-card-section">
+                          <p className="mission-card-label">Ruolo</p>
+                          <div className="mission-card-value">{missionRoleBadge(myMissionParticipationById[mission.id])}</div>
+                        </div>
+                      </div>
+
+                      <div className="mission-mobile-actions">
+                        <button
+                          type="button"
+                          className="mission-summary-row-btn mission-action-btn mission-mobile-action-btn"
+                          aria-label={`Apri dettaglio missione ${mission.title}`}
+                          onClick={() => {
+                            onSelectMission(mission.id)
+                            onCloseMissionChat()
+                            setEditingMissionId(null)
+                            setMode('browse')
+                            setIsDetailVisible(true)
+                            setDetailPane('summary')
+                            setChatReturnTarget('summary')
+                          }}
+                        >
+                          <Icon name="fa-solid fa-magnifying-glass" />
+                          <span>Dettaglio</span>
+                        </button>
+                        <button
+                          type="button"
+                          className={`mission-action-btn mission-mobile-action-btn ${
+                            canOpenChat
+                              ? `mission-chat-row-btn ${selectedMissionChatId === mission.id ? 'is-active' : 'is-enabled'}`
+                              : 'mission-mobile-action-btn is-disabled'
+                          }`}
+                          aria-label={`Apri chat missione ${mission.title}`}
+                          disabled={!canOpenChat}
+                          onClick={() => {
+                            if (!canOpenChat) return
+                            onSelectMission(mission.id)
+                            setEditingMissionId(null)
+                            setMode('browse')
+                            setIsDetailVisible(true)
+                            setDetailPane('chat')
+                            setChatReturnTarget('list')
+                            onOpenMissionChat(mission.campaignId, mission.id)
+                          }}
+                        >
+                          <Icon name="fa-solid fa-comments" />
+                          <span>Chat</span>
+                        </button>
+                      </div>
+                    </article>
+                  )
+                })
+              )}
+            </div>
+          )}
         </div>
         )}
         {isDetailVisible && renderMissionDetail()}
