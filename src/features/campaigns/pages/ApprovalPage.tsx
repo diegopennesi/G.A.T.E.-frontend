@@ -1,5 +1,5 @@
 import { useCampaignContext } from '../../../context'
-import { DataTable } from '../../../shared/components'
+import { ResponsiveDataList } from '../../../shared/components'
 
 export function ApprovalPage() {
   const {
@@ -17,7 +17,8 @@ export function ApprovalPage() {
           Aggiorna elenco
         </button>
       </div>
-      <DataTable
+      <ResponsiveDataList
+        desktopClassName="approval-data-table"
         columns={[
           { key: 'profile', label: 'Profilo' },
           { key: 'username', label: 'Username' },
@@ -27,7 +28,7 @@ export function ApprovalPage() {
         rows={pendingApplications}
         getRowKey={(item) => item.userId}
         emptyMessage="Nessuna richiesta pending."
-        renderRow={(item) => (
+        renderDesktopRow={(item) => (
           <tr>
             <td>
               <div className="data-table-primary">
@@ -49,6 +50,28 @@ export function ApprovalPage() {
               </div>
             </td>
           </tr>
+        )}
+        renderMobileCard={(item) => (
+          <article className="rounded-lg border border-white/10 bg-white/4 p-4 shadow-sm">
+            <div className="grid gap-3">
+              <div className="grid gap-1">
+                <p className="text-base font-semibold text-[var(--text)]">{item.profileName}</p>
+                <p className="text-sm text-[var(--muted)]">@{item.username}</p>
+              </div>
+              <div className="grid gap-1">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--muted)]">Stato</p>
+                <span className="status status-warning w-fit">PENDING</span>
+              </div>
+              <div className="grid gap-2">
+                <button type="button" className="primary-btn w-full justify-center" onClick={() => onApprove(item.userId)}>
+                  Approva
+                </button>
+                <button type="button" className="secondary-btn w-full justify-center" onClick={() => onReject(item.userId)}>
+                  Rifiuta
+                </button>
+              </div>
+            </div>
+          </article>
         )}
       />
     </section>

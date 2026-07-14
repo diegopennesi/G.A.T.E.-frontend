@@ -35,7 +35,7 @@ import { useProfileMutations } from './hooks/useProfileMutations'
 import { useProfileState } from './hooks/useProfileState'
 import { useRealmState } from './hooks/useRealmState'
 import { useUiState } from './hooks/useUiState'
-import { DataTable, Icon, RealmStatusScreen, SearchableSelect } from './shared/components'
+import { ActionStack, BadgeGroup, Icon, KeyValueGrid, MobileDataCard, RealmStatusScreen, ResponsiveDataList, SearchableSelect } from './shared/components'
 import { resolveRealmContextFromPath, buildPathForState } from './shared/routing'
 import { ApiError, getAccessToken, setRealmCode } from './services/apiClient'
 import {
@@ -139,7 +139,6 @@ const CAMPAIGN_ACTIVE_REQUIRED_SCREENS: Screen[] = [
   'Scheda PG',
   'Gestione Campagna',
   'Missioni',
-  'Stanze',
   'Profilo Membro Campagna',
   'Seleziona PG',
   'Crea Personaggio',
@@ -154,9 +153,7 @@ function isLegacyInviteCode(value: string) {
 const ADMIN_PLATFORM_ROLES: PlatformRole[] = ['USER', 'ADMIN', 'SYSTEM']
 const REALM_TYPE_OPTIONS: RealmType[] = ['STORE', 'ASSOCIATION', 'PRIVATE_GROUP', 'EVENT']
 const CAMPAIGN_REQUIRED_TOOLTIP = 'Caricare prima la campagna'
-const MODULE_REQUIRED_BY_SCREEN: Partial<Record<Screen, string>> = {
-  Stanze: 'STANZE',
-}
+const MODULE_REQUIRED_BY_SCREEN: Partial<Record<Screen, string>> = {}
 
 function App() {
   const initialRealmContext = useMemo(() => resolveRealmContextFromPath(window.location.pathname), [])
@@ -3183,7 +3180,8 @@ function App() {
                   </label>
                 </div>
 
-                <DataTable
+                <ResponsiveDataList
+                  desktopClassName="system-users-data-table"
                   columns={[
                     { key: 'username', label: 'Username', sortKey: 'username' },
                     { key: 'profileName', label: 'Profilo', sortKey: 'profileName' },
@@ -3197,7 +3195,7 @@ function App() {
                   sortBy={systemSortBy}
                   sortDirection={systemSortDirection}
                   onSortChange={handleSystemSortChange}
-                  renderRow={(item) => {
+                  renderDesktopRow={(item) => {
                     const draft = adminUsersDrafts[item.id] || {
                       platformRole: item.platformRole,
                       isActive: item.isActive,
@@ -3279,6 +3277,88 @@ function App() {
                           </div>
                         </td>
                       </tr>
+                    )
+                  }}
+                  renderMobileCard={(item) => {
+                    const draft = adminUsersDrafts[item.id] || {
+                      platformRole: item.platformRole,
+                      isActive: item.isActive,
+                    }
+                    const isDirty = draft.platformRole !== item.platformRole || draft.isActive !== item.isActive
+
+                    return (
+                      <MobileDataCard
+                        title={`@${item.username}`}
+                        subtitle={item.profileName}
+                        badges={
+                          <BadgeGroup>
+                            <span className={`status ${isDirty ? 'status-warning' : 'status-neutral'}`}>
+                              {isDirty ? 'Da salvare' : 'Salvato'}
+                            </span>
+                            <span className="status status-neutral">{platformRoleLabel(item.platformRole)}</span>
+                          </BadgeGroup>
+                        }
+                        actions={
+                          <ActionStack>
+                            <select
+                              className="system-inline-select"
+                              value={draft.platformRole}
+                              onChange={(event) =>
+                                setAdminUsersDrafts((prev) => ({
+                                  ...prev,
+                                  [item.id]: {
+                                    ...draft,
+                                    platformRole: event.target.value as PlatformRole,
+                                  },
+                                }))
+                              }
+                            >
+                              {ADMIN_PLATFORM_ROLES.map((role) => (
+                                <option key={role} value={role}>
+                                  {platformRoleLabel(role)}
+                                </option>
+                              ))}
+                            </select>
+                            <label
+                              className="switch system-user-switch"
+                              aria-label={`${item.username} ${draft.isActive ? 'attivo' : 'disattivo'}`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={draft.isActive}
+                                onChange={(event) =>
+                                  setAdminUsersDrafts((prev) => ({
+                                    ...prev,
+                                    [item.id]: {
+                                      ...draft,
+                                      isActive: event.target.checked,
+                                    },
+                                  }))
+                                }
+                              />
+                              <span className="switch-track" aria-hidden="true">
+                                <span className="switch-thumb" />
+                              </span>
+                            </label>
+                            <button
+                              type="button"
+                              className="refresh-btn w-full justify-center"
+                              disabled={busy || !isDirty}
+                              onClick={() => void saveAdminUser(item.id)}
+                            >
+                              <Icon name="fa-solid fa-floppy-disk" />
+                              <span>Salva</span>
+                            </button>
+                          </ActionStack>
+                        }
+                      >
+                        <KeyValueGrid
+                          items={[
+                            { key: 'id', label: 'ID', value: item.id },
+                            { key: 'createdAt', label: 'Creato', value: formatShortDate(item.createdAt) },
+                          ]}
+                        />
+                      </MobileDataCard>
                     )
                   }}
                 />
@@ -3994,7 +4074,8 @@ function App() {
                   {realmAccessSearchMessage && <p className="muted full-span">{realmAccessSearchMessage}</p>}
                 </div>
 
-                <DataTable
+                <ResponsiveDataList
+                  desktopClassName="realm-admins-data-table"
                   columns={[
                     { key: 'profileName', label: 'Admin realm', sortKey: 'profileName' },
                     { key: 'username', label: 'Username', sortKey: 'username' },
@@ -4008,7 +4089,7 @@ function App() {
                   sortBy={systemSortBy}
                   sortDirection={systemSortDirection}
                   onSortChange={handleSystemSortChange}
-                  renderRow={(assignment) => {
+                  renderDesktopRow={(assignment) => {
                     const key = `${assignment.realmId}:${assignment.userId}`
                     const draftRole = adminRealmRoleDrafts[key] || assignment.role
                     const isDirty = draftRole !== assignment.role
@@ -4046,10 +4127,63 @@ function App() {
                       </tr>
                     )
                   }}
+                  renderMobileCard={(assignment) => {
+                    const key = `${assignment.realmId}:${assignment.userId}`
+                    const draftRole = adminRealmRoleDrafts[key] || assignment.role
+                    const isDirty = draftRole !== assignment.role
+
+                    return (
+                      <MobileDataCard
+                        title={assignment.profileName}
+                        subtitle={`@${assignment.username}`}
+                        badges={
+                          <BadgeGroup>
+                            <span className={`status ${isDirty ? 'status-warning' : 'status-neutral'}`}>
+                              {isDirty ? 'Da salvare' : 'Salvato'}
+                            </span>
+                          </BadgeGroup>
+                        }
+                        actions={
+                          <ActionStack>
+                            <select
+                              className="system-inline-select"
+                              value={draftRole}
+                              onChange={(event) =>
+                                setAdminRealmRoleDrafts((prev) => ({
+                                  ...prev,
+                                  [key]: event.target.value as RealmRole,
+                                }))
+                              }
+                            >
+                              <option value="USER">USER</option>
+                              <option value="ADMIN">ADMIN</option>
+                            </select>
+                            <button
+                              type="button"
+                              className="refresh-btn w-full justify-center"
+                              disabled={busy || !isDirty}
+                              onClick={() => void saveAdminRealmUserRole(assignment.realmId, assignment.userId)}
+                            >
+                              <Icon name="fa-solid fa-floppy-disk" />
+                              <span>Salva</span>
+                            </button>
+                          </ActionStack>
+                        }
+                      >
+                        <KeyValueGrid
+                          items={[
+                            { key: 'role', label: 'Ruolo realm', value: draftRole },
+                            { key: 'lastUpdate', label: 'Update', value: formatShortDate(assignment.lastUpdate) },
+                          ]}
+                        />
+                      </MobileDataCard>
+                    )
+                  }}
                 />
 
                 {realmAccessSearchResults.length > 0 && selectedRealmAccessRealm && (
-                  <DataTable
+                  <ResponsiveDataList
+                    desktopClassName="realm-search-results-data-table"
                     columns={[
                       { key: 'profileName', label: 'Profilo', sortKey: 'profileName' },
                       { key: 'username', label: 'Username', sortKey: 'username' },
@@ -4063,7 +4197,7 @@ function App() {
                     sortBy={systemSortBy}
                     sortDirection={systemSortDirection}
                     onSortChange={handleSystemSortChange}
-                    renderRow={(item) => {
+                    renderDesktopRow={(item) => {
                       const key = `${selectedRealmAccessRealm.id}:${item.id}`
                       const assignment = adminRealmRoleByKey[key]
                       const currentRole = assignment?.isPrivilegeActive ? assignment.role : 'USER'
@@ -4104,6 +4238,61 @@ function App() {
                             </button>
                           </td>
                         </tr>
+                      )
+                    }}
+                    renderMobileCard={(item) => {
+                      const key = `${selectedRealmAccessRealm.id}:${item.id}`
+                      const assignment = adminRealmRoleByKey[key]
+                      const currentRole = assignment?.isPrivilegeActive ? assignment.role : 'USER'
+                      const draftRole = adminRealmRoleDrafts[key] || currentRole
+                      const isDirty = draftRole !== currentRole
+
+                      return (
+                        <MobileDataCard
+                          title={item.profileName}
+                          subtitle={`@${item.username}`}
+                          badges={
+                            <BadgeGroup>
+                              <span className="status status-neutral">{platformRoleLabel(item.platformRole)}</span>
+                              <span className={`status ${assignment?.isPrivilegeActive ? 'status-success' : assignment ? 'status-warning' : 'status-neutral'}`}>
+                                {assignment?.isPrivilegeActive ? 'Admin attivo' : assignment ? 'Disattivato' : 'Default USER'}
+                              </span>
+                            </BadgeGroup>
+                          }
+                          actions={
+                            <ActionStack>
+                              <select
+                                className="system-inline-select"
+                                value={draftRole}
+                                onChange={(event) =>
+                                  setAdminRealmRoleDrafts((prev) => ({
+                                    ...prev,
+                                    [key]: event.target.value as RealmRole,
+                                  }))
+                                }
+                              >
+                                <option value="USER">USER</option>
+                                <option value="ADMIN">ADMIN</option>
+                              </select>
+                              <button
+                                type="button"
+                                className="refresh-btn w-full justify-center"
+                                disabled={busy || !isDirty}
+                                onClick={() => void saveAdminRealmUserRole(selectedRealmAccessRealm.id, item.id)}
+                              >
+                                <Icon name="fa-solid fa-floppy-disk" />
+                                <span>Salva</span>
+                              </button>
+                            </ActionStack>
+                          }
+                        >
+                          <KeyValueGrid
+                            items={[
+                              { key: 'global', label: 'Ruolo globale', value: platformRoleLabel(item.platformRole) },
+                              { key: 'realm', label: 'Ruolo realm', value: draftRole },
+                            ]}
+                          />
+                        </MobileDataCard>
                       )
                     }}
                   />

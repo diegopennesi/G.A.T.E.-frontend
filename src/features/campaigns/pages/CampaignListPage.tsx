@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Skeleton } from 'primereact/skeleton'
 import { useCampaignContext } from '../../../context'
-import { DataTable, FieldLabel, Icon } from '../../../shared/components'
+import { FieldLabel, Icon, ResponsiveDataList } from '../../../shared/components'
 import { toMessage } from '../../../shared/utils'
 import type { InviteAccessPreview } from '../../../types/ui'
 import type { CampaignRole } from '../../../types/domain'
@@ -29,6 +29,50 @@ export function CampaignListPage() {
   const [inviteBusy, setInviteBusy] = useState(false)
   const { pendingCount } = useLoadingOverlayState()
   const showLoadingSkeleton = pendingCount > 0 && campaigns.length === 0
+
+  const renderCampaignAction = (item: (typeof campaigns)[number], className = '') => {
+    const isDisabled = !item.isActive
+
+    if (item.membershipStatus === 'APPROVED') {
+      return (
+        <button
+          type="button"
+          className={`secondary-btn ${className}`.trim()}
+          onClick={() => onOpenCampaign(item.id)}
+          disabled={isDisabled}
+          title={isDisabled ? 'Campagna disattivata: selezione non disponibile' : undefined}
+        >
+          Seleziona campagna
+        </button>
+      )
+    }
+
+    if ((item.membershipStatus === null || item.membershipStatus === 'REJECTED') && item.isOpen && !isDisabled) {
+      return (
+        <button type="button" className={`primary-btn ${className}`.trim()} onClick={() => onApplyCampaign(item.id)}>
+          Richiedi accesso
+        </button>
+      )
+    }
+
+    if ((item.membershipStatus === null || item.membershipStatus === 'REJECTED') && (!item.isOpen || isDisabled)) {
+      return (
+        <button type="button" className={`secondary-btn ${className}`.trim()} disabled>
+          {isDisabled ? 'Disattivata' : 'Campagna chiusa'}
+        </button>
+      )
+    }
+
+    if (item.membershipStatus === 'PENDING') {
+      return (
+        <button type="button" className={`secondary-btn ${className}`.trim()} disabled>
+          Richiesta inviata
+        </button>
+      )
+    }
+
+    return null
+  }
 
   const filteredCampaigns = useMemo(() => {
     return campaigns.filter((item) => {
@@ -209,7 +253,8 @@ export function CampaignListPage() {
       )}
       {!showLoadingSkeleton && campaigns.length === 0 && <p className="muted">Nessuna campagna visibile. Premi "Cerca campagne".</p>}
       {!showLoadingSkeleton && campaigns.length > 0 && (
-        <DataTable
+        <ResponsiveDataList
+          desktopClassName="campaign-list-data-table"
           columns={[
             { key: 'campaign', label: 'Campagna' },
             { key: 'state', label: 'Stato' },
@@ -220,7 +265,7 @@ export function CampaignListPage() {
           rows={filteredCampaigns}
           getRowKey={(item) => item.id}
           emptyMessage="Nessuna campagna corrisponde ai filtri selezionati."
-          renderRow={(item) => {
+          renderDesktopRow={(item) => {
             const moderationTooltip =
               (item.membershipStatus === 'BLOCKED' || item.membershipStatus === 'BANNED') && item.moderationReason
                 ? item.moderationReason
@@ -268,36 +313,72 @@ export function CampaignListPage() {
                 </td>
                 <td>
                   <div className="data-table-actions">
-                    {item.membershipStatus === 'APPROVED' && (
-                      <button
-                        type="button"
-                        className="secondary-btn"
-                        onClick={() => onOpenCampaign(item.id)}
-                        disabled={isDisabled}
-                        title={isDisabled ? 'Campagna disattivata: selezione non disponibile' : undefined}
-                      >
-                        Seleziona campagna
-                      </button>
-                    )}
-                    {(item.membershipStatus === null || item.membershipStatus === 'REJECTED') && item.isOpen && !isDisabled && (
-                      <button type="button" className="primary-btn" onClick={() => onApplyCampaign(item.id)}>
-                        Richiedi accesso
-                      </button>
-                    )}
-                    {(item.membershipStatus === null || item.membershipStatus === 'REJECTED') && (!item.isOpen || isDisabled) && (
-                      <button type="button" className="secondary-btn" disabled>
-                        {isDisabled ? 'Disattivata' : 'Campagna chiusa'}
-                      </button>
-                    )}
-                    {item.membershipStatus === 'PENDING' && (
-                      <button type="button" className="secondary-btn" disabled>
-                        Richiesta inviata
-                      </button>
-                    )}
+                    {renderCampaignAction(item)}
                   </div>
                   {moderationTooltip && <div className="campaign-item-tooltip">{moderationTooltip}</div>}
                 </td>
               </tr>
+            )
+          }}
+          renderMobileCard={(item) => {
+            const moderationTooltip =
+              (item.membershipStatus === 'BLOCKED' || item.membershipStatus === 'BANNED') && item.moderationReason
+                ? item.moderationReason
+                : null
+            const pendingCount = pendingApplicationsByCampaignId[item.id]?.length || 0
+            const missionAlertCount = missionAlertsByCampaign[item.id] || 0
+
+            return (
+              <article className="rounded-lg border border-white/10 bg-white/4 p-4 shadow-sm">
+                <div className="grid gap-3">
+                  <div className="grid gap-2">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-base font-semibold text-[var(--text)]">{item.name}</p>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <CampaignOpenBadge isOpen={item.isOpen} />
+                          <CampaignStatusBadge isActive={item.isActive} />
+                          <CampaignAccessBadge item={item} />
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-sm text-[var(--text-soft)]">{item.summary || item.description || 'Nessuna descrizione'}</p>
+                    {item.founderId && (
+                      <p className="text-xs text-[var(--muted)]">Creatore: {founderNames[item.founderId] || item.founderId}</p>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 text-sm max-[360px]:grid-cols-1">
+                    <div className="grid gap-1">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--muted)]">Stato missioni</p>
+                      {missionAlertCount > 0 ? (
+                        <span className="inline-flex w-fit items-center gap-2 rounded-full border border-amber-400/20 bg-amber-400/10 px-3 py-1 text-xs font-semibold text-amber-200">
+                          <Icon name="fa-solid fa-triangle-exclamation" />
+                          <span>{missionAlertCount} attive</span>
+                        </span>
+                      ) : (
+                        <span className="text-sm text-[var(--muted)]">Nessun avviso</span>
+                      )}
+                    </div>
+                    <div className="grid gap-1">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--muted)]">Accessi</p>
+                      {pendingCount > 0 ? (
+                        <span className="inline-flex w-fit items-center gap-2 rounded-full border border-sky-400/20 bg-sky-400/10 px-3 py-1 text-xs font-semibold text-sky-200">
+                          <Icon name="fa-solid fa-triangle-exclamation" />
+                          <span>{pendingCount} in attesa</span>
+                        </span>
+                      ) : (
+                        <span className="text-sm text-[var(--muted)]">Nessun avviso</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid gap-2">
+                    {renderCampaignAction(item, 'w-full justify-center')}
+                    {moderationTooltip && <div className="text-sm text-amber-200">{moderationTooltip}</div>}
+                  </div>
+                </div>
+              </article>
             )
           }}
         />

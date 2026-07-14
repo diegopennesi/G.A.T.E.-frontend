@@ -105,7 +105,7 @@ export const formatShortDate = (value: string | null | undefined): string => {
 // --- Campaign module helpers ---
 
 export const CAMPAIGN_MODULE_UNAVAILABLE_HINT = 'Non attualmente disponibile'
-export const CAMPAIGN_MODULE_HIDDEN_CODES = new Set(['NOTIFICATIONS'])
+export const CAMPAIGN_MODULE_HIDDEN_CODES = new Set(['NOTIFICATIONS', 'STANZE'])
 export const CAMPAIGN_MODULE_UNAVAILABLE_CODES = new Set(['STANZE'])
 
 export function campaignModuleIconName(module: CampaignCatalogEntry): string {

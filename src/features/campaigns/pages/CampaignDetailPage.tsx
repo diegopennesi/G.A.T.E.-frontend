@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react'
 import { MultiSelect } from 'primereact/multiselect'
 import { useCampaignContext } from '../../../context'
-import { Icon, InfoBlock } from '../../../shared/components'
+import { BadgeGroup, Icon, InfoBlock, MobileDataCard, ResponsiveDataList } from '../../../shared/components'
 import {
+  CAMPAIGN_MODULE_HIDDEN_CODES,
   campaignModuleIconName,
+  campaignModuleUnavailable,
   campaignModuleTitle,
   campaignToneLabel,
   catalogEntryDescription,
@@ -134,6 +136,10 @@ export function CampaignDetailPage() {
     },
   ]
 
+  const canOpenManagement = membershipRole === 'MASTER' || membershipRole === 'SUPER_MASTER'
+  const canOpenCharacters = membershipStatus === 'APPROVED'
+  const canLeaveCampaign = membershipStatus === 'APPROVED' && campaign?.founderId !== currentUserId
+
   return (
     <section className="panel">
       <div className="row-between">
@@ -176,7 +182,7 @@ export function CampaignDetailPage() {
                 </span>
               ))}
             </div>
-            <div className="inline-actions campaign-detail-actions">
+            <div className="inline-actions campaign-detail-actions w-full flex-wrap md:w-auto md:flex-nowrap">
               {!isActiveCampaign && membershipStatus === 'APPROVED' && (
                 <button type="button" className="primary-btn" onClick={onActivate}>
                   Attiva campagna
@@ -192,20 +198,52 @@ export function CampaignDetailPage() {
                   Richiesta inviata
                 </button>
               )}
-              {(membershipRole === 'MASTER' || membershipRole === 'SUPER_MASTER') && (
-                <button type="button" className="campaign-outline-action campaign-outline-action--gold" onClick={onOpenManagement}>
+              {(canOpenManagement || canOpenCharacters) && (
+                <div className="grid w-full grid-cols-2 gap-2 md:!hidden">
+                  {canOpenManagement && (
+                    <button
+                      type="button"
+                      className="campaign-outline-action campaign-outline-action--gold min-w-0 w-full px-[clamp(0.38rem,1.8vw,0.72rem)] text-[clamp(0.56rem,2.35vw,0.78rem)] leading-tight gap-[clamp(0.16rem,1vw,0.34rem)]"
+                      onClick={onOpenManagement}
+                    >
+                      <Icon name="fa-solid fa-book-open" />
+                      <span className="min-w-0 whitespace-normal break-words text-center leading-tight">Gestione Campagna</span>
+                    </button>
+                  )}
+                  {canOpenCharacters && (
+                    <button
+                      type="button"
+                      className="campaign-outline-action campaign-outline-action--violet min-w-0 w-full px-[clamp(0.38rem,1.8vw,0.72rem)] text-[clamp(0.56rem,2.35vw,0.78rem)] leading-tight gap-[clamp(0.16rem,1vw,0.34rem)]"
+                      onClick={onOpenCharacters}
+                    >
+                      <Icon name="fa-solid fa-user" />
+                      <span className="min-w-0 whitespace-normal break-words text-center leading-tight">Gestione Personaggi</span>
+                    </button>
+                  )}
+                </div>
+              )}
+              {canOpenManagement && (
+                <button
+                  type="button"
+                  className="campaign-outline-action campaign-outline-action--gold !hidden min-w-0 px-[clamp(0.55rem,2.5vw,1.05rem)] text-[clamp(0.72rem,3vw,0.94rem)] gap-[clamp(0.25rem,1.5vw,0.6rem)] md:!inline-flex"
+                  onClick={onOpenManagement}
+                >
                   <Icon name="fa-solid fa-book-open" />
-                  <span>Gestione Campagna</span>
+                  <span className="truncate">Gestione Campagna</span>
                 </button>
               )}
-              {membershipStatus === 'APPROVED' && (
-                <button type="button" className="campaign-outline-action campaign-outline-action--violet" onClick={onOpenCharacters}>
+              {canOpenCharacters && (
+                <button
+                  type="button"
+                  className="campaign-outline-action campaign-outline-action--violet !hidden min-w-0 px-[clamp(0.55rem,2.5vw,1.05rem)] text-[clamp(0.72rem,3vw,0.94rem)] gap-[clamp(0.25rem,1.5vw,0.6rem)] md:!inline-flex"
+                  onClick={onOpenCharacters}
+                >
                   <Icon name="fa-solid fa-user" />
-                  <span>Gestione Personaggi</span>
+                  <span className="truncate">Gestione Personaggi</span>
                 </button>
               )}
-              {membershipStatus === 'APPROVED' && campaign?.founderId !== currentUserId && (
-                <button type="button" className="danger-btn campaign-leave-btn" onClick={onLeaveCampaign}>
+              {canLeaveCampaign && (
+                <button type="button" className="danger-btn campaign-leave-btn !ml-0 w-full md:!ml-2 md:w-auto" onClick={onLeaveCampaign}>
                   Esci dalla campagna
                 </button>
               )}
@@ -224,9 +262,11 @@ export function CampaignDetailPage() {
               <h3 className="section-title">Addon campagna</h3>
               <p className="muted">Moduli disponibili per questa campagna.</p>
             </div>
-            {availableModules.length > 0 ? (
+            {availableModules.filter((module) => !CAMPAIGN_MODULE_HIDDEN_CODES.has(module.code) && !campaignModuleUnavailable(module)).length > 0 ? (
               <div className="campaign-addon-icons" role="list" aria-label="Addon campagna">
-                {availableModules.map((module) => {
+                {availableModules
+                  .filter((module) => !CAMPAIGN_MODULE_HIDDEN_CODES.has(module.code) && !campaignModuleUnavailable(module))
+                  .map((module) => {
                   const active = campaign.allowedModules.includes(module.code)
                   const label = campaignModuleTitle(module)
                   const description = module.description || 'Addon campagna'
@@ -242,7 +282,7 @@ export function CampaignDetailPage() {
                       <span className="campaign-addon-icon-label">{label}</span>
                     </span>
                   )
-                })}
+                  })}
               </div>
             ) : (
               <p className="muted">Lista addon non ancora disponibile.</p>
@@ -304,48 +344,72 @@ export function CampaignDetailPage() {
               </div>
               {approvedMembers.length === 0 && <p className="muted">Nessun membro</p>}
               {approvedMembers.length > 0 && filteredMembers.length > 0 && (
-                <div className="member-table-shell">
-                  <div className="member-table-wrap">
-                    <table className="member-table">
-                      <thead>
-                        <tr>
-                          <th scope="col">Membro</th>
-                          <th scope="col">Ruolo</th>
-                          <th scope="col">Stato</th>
-                          <th scope="col">Iscritto il</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredMembers.map((member) => {
-                          const roleMeta = roleBadgeMeta(member.role)
-                          const stateMeta = characterStateMeta(member.characterStatus)
-                          return (
-                            <tr key={`${member.userId}-${member.role}-${member.memberStatus}`}>
-                              <td>
-                                <button type="button" className="member-table-link" onClick={() => onOpenMember(member)}>
-                                  {memberNames[member.userId] || member.userId}
-                                </button>
-                              </td>
-                              <td>
-                                <span className={`campaign-role-badge ${roleMeta.className}`}>
-                                  <Icon name={roleMeta.icon} />
-                                  <span>{roleMeta.label}</span>
-                                </span>
-                              </td>
-                              <td>
-                                <span className={`member-state-badge ${stateMeta.className}`}>
-                                  <Icon name={stateMeta.icon} />
-                                  <span>{stateMeta.label}</span>
-                                </span>
-                              </td>
-                              <td className="member-table-muted">{formatShortDate(member.joinedAt)}</td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+                <ResponsiveDataList
+                  desktopClassName="campaign-members-data-table"
+                  columns={[
+                    { key: 'member', label: 'Membro' },
+                    { key: 'role', label: 'Ruolo' },
+                    { key: 'status', label: 'Stato' },
+                    { key: 'joinedAt', label: 'Iscritto il' },
+                  ]}
+                  rows={filteredMembers}
+                  getRowKey={(member) => `${member.userId}-${member.role}-${member.memberStatus}`}
+                  emptyMessage="Nessun membro trovato con questo filtro."
+                  renderDesktopRow={(member) => {
+                    const roleMeta = roleBadgeMeta(member.role)
+                    const stateMeta = characterStateMeta(member.characterStatus)
+                    return (
+                      <tr>
+                        <td>
+                          <button type="button" className="member-table-link" onClick={() => onOpenMember(member)}>
+                            {memberNames[member.userId] || member.userId}
+                          </button>
+                        </td>
+                        <td>
+                          <span className={`campaign-role-badge ${roleMeta.className}`}>
+                            <Icon name={roleMeta.icon} />
+                            <span>{roleMeta.label}</span>
+                          </span>
+                        </td>
+                        <td>
+                          <span className={`member-state-badge ${stateMeta.className}`}>
+                            <Icon name={stateMeta.icon} />
+                            <span>{stateMeta.label}</span>
+                          </span>
+                        </td>
+                        <td className="member-table-muted">{formatShortDate(member.joinedAt)}</td>
+                      </tr>
+                    )
+                  }}
+                  renderMobileCard={(member) => {
+                    const roleMeta = roleBadgeMeta(member.role)
+                    const stateMeta = characterStateMeta(member.characterStatus)
+                    return (
+                      <MobileDataCard
+                        title={
+                          <div className="flex items-start justify-between gap-3">
+                            <button type="button" className="member-table-link min-w-0 truncate" onClick={() => onOpenMember(member)}>
+                              {memberNames[member.userId] || member.userId}
+                            </button>
+                            <span className="shrink-0 text-xs text-[var(--muted)]">{formatShortDate(member.joinedAt)}</span>
+                          </div>
+                        }
+                        badges={
+                          <BadgeGroup>
+                            <span className={`campaign-role-badge ${roleMeta.className}`}>
+                              <Icon name={roleMeta.icon} />
+                              <span>{roleMeta.label}</span>
+                            </span>
+                            <span className={`member-state-badge ${stateMeta.className}`}>
+                              <Icon name={stateMeta.icon} />
+                              <span>{stateMeta.label}</span>
+                            </span>
+                          </BadgeGroup>
+                        }
+                      />
+                    )
+                  }}
+                />
               )}
               {approvedMembers.length > 0 && filteredMembers.length === 0 && (
                 <p className="muted">Nessun membro trovato con questo filtro.</p>

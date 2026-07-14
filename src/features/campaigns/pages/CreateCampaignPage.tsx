@@ -1,8 +1,14 @@
 import { useMemo, useState } from 'react'
 import { useCampaignContext } from '../../../context'
-import { DataTable, FieldLabel, Icon } from '../../../shared/components'
+import { ActionStack, BadgeGroup, FieldLabel, Icon, KeyValueGrid, MobileDataCard, ResponsiveDataList } from '../../../shared/components'
 import type { CampaignCatalogEntry } from '../../../types/domain'
-import { CAMPAIGN_TONE_OPTIONS, campaignModuleIconName, catalogEntryDescription } from '../../../shared/utils'
+import {
+  CAMPAIGN_MODULE_HIDDEN_CODES,
+  CAMPAIGN_MODULE_UNAVAILABLE_CODES,
+  CAMPAIGN_TONE_OPTIONS,
+  campaignModuleIconName,
+  catalogEntryDescription,
+} from '../../../shared/utils'
 
 function campaignModuleTitle(module: CampaignCatalogEntry): string {
   return module.label || module.code
@@ -35,6 +41,10 @@ function CreateCampaignToggleSettingsTable({
   selectedModules?: string[]
   onToggle?: (moduleCode: string) => void
 }) {
+  const visibleModules = availableModules?.filter(
+    (module) => !CAMPAIGN_MODULE_HIDDEN_CODES.has(module.code) && !CAMPAIGN_MODULE_UNAVAILABLE_CODES.has(module.code),
+  ) || []
+
   const renderRowForSetting = (setting: CampaignToggleRow) => (
     <tr key={setting.key}>
       <td>
@@ -57,6 +67,31 @@ function CreateCampaignToggleSettingsTable({
         </label>
       </td>
     </tr>
+  )
+
+  const renderMobileCardForSetting = (setting: CampaignToggleRow) => (
+    <MobileDataCard
+      title={setting.title}
+      badges={
+        <BadgeGroup>
+          <span className={`status ${setting.active ? 'status-success' : 'status-neutral'}`}>
+            {setting.active ? setting.activeLabel : setting.inactiveLabel}
+          </span>
+        </BadgeGroup>
+      }
+      actions={
+        <ActionStack>
+          <label className="switch w-fit" aria-label={`${setting.title} ${setting.active ? 'attivo' : 'disattivo'}`}>
+            <input type="checkbox" checked={setting.active} onChange={setting.onToggle} />
+            <span className="switch-track" aria-hidden="true">
+              <span className="switch-thumb" />
+            </span>
+          </label>
+        </ActionStack>
+      }
+    >
+      <KeyValueGrid items={[{ key: setting.key, label: 'Descrizione', value: setting.description }]} />
+    </MobileDataCard>
   )
 
   const renderRowForModule = (module: CampaignCatalogEntry) => {
@@ -91,7 +126,35 @@ function CreateCampaignToggleSettingsTable({
     )
   }
 
-  const dataRows: CreateCampaignToggleItem[] = rows || availableModules || []
+  const renderMobileCardForModule = (module: CampaignCatalogEntry) => {
+    const enabled = selectedModules?.includes(module.code) || false
+    return (
+      <MobileDataCard
+        title={campaignModuleTitle(module)}
+        badges={
+          <BadgeGroup>
+            <span className={`status ${enabled ? 'status-success' : 'status-neutral'}`}>
+              {enabled ? 'Attivo' : 'Disattivo'}
+            </span>
+          </BadgeGroup>
+        }
+        actions={
+          <ActionStack>
+            <label className="switch w-fit" aria-label={`${campaignModuleTitle(module)} ${enabled ? 'attivo' : 'disattivo'}`}>
+              <input type="checkbox" checked={enabled} onChange={() => onToggle?.(module.code)} />
+              <span className="switch-track" aria-hidden="true">
+                <span className="switch-thumb" />
+              </span>
+            </label>
+          </ActionStack>
+        }
+      >
+        <KeyValueGrid items={[{ key: module.code, label: 'Descrizione', value: module.description || 'Addon campagna' }]} />
+      </MobileDataCard>
+    )
+  }
+
+  const dataRows: CreateCampaignToggleItem[] = rows || visibleModules || []
   const isModuleTable = Boolean(availableModules)
 
   return (
@@ -101,11 +164,12 @@ function CreateCampaignToggleSettingsTable({
           <p className="section-title">{title}</p>
           <p className="muted">{description}</p>
         </div>
-        {isModuleTable && availableModules && availableModules.length > 0 ? (
-          <span className="readonly-chip">{selectedModules?.length || 0}/{availableModules.length} attivi</span>
+        {isModuleTable && visibleModules.length > 0 ? (
+          <span className="readonly-chip">{selectedModules?.length || 0}/{visibleModules.length} attivi</span>
         ) : null}
       </div>
-      <DataTable
+      <ResponsiveDataList
+        desktopClassName="create-campaign-settings-table"
         columns={[
           { key: 'setting', label: 'Impostazione' },
           { key: 'description', label: 'Descrizione' },
@@ -115,7 +179,8 @@ function CreateCampaignToggleSettingsTable({
         rows={dataRows}
         getRowKey={(item) => ('code' in item ? item.code : item.key)}
         emptyMessage={isModuleTable ? 'Nessun addon disponibile.' : 'Nessuna impostazione disponibile.'}
-        renderRow={(item) => ('code' in item ? renderRowForModule(item) : renderRowForSetting(item))}
+        renderDesktopRow={(item) => ('code' in item ? renderRowForModule(item) : renderRowForSetting(item))}
+        renderMobileCard={(item) => ('code' in item ? renderMobileCardForModule(item) : renderMobileCardForSetting(item))}
       />
     </div>
   )
@@ -136,7 +201,13 @@ export function CreateCampaignPage() {
   const [autoJoinEnabled, setAutoJoinEnabled] = useState(false)
   const [selectedGameSystemChoice, setSelectedGameSystemChoice] = useState('')
   const [selectedModulesDraft, setSelectedModulesDraft] = useState<string[]>([])
-  const availableModuleCodes = useMemo(() => availableModules.map((module) => module.code), [availableModules])
+  const availableModuleCodes = useMemo(
+    () =>
+      availableModules
+        .filter((module) => !CAMPAIGN_MODULE_HIDDEN_CODES.has(module.code) && !CAMPAIGN_MODULE_UNAVAILABLE_CODES.has(module.code))
+        .map((module) => module.code),
+    [availableModules],
+  )
   const availableGameSystemCodes = useMemo(() => availableGameSystems.map((item) => item.code), [availableGameSystems])
   const selectedGameSystem =
     availableGameSystemCodes.length === 0
@@ -262,7 +333,7 @@ export function CreateCampaignPage() {
       />
       <CreateCampaignToggleSettingsTable
         title="Addon campagna"
-        description="I moduli sono sempre visibili e puoi attivarli o disattivarli senza passaggi aggiuntivi."
+        description="I moduli disponibili possono essere attivati o disattivati senza passaggi aggiuntivi."
         availableModules={availableModules}
         selectedModules={selectedModules}
         onToggle={toggleModule}

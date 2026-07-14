@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { MultiSelect } from 'primereact/multiselect'
 import { useCharacterContext } from '../../../context'
-import { DataTable, Icon } from '../../../shared/components'
+import { Icon, ResponsiveDataList } from '../../../shared/components'
 import type { CharacterStatus } from '../../../types/domain'
 
 type CharacterTypeFilter = 'NPC' | 'PG'
@@ -22,6 +22,34 @@ const STATUS_FILTER_OPTIONS: Array<FilterOption<CharacterStatus>> = [
   { value: 'RETIRED', label: 'Retired', icon: 'fa-solid fa-hourglass-half' },
   { value: 'DEAD', label: 'Dead', icon: 'fa-solid fa-circle-xmark' },
 ]
+
+function characterStatusBadge(status: CharacterStatus | null | undefined) {
+  return (
+    <span className={`member-state-badge character-state-badge is-${String(status || 'neutral').toLowerCase()}`}>
+      <Icon
+        name={
+          status === 'ACTIVE'
+            ? 'fa-solid fa-circle-check'
+            : status === 'RETIRED'
+              ? 'fa-solid fa-hourglass-half'
+              : status === 'DEAD'
+                ? 'fa-solid fa-circle-xmark'
+                : 'fa-solid fa-circle-info'
+        }
+      />
+      <span>{status || 'N/A'}</span>
+    </span>
+  )
+}
+
+function characterTypeBadge(isNpc: boolean) {
+  return (
+    <span className={`character-kind-badge ${isNpc ? 'is-npc' : 'is-pg'}`}>
+      <Icon name={isNpc ? 'fa-solid fa-mask' : 'fa-solid fa-user'} />
+      <span>{isNpc ? 'NPC' : 'PG'}</span>
+    </span>
+  )
+}
 
 export function CharacterListPage() {
   const {
@@ -143,7 +171,8 @@ export function CharacterListPage() {
           </label>
         </div>
       </div>
-      <DataTable
+      <ResponsiveDataList
+        desktopClassName="character-list-data-table"
         columns={[
           { key: 'character', label: 'Personaggio', sortKey: 'character' },
           { key: 'status', label: 'Stato' },
@@ -158,7 +187,7 @@ export function CharacterListPage() {
         sortBy={sortBy}
         sortDirection={sortDirection}
         onSortChange={handleSortChange}
-        renderRow={(character) => {
+        renderDesktopRow={(character) => {
           const canOpen = canOpenCharacterSheet(character)
           return (
             <tr className={selectedCharacterId === character.id ? 'is-selected' : ''}>
@@ -176,28 +205,8 @@ export function CharacterListPage() {
                 </button>
                 <p className="data-table-secondary">{character.nickname || 'no nickname'}</p>
               </td>
-              <td>
-                <span className={`member-state-badge character-state-badge is-${String(character.characterStatus || 'neutral').toLowerCase()}`}>
-                  <Icon
-                    name={
-                      character.characterStatus === 'ACTIVE'
-                        ? 'fa-solid fa-circle-check'
-                        : character.characterStatus === 'RETIRED'
-                          ? 'fa-solid fa-hourglass-half'
-                          : character.characterStatus === 'DEAD'
-                            ? 'fa-solid fa-circle-xmark'
-                            : 'fa-solid fa-circle-info'
-                    }
-                  />
-                  <span>{character.characterStatus || 'N/A'}</span>
-                </span>
-              </td>
-              <td>
-                <span className={`character-kind-badge ${character.isNpc ? 'is-npc' : 'is-pg'}`}>
-                  <Icon name={character.isNpc ? 'fa-solid fa-mask' : 'fa-solid fa-user'} />
-                  <span>{character.isNpc ? 'NPC' : 'PG'}</span>
-                </span>
-              </td>
+              <td>{characterStatusBadge(character.characterStatus)}</td>
+              <td>{characterTypeBadge(character.isNpc)}</td>
               <td className="data-table-secondary">{campaignNameForCharacter(character)}</td>
               <td className="data-table-secondary">{ownerProfileLabel(character.userId, character.ownerProfileName)}</td>
               <td>
@@ -213,6 +222,61 @@ export function CharacterListPage() {
                 </button>
               </td>
             </tr>
+          )
+        }}
+        renderMobileCard={(character) => {
+          const canOpen = canOpenCharacterSheet(character)
+          return (
+            <article className={`rounded-lg border border-white/10 bg-white/4 p-4 shadow-sm ${selectedCharacterId === character.id ? 'ring-1 ring-amber-400/35' : ''}`}>
+              <div className="grid gap-3">
+                <div className="grid gap-1">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-base font-semibold text-[var(--text)]">{character.name}</p>
+                      <p className="text-sm text-[var(--muted)]">{character.nickname || 'no nickname'}</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="character-edit-btn shrink-0"
+                      onClick={() => onSelectCharacter(character)}
+                      disabled={!canOpen}
+                      aria-label={canOpen ? `Modifica scheda ${character.name}` : `Scheda non modificabile ${character.name}`}
+                      title={canOpen ? 'Modifica scheda' : 'Scheda non modificabile'}
+                    >
+                      <Icon name={canOpen ? 'fa-solid fa-pen' : 'fa-solid fa-lock'} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 text-sm max-[360px]:grid-cols-1">
+                  <div className="grid gap-1">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--muted)]">Stato</p>
+                    {characterStatusBadge(character.characterStatus)}
+                  </div>
+                  <div className="grid gap-1">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--muted)]">Tipo</p>
+                    {characterTypeBadge(character.isNpc)}
+                  </div>
+                  <div className="grid gap-1">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--muted)]">Campagna</p>
+                    <p className="text-sm text-[var(--text-soft)]">{campaignNameForCharacter(character)}</p>
+                  </div>
+                  <div className="grid gap-1">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--muted)]">Profilo</p>
+                    <p className="text-sm text-[var(--text-soft)]">{ownerProfileLabel(character.userId, character.ownerProfileName)}</p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className={`w-full justify-center ${canOpen ? 'secondary-btn' : 'secondary-btn opacity-60'}`}
+                  onClick={() => onSelectCharacter(character)}
+                  disabled={!canOpen}
+                >
+                  {canOpen ? 'Apri scheda' : 'Scheda non disponibile'}
+                </button>
+              </div>
+            </article>
           )
         }}
       />

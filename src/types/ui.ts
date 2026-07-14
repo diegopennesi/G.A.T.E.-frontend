@@ -119,7 +119,6 @@ export const NAVIGATION_SECTIONS: NavigationSection[] = [
       'Scheda Campagna',
       'Approvazione Accessi',
       'Gestione Campagna',
-      'Stanze',
       'Modifica Profilo',
       'Scheda PG',
       'Crea Personaggio',

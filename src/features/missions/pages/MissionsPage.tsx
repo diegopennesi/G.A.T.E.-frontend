@@ -4,7 +4,7 @@ import { MultiSelect } from 'primereact/multiselect'
 import { Skeleton } from 'primereact/skeleton'
 import { useMissionContext } from '../../../context'
 import { MissionChatPanel } from '../../chat'
-import { ConfirmActionDialog, DataTable, FieldLabel, Icon } from '../../../shared/components'
+import { BadgeGroup, ConfirmActionDialog, FieldLabel, Icon, KeyValueGrid, MobileDataCard, ResponsiveDataList } from '../../../shared/components'
 import { gameSystemIconName } from '../../../shared/utils'
 import { shareMissionOnWhatsApp } from '../utils/whatsappShare'
 import type {
@@ -536,6 +536,26 @@ export function MissionsPage() {
     onCloseMissionChat()
   }, [isDetailVisible, onCloseMissionChat, selectedMission])
 
+  const openMissionSummary = (mission: MissionResponse) => {
+    onSelectMission(mission.id)
+    onCloseMissionChat()
+    setEditingMissionId(null)
+    setMode('browse')
+    setIsDetailVisible(true)
+    setDetailPane('summary')
+    setChatReturnTarget('summary')
+  }
+
+  const openMissionChat = (mission: MissionResponse) => {
+    onSelectMission(mission.id)
+    setEditingMissionId(null)
+    setMode('browse')
+    setIsDetailVisible(true)
+    setDetailPane('chat')
+    setChatReturnTarget('list')
+    onOpenMissionChat(mission.campaignId, mission.id)
+  }
+
   const submitCreate = () => {
     const payload = missionDraftToPayload(createDraft, setCreateError)
     if (!payload) return
@@ -903,8 +923,9 @@ export function MissionsPage() {
           </div>
         )}
 
-        <DataTable
-          className="mission-participants-table"
+        <ResponsiveDataList
+          desktopClassName="mission-participants-table"
+          mobileListClassName="mission-participants-mobile-list"
           columns={[
             { key: 'user', label: 'Giocatore', sortKey: 'user' },
             { key: 'character', label: 'Personaggio' },
@@ -917,7 +938,7 @@ export function MissionsPage() {
           onSortChange={handleParticipantSortChange}
           getRowKey={(participant) => `${participant.missionId}-${participant.userId}-${participant.characterId}`}
           emptyMessage="Nessun giocatore in missione."
-          renderRow={(participant) => (
+          renderDesktopRow={(participant) => (
             <tr>
               <td>
                 <div className="data-table-primary">
@@ -932,6 +953,33 @@ export function MissionsPage() {
               </td>
               <td className="data-table-muted">{formatMissionJoinedAt(participant.joinedAt)}</td>
             </tr>
+          )}
+          renderMobileCard={(participant) => (
+            <MobileDataCard
+              title={missionParticipantLabelByUserId[participant.userId] || participant.userId}
+              badges={
+                <BadgeGroup>
+                  <span className={`status ${participant.participationType === 'TITOLARE' ? 'status-success' : 'status-warning'}`}>
+                    {participationLabel(participant.participationType)}
+                  </span>
+                </BadgeGroup>
+              }
+            >
+              <KeyValueGrid
+                items={[
+                  {
+                    key: 'character',
+                    label: 'Personaggio',
+                    value: missionParticipantCharacterLabelById[participant.characterId] || participant.characterId,
+                  },
+                  {
+                    key: 'joinedAt',
+                    label: 'Iscrizione',
+                    value: formatMissionJoinedAt(participant.joinedAt),
+                  },
+                ]}
+              />
+            </MobileDataCard>
           )}
         />
 
@@ -1119,8 +1167,9 @@ export function MissionsPage() {
               <Skeleton height="5rem" borderRadius="8px" />
             </div>
           ) : (
-          <DataTable
-            className="mission-data-table"
+          <ResponsiveDataList
+            desktopClassName="mission-data-table"
+            mobileListClassName="mission-mobile-list"
             columns={[
               { key: 'title', label: 'Missione', sortKey: 'title', className: 'mission-title-col' },
               { key: 'session', label: 'Sessione', sortKey: 'session', className: 'mission-center-col' },
@@ -1138,7 +1187,7 @@ export function MissionsPage() {
             sortDirection={sortDirection}
             onSortChange={handleSortChange}
             selectedRowKey={selectedMission ? `${selectedMission.campaignId}-${selectedMission.id}` : null}
-            renderRow={(mission) => (
+            renderDesktopRow={(mission) => (
               <tr>
                 <td className="mission-title-cell">
                   <div className="data-table-primary">
@@ -1186,13 +1235,7 @@ export function MissionsPage() {
                         aria-label={`Apri chat missione ${mission.title}`}
                         onClick={(event) => {
                           event.stopPropagation()
-                          onSelectMission(mission.id)
-                          setEditingMissionId(null)
-                          setMode('browse')
-                          setIsDetailVisible(true)
-                          setDetailPane('chat')
-                          setChatReturnTarget('list')
-                          onOpenMissionChat(mission.campaignId, mission.id)
+                          openMissionChat(mission)
                         }}
                       >
                         <Icon name="fa-solid fa-comments" />
@@ -1210,13 +1253,7 @@ export function MissionsPage() {
                     aria-label={`Apri dettaglio missione ${mission.title}`}
                     onClick={(event) => {
                       event.stopPropagation()
-                      onSelectMission(mission.id)
-                      onCloseMissionChat()
-                      setEditingMissionId(null)
-                      setMode('browse')
-                      setIsDetailVisible(true)
-                      setDetailPane('summary')
-                      setChatReturnTarget('summary')
+                      openMissionSummary(mission)
                     }}
                   >
                     <Icon name="fa-solid fa-magnifying-glass" />
@@ -1225,113 +1262,88 @@ export function MissionsPage() {
                 </td>
               </tr>
             )}
-          />)}
-          {!showMissionSkeleton && (
-            <div className="mission-mobile-list" role="list" aria-label="Lista missioni">
-              {sortedMissions.length === 0 ? (
-                <div className="mission-mobile-empty">Nessuna missione corrisponde ai filtri.</div>
-              ) : (
-                sortedMissions.map((mission) => {
-                  const isSelected =
-                    selectedMission != null && selectedMission.id === mission.id && selectedMission.campaignId === mission.campaignId
-                  const canOpenChat = canOpenMissionChat(mission)
-                  return (
-                    <article
-                      key={`${mission.campaignId}-${mission.id}`}
-                      className={`mission-mobile-card ${isSelected ? 'is-selected' : ''}`}
-                      role="listitem"
+            renderMobileCard={(mission) => {
+              const isSelected =
+                selectedMission != null && selectedMission.id === mission.id && selectedMission.campaignId === mission.campaignId
+              const canOpenChat = canOpenMissionChat(mission)
+
+              return (
+                <article className={`mission-mobile-card ${isSelected ? 'is-selected' : ''}`}>
+                  <div className="mission-mobile-card-head">
+                    <div className="mission-mobile-title-block">
+                      <p className="mission-mobile-title">{mission.title}</p>
+                      <div className="mission-title-inline-badges">
+                        <span className="mission-participants-pill">
+                          <Icon name="fa-solid fa-people-group" />
+                          <span>{formatMissionParticipants(mission)}</span>
+                        </span>
+                        <span
+                          className={missionStatusClassName(mission.status)}
+                          title={missionStatusReasonLabel(mission.statusReason) || undefined}
+                        >
+                          <Icon name={missionStatusIcon(mission.status)} />
+                          {missionStatusLabel(mission.status)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mission-mobile-summary">
+                    <div className="mission-card-section">
+                      <p className="mission-card-label">Sessione</p>
+                      <p className="mission-card-value">{`${formatMissionShortDay(mission.sessionAt)} H ${formatMissionTime(mission.sessionAt)}`}</p>
+                    </div>
+                    <div className="mission-card-section">
+                      <p className="mission-card-label">Campagna</p>
+                      <p className="mission-card-value">{campaignNameById[mission.campaignId] || mission.campaignId}</p>
+                    </div>
+                    <div className="mission-card-section">
+                      <p className="mission-card-label">Modulo di gioco</p>
+                      <div className="mission-card-value">
+                        <span className="campaign-system-inline mission-module-chip">
+                          <Icon name={missionGameSystemIcon(campaignGameSystemById[mission.campaignId])} />
+                          <span>{missionGameSystemLabel(campaignGameSystemById[mission.campaignId])}</span>
+                        </span>
+                      </div>
+                    </div>
+                    <div className="mission-card-section">
+                      <p className="mission-card-label">Ruolo</p>
+                      <div className="mission-card-value">{missionRoleBadge(myMissionParticipationById[mission.id])}</div>
+                    </div>
+                  </div>
+
+                  <div className="mission-mobile-actions">
+                    <button
+                      type="button"
+                      className="mission-summary-row-btn mission-action-btn mission-mobile-action-btn"
+                      aria-label={`Apri dettaglio missione ${mission.title}`}
+                      onClick={() => openMissionSummary(mission)}
                     >
-                      <div className="mission-mobile-card-head">
-                        <div className="mission-mobile-title-block">
-                          <p className="mission-mobile-title">{mission.title}</p>
-                          <div className="mission-title-inline-badges">
-                            <span className="mission-participants-pill">
-                              <Icon name="fa-solid fa-people-group" />
-                              <span>{formatMissionParticipants(mission)}</span>
-                            </span>
-                            <span
-                              className={missionStatusClassName(mission.status)}
-                              title={missionStatusReasonLabel(mission.statusReason) || undefined}
-                            >
-                              <Icon name={missionStatusIcon(mission.status)} />
-                              {missionStatusLabel(mission.status)}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mission-mobile-summary">
-                        <div className="mission-card-section">
-                          <p className="mission-card-label">Sessione</p>
-                          <p className="mission-card-value">{`${formatMissionShortDay(mission.sessionAt)} H ${formatMissionTime(mission.sessionAt)}`}</p>
-                        </div>
-                        <div className="mission-card-section">
-                          <p className="mission-card-label">Campagna</p>
-                          <p className="mission-card-value">{campaignNameById[mission.campaignId] || mission.campaignId}</p>
-                        </div>
-                        <div className="mission-card-section">
-                          <p className="mission-card-label">Modulo di gioco</p>
-                          <div className="mission-card-value">
-                            <span className="campaign-system-inline mission-module-chip">
-                              <Icon name={missionGameSystemIcon(campaignGameSystemById[mission.campaignId])} />
-                              <span>{missionGameSystemLabel(campaignGameSystemById[mission.campaignId])}</span>
-                            </span>
-                          </div>
-                        </div>
-                        <div className="mission-card-section">
-                          <p className="mission-card-label">Ruolo</p>
-                          <div className="mission-card-value">{missionRoleBadge(myMissionParticipationById[mission.id])}</div>
-                        </div>
-                      </div>
-
-                      <div className="mission-mobile-actions">
-                        <button
-                          type="button"
-                          className="mission-summary-row-btn mission-action-btn mission-mobile-action-btn"
-                          aria-label={`Apri dettaglio missione ${mission.title}`}
-                          onClick={() => {
-                            onSelectMission(mission.id)
-                            onCloseMissionChat()
-                            setEditingMissionId(null)
-                            setMode('browse')
-                            setIsDetailVisible(true)
-                            setDetailPane('summary')
-                            setChatReturnTarget('summary')
-                          }}
-                        >
-                          <Icon name="fa-solid fa-magnifying-glass" />
-                          <span>Dettaglio</span>
-                        </button>
-                        <button
-                          type="button"
-                          className={`mission-action-btn mission-mobile-action-btn ${
-                            canOpenChat
-                              ? `mission-chat-row-btn ${selectedMissionChatId === mission.id ? 'is-active' : 'is-enabled'}`
-                              : 'mission-mobile-action-btn is-disabled'
-                          }`}
-                          aria-label={`Apri chat missione ${mission.title}`}
-                          disabled={!canOpenChat}
-                          onClick={() => {
-                            if (!canOpenChat) return
-                            onSelectMission(mission.id)
-                            setEditingMissionId(null)
-                            setMode('browse')
-                            setIsDetailVisible(true)
-                            setDetailPane('chat')
-                            setChatReturnTarget('list')
-                            onOpenMissionChat(mission.campaignId, mission.id)
-                          }}
-                        >
-                          <Icon name="fa-solid fa-comments" />
-                          <span>Chat</span>
-                        </button>
-                      </div>
-                    </article>
-                  )
-                })
-              )}
-            </div>
-          )}
+                      <Icon name="fa-solid fa-magnifying-glass" />
+                      <span>Dettaglio</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`mission-action-btn mission-mobile-action-btn ${
+                        canOpenChat
+                          ? `mission-chat-row-btn ${selectedMissionChatId === mission.id ? 'is-active' : 'is-enabled'}`
+                          : 'mission-mobile-action-btn is-disabled'
+                      }`}
+                      aria-label={`Apri chat missione ${mission.title}`}
+                      disabled={!canOpenChat}
+                      onClick={() => {
+                        if (!canOpenChat) return
+                        openMissionChat(mission)
+                      }}
+                    >
+                      <Icon name="fa-solid fa-comments" />
+                      <span>Chat</span>
+                    </button>
+                  </div>
+                </article>
+              )
+            }}
+          />)}
         </div>
         )}
         {isDetailVisible && renderMissionDetail()}

@@ -6293,7 +6293,9 @@ body {
 }
 
 .mission-mobile-list {
-  display: none;
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 1rem;
 }
 
 .mission-mobile-card {
@@ -6462,16 +6464,6 @@ body {
 
   .mission-chat-inline-badge {
     justify-content: center;
-  }
-
-  .mission-data-table {
-    display: none;
-  }
-
-  .mission-mobile-list {
-    display: grid;
-    gap: 0.85rem;
-    margin-top: 1rem;
   }
 }
 
