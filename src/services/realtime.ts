@@ -14,6 +14,8 @@ type StreamOptions = {
 }
 
 const CLEAN_CLOSE_RECONNECT_DELAY_MS = 30_000
+const MAX_RETRIES = 5
+const MAX_WAIT_MS = 30_000
 
 function parseSseMessages(buffer: string): { messages: StreamMessage[]; remainder: string } {
   const rawChunks = buffer.split(/\r?\n\r?\n/)
@@ -93,8 +95,28 @@ export function connectResourceInvalidationStream(options: StreamOptions) {
   const scheduleReconnect = (delayMs = 0, countRetry = true) => {
     if (stopped) return
     clearRetryTimer()
-    const backoff = delayMs > 0 ? delayMs : Math.min(15000, 1000 * 2 ** retryCount)
-    retryCount = countRetry ? Math.min(retryCount + 1, 4) : 0
+
+    if (!countRetry) {
+      // Clean close (server timeout) or post-refresh reconnect: reset backoff state.
+      retryCount = 0
+      const backoff = delayMs > 0 ? Math.min(delayMs, MAX_WAIT_MS) : 0
+      if (backoff > 0) {
+        console.log(`SSE: reconnecting in ${backoff}ms after clean close (retry count reset)`)
+      }
+      retryTimer = window.setTimeout(() => {
+        void connect()
+      }, backoff)
+      return
+    }
+
+    if (retryCount >= MAX_RETRIES) {
+      console.warn('SSE: max retries reached, stopping reconnection attempts')
+      return
+    }
+
+    retryCount += 1
+    const backoff = delayMs > 0 ? Math.min(delayMs, MAX_WAIT_MS) : Math.min(1000 * 2 ** retryCount, MAX_WAIT_MS)
+    console.log(`SSE: reconnecting in ${backoff}ms (attempt ${retryCount}/${MAX_RETRIES})`)
     retryTimer = window.setTimeout(() => {
       void connect()
     }, backoff)
