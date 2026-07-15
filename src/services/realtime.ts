@@ -13,7 +13,15 @@ type StreamOptions = {
   onOpen?: () => void
 }
 
-const CLEAN_CLOSE_RECONNECT_DELAY_MS = 30_000
+const parsePositiveNumber = (value: string | undefined, fallback: number) => {
+  const parsed = Number(value?.trim())
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+}
+
+const CLEAN_CLOSE_RECONNECT_DELAY_MS = parsePositiveNumber(
+  import.meta.env.VITE_REALTIME_CLEAN_RECONNECT_DELAY_MS as string | undefined,
+  300_000,
+)
 
 function parseSseMessages(buffer: string): { messages: StreamMessage[]; remainder: string } {
   const rawChunks = buffer.split(/\r?\n\r?\n/)
