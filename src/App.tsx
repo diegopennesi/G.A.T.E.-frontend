@@ -61,9 +61,9 @@ import {
   updateMission,
   updateMe,
 } from './services/gateApi'
-import { connectResourceInvalidationStream } from './services/realtime'
 import { applyRealtimeInvalidation, type RealtimeInvalidationActions, type RealtimeInvalidationState } from './services/realtimeInvalidation'
 import { invalidateQueriesForResourceEvent } from './services/realtimeQueryInvalidation'
+import { startRealtimeSleepMode } from './services/realtimeSleepMode'
 import { readOrFetchQuery } from './services/queryCache'
 import { queryClient } from './services/queryClient'
 import { adminQueries } from './services/queries/adminQueries'
@@ -1977,14 +1977,18 @@ function App() {
   }, [activeUserId, bootstrapScope])
 
   useEffect(() => {
-    if (!getAccessToken()) return
+    if (!activeUserId || !getAccessToken()) return
 
-    return connectResourceInvalidationStream({
+    const realtime = startRealtimeSleepMode({
       onInvalidate: handleRealtimeInvalidation,
       onUnauthorized: handleLogout,
       onError: (message) => addEvent(`Realtime: ${message}`, 'info'),
     })
-  }, [handleRealtimeInvalidation, activeUserId])
+
+    return () => {
+      realtime.stop()
+    }
+  }, [activeUserId, addEvent, handleLogout, handleRealtimeInvalidation])
 
   useEffect(() => {
     if (!profile || !getAccessToken()) {
