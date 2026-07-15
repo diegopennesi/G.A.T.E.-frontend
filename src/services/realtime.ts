@@ -13,6 +13,8 @@ type StreamOptions = {
   onOpen?: () => void
 }
 
+const CLEAN_CLOSE_RECONNECT_DELAY_MS = 30_000
+
 function parseSseMessages(buffer: string): { messages: StreamMessage[]; remainder: string } {
   const rawChunks = buffer.split(/\r?\n\r?\n/)
   const remainder = rawChunks.pop() || ''
@@ -88,11 +90,11 @@ export function connectResourceInvalidationStream(options: StreamOptions) {
     }
   }
 
-  const scheduleReconnect = (immediate = false) => {
+  const scheduleReconnect = (delayMs = 0, countRetry = true) => {
     if (stopped) return
     clearRetryTimer()
-    const backoff = immediate ? 0 : Math.min(15000, 1000 * 2 ** retryCount)
-    retryCount = Math.min(retryCount + 1, 4)
+    const backoff = delayMs > 0 ? delayMs : Math.min(15000, 1000 * 2 ** retryCount)
+    retryCount = countRetry ? Math.min(retryCount + 1, 4) : 0
     retryTimer = window.setTimeout(() => {
       void connect()
     }, backoff)
@@ -118,7 +120,7 @@ export function connectResourceInvalidationStream(options: StreamOptions) {
       if (response.status === 401) {
         try {
           await refreshSession()
-          scheduleReconnect(true)
+          scheduleReconnect(0, false)
         } catch {
           options.onUnauthorized()
         }
@@ -142,7 +144,7 @@ export function connectResourceInvalidationStream(options: StreamOptions) {
         }
       })
 
-      scheduleReconnect()
+      scheduleReconnect(CLEAN_CLOSE_RECONNECT_DELAY_MS, false)
     } catch (error) {
       if (stopped || abortController.signal.aborted) return
       const message = error instanceof Error ? error.message : 'Realtime stream interrotto'
