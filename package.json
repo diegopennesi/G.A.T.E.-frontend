@@ -10,8 +10,10 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "npm run test:cache && npm run build:app",
+    "build:app": "tsc -b && vite build",
     "lint": "eslint .",
+    "test:cache": "playwright test smoke-cache-realtime-contract.spec.ts",
     "preview": "vite preview"
   },
   "dependencies": {

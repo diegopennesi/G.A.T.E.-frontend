@@ -7,6 +7,7 @@ type RealtimeManagerOptions = {
   onUnauthorized: () => void
   onError?: (message: string) => void
   onOpen?: () => void
+  onResume?: () => void
 }
 
 type LeaderLease = {
@@ -23,6 +24,7 @@ const LEADER_KEY = 'gate_realtime_leader'
 const CHANNEL_NAME = 'gate-realtime'
 const LEASE_DURATION_MS = 15_000
 const LEASE_REFRESH_MS = 5_000
+const RESUME_REFRESH_THROTTLE_MS = 30_000
 
 function createTabId() {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
@@ -72,6 +74,7 @@ export function startRealtimeSleepMode(options: RealtimeManagerOptions): Realtim
   let ownsLeadership = false
   let streamStop: (() => void) | null = null
   let leaseRefreshTimer: number | null = null
+  let lastResumeRefreshAt = 0
 
   const clearLeaseRefreshTimer = () => {
     if (leaseRefreshTimer !== null) {
@@ -207,6 +210,16 @@ export function startRealtimeSleepMode(options: RealtimeManagerOptions): Realtim
     }
   }
 
+  const notifyResume = () => {
+    if (!getAccessToken() || document.visibilityState !== 'visible') return
+
+    const current = now()
+    if (current - lastResumeRefreshAt < RESUME_REFRESH_THROTTLE_MS) return
+
+    lastResumeRefreshAt = current
+    options.onResume?.()
+  }
+
   const handleVisibilityChange = () => {
     if (document.visibilityState !== 'visible') {
       ownsLeadership = false
@@ -216,6 +229,12 @@ export function startRealtimeSleepMode(options: RealtimeManagerOptions): Realtim
       return
     }
 
+    notifyResume()
+    syncLifecycle()
+  }
+
+  const handleWake = () => {
+    notifyResume()
     syncLifecycle()
   }
 
@@ -254,8 +273,8 @@ export function startRealtimeSleepMode(options: RealtimeManagerOptions): Realtim
   window.addEventListener('storage', handleStorage)
   window.addEventListener('pagehide', handlePageHide)
   window.addEventListener('beforeunload', handlePageHide)
-  window.addEventListener('focus', syncLifecycle)
-  window.addEventListener('online', syncLifecycle)
+  window.addEventListener('focus', handleWake)
+  window.addEventListener('online', handleWake)
   channel?.addEventListener('message', handleBroadcastMessage)
 
   syncLifecycle()
@@ -272,8 +291,8 @@ export function startRealtimeSleepMode(options: RealtimeManagerOptions): Realtim
       window.removeEventListener('storage', handleStorage)
       window.removeEventListener('pagehide', handlePageHide)
       window.removeEventListener('beforeunload', handlePageHide)
-      window.removeEventListener('focus', syncLifecycle)
-      window.removeEventListener('online', syncLifecycle)
+      window.removeEventListener('focus', handleWake)
+      window.removeEventListener('online', handleWake)
       channel?.removeEventListener('message', handleBroadcastMessage)
       channel?.close()
     },

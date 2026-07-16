@@ -1920,6 +1920,11 @@ function App() {
       loadCharactersForManagement,
       loadPendingForActiveCampaign,
       refreshPendingApplicationsForCampaign: async (targetCampaignId: string) => {
+        if (targetCampaignId === campaignId && canAccessCampaignManagement) {
+          await loadPendingForCampaign(targetCampaignId)
+          return
+        }
+
         const membership = campaignsForList.find((item) => item.id === targetCampaignId)
         const canManageTarget =
           membership?.membershipStatus === 'APPROVED' &&
@@ -1927,7 +1932,7 @@ function App() {
             membership.membershipRole === 'MASTER' ||
             membership.membershipRole === 'SUPER_MASTER')
         if (!canManageTarget) return
-        await loadPendingForCampaign(targetCampaignId, { force: true })
+        await loadPendingForCampaign(targetCampaignId)
       },
       loadAdminUsers,
       loadAdminCampaigns,
@@ -1951,6 +1956,7 @@ function App() {
     adminRealmsPageIndex,
     adminUsersPageIndex,
     campaignId,
+    canAccessCampaignManagement,
     isSystemSession,
     loadAdminCampaigns,
     loadAdminRealms,
@@ -1976,6 +1982,40 @@ function App() {
     applyRealtimeInvalidation(payload, realtimeStateRef.current, realtimeActionsRef.current)
   }, [activeUserId, bootstrapScope])
 
+  const refreshVisibleStateAfterResume = useCallback(() => {
+    const state = realtimeStateRef.current
+    const actions = realtimeActionsRef.current
+
+    if (state.activeUserId) {
+      void actions.refreshProfile({ force: true })
+    }
+
+    if (state.screen === 'Lista Campagne') {
+      void actions.loadDiscoverableCampaigns({ force: true })
+      return
+    }
+
+    if (state.screen === 'Ingresso') {
+      void actions.refreshPostLoginSummary({ force: true })
+      return
+    }
+
+    if (state.screen === 'Missioni') {
+      void actions.refreshMissions({ clearSelection: false, force: true })
+      return
+    }
+
+    if (state.screen === 'Approvazione Accessi') {
+      void actions.refreshCampaignBlock({ force: true })
+      void actions.loadPendingForActiveCampaign({ force: true })
+      return
+    }
+
+    if (state.screen === 'Scheda Campagna' || state.screen === 'Gestione Campagna' || state.screen === 'Stanze') {
+      void actions.refreshCampaignBlock({ force: true })
+    }
+  }, [])
+
   useEffect(() => {
     if (!activeUserId || !getAccessToken()) return
 
@@ -1983,12 +2023,13 @@ function App() {
       onInvalidate: handleRealtimeInvalidation,
       onUnauthorized: handleLogout,
       onError: (message) => addEvent(`Realtime: ${message}`, 'info'),
+      onResume: refreshVisibleStateAfterResume,
     })
 
     return () => {
       realtime.stop()
     }
-  }, [activeUserId, addEvent, handleLogout, handleRealtimeInvalidation])
+  }, [activeUserId, addEvent, handleLogout, handleRealtimeInvalidation, refreshVisibleStateAfterResume])
 
   useEffect(() => {
     if (!profile || !getAccessToken()) {

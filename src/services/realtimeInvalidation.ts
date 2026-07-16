@@ -12,15 +12,15 @@ export type RealtimeInvalidationState = {
 }
 
 export type RealtimeInvalidationActions = {
-  refreshProfile: () => Promise<void>
-  refreshPostLoginSummary: () => Promise<void>
-  refreshCampaignBlock: () => Promise<void>
+  refreshProfile: (options?: { force?: boolean }) => Promise<void>
+  refreshPostLoginSummary: (options?: { force?: boolean }) => Promise<void>
+  refreshCampaignBlock: (options?: { force?: boolean }) => Promise<void>
   refreshCharacterBlock: () => Promise<void>
-  refreshMissions: (options?: { clearSelection?: boolean }) => Promise<void>
+  refreshMissions: (options?: { clearSelection?: boolean; force?: boolean }) => Promise<void>
   refreshMissionChat: () => Promise<void>
-  loadDiscoverableCampaigns: () => Promise<void>
-  loadCharactersForManagement: () => Promise<void>
-  loadPendingForActiveCampaign: () => Promise<void>
+  loadDiscoverableCampaigns: (options?: { force?: boolean }) => Promise<void>
+  loadCharactersForManagement: (options?: { force?: boolean }) => Promise<void>
+  loadPendingForActiveCampaign: (options?: { force?: boolean }) => Promise<void>
   refreshPendingApplicationsForCampaign: (campaignId: string) => Promise<void>
   loadAdminUsers: (page: number, query?: string) => Promise<void>
   loadAdminCampaigns: (page: number) => Promise<void>
@@ -39,6 +39,7 @@ export function applyRealtimeInvalidation(
   const campaignKeyMatch = currentCampaignKey
     ? payload.keys.some((key) => key === currentCampaignKey || key.startsWith(`${currentCampaignKey}:`))
     : false
+  const campaignDetailsKeyMatch = currentCampaignKey ? keys.has(currentCampaignKey) : false
   const missionKeyMatch = payload.keys.some((key) => /^campaigns:[^:]+:missions(?:$|:)/.test(key))
   const missionChatKeyMatch = payload.keys.some((key) => /^campaigns:[^:]+:missions:[^:]+:chat$/.test(key))
   const missionParticipantsKeyMatch = payload.keys.some((key) => /^campaigns:[^:]+:missions:[^:]+:participants$/.test(key))
@@ -99,7 +100,7 @@ export function applyRealtimeInvalidation(
     return
   }
 
-  if (state.screen === 'Missioni' && (campaignKeyMatch || missionKeyMatch || missionParticipantsKeyMatch || characterKeyMatch)) {
+  if (state.screen === 'Missioni' && (campaignDetailsKeyMatch || missionKeyMatch || missionParticipantsKeyMatch || characterKeyMatch)) {
     void actions.refreshMissions({ clearSelection: true })
     return
   }

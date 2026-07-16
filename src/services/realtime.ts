@@ -20,7 +20,7 @@ const parsePositiveNumber = (value: string | undefined, fallback: number) => {
 
 const CLEAN_CLOSE_RECONNECT_DELAY_MS = parsePositiveNumber(
   import.meta.env.VITE_REALTIME_CLEAN_RECONNECT_DELAY_MS as string | undefined,
-  300_000,
+  5_000,
 )
 
 function parseSseMessages(buffer: string): { messages: StreamMessage[]; remainder: string } {
