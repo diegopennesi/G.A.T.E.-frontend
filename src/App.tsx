@@ -2388,6 +2388,14 @@ function App() {
       }
     }
 
+    if (value === 'Scheda PG' && !hasActivePlayerCharacterInActiveCampaign) {
+      return {
+        enabled: false,
+        title: 'Crea prima un tuo personaggio nella campagna attiva',
+        showOverlayX: false,
+      }
+    }
+
     if (moduleCode && hasActiveCampaign && !hasRequiredModule) {
       return {
         enabled: false,
