@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Checkbox } from 'primereact/checkbox'
 import { Dialog } from 'primereact/dialog'
 import { Dropdown, type DropdownChangeEvent } from 'primereact/dropdown'
 import { Icon } from '../../../shared/components'
@@ -43,16 +42,6 @@ type CampaignActionButtonConfig = {
 
 function buildReleaseNotesKey(userId: string) {
   return `gate_release_notes_hidden:${userId}:${POST_LOGIN_RELEASE_NOTES.version}`
-}
-
-function clearOldReleaseNotesKeys(userId: string) {
-  const prefix = `gate_release_notes_hidden:${userId}:`
-  const activeKey = buildReleaseNotesKey(userId)
-  for (let index = localStorage.length - 1; index >= 0; index -= 1) {
-    const key = localStorage.key(index)
-    if (!key || !key.startsWith(prefix) || key === activeKey) continue
-    localStorage.removeItem(key)
-  }
 }
 
 function isApprovedStatus(status: CampaignMemberStatus | null) {
@@ -199,24 +188,36 @@ export function PostLoginLandingPage({
   onApplyToCampaign,
   onCreateCampaign,
 }: PostLoginLandingPageProps) {
-  const [isReleaseNotesOpen, setIsReleaseNotesOpen] = useState(false)
-  const [hideReleaseNotes, setHideReleaseNotes] = useState(false)
+  const releaseNotesStorageKey = currentUserId.trim() ? buildReleaseNotesKey(currentUserId) : ''
+  const [isReleaseNotesOpen, setIsReleaseNotesOpen] = useState(
+    () => Boolean(releaseNotesStorageKey && localStorage.getItem(releaseNotesStorageKey) !== '1'),
+  )
+  const [hideReleaseNotes, setHideReleaseNotes] = useState(
+    () => Boolean(releaseNotesStorageKey && localStorage.getItem(releaseNotesStorageKey) === '1'),
+  )
   const [selectedUnifiedCampaignId, setSelectedUnifiedCampaignId] = useState<string>('')
   const [selectedMemberCampaignId, setSelectedMemberCampaignId] = useState<string>('')
   const [selectedRequestCampaignId, setSelectedRequestCampaignId] = useState<string>('')
 
   useEffect(() => {
     if (!currentUserId.trim()) return
-    clearOldReleaseNotesKeys(currentUserId)
-    setHideReleaseNotes(false)
-    setIsReleaseNotesOpen(localStorage.getItem(buildReleaseNotesKey(currentUserId)) !== '1')
-  }, [currentUserId])
+    const isHidden = releaseNotesStorageKey ? localStorage.getItem(releaseNotesStorageKey) === '1' : false
+    setHideReleaseNotes(isHidden)
+    setIsReleaseNotesOpen(!isHidden)
+  }, [currentUserId, releaseNotesStorageKey])
 
   const closeReleaseNotes = () => {
-    if (hideReleaseNotes && currentUserId.trim()) {
-      localStorage.setItem(buildReleaseNotesKey(currentUserId), '1')
-    }
     setIsReleaseNotesOpen(false)
+  }
+
+  const setReleaseNotesHidden = (hidden: boolean) => {
+    setHideReleaseNotes(hidden)
+    if (!currentUserId.trim()) return
+    if (hidden) {
+      localStorage.setItem(releaseNotesStorageKey, '1')
+      return
+    }
+    localStorage.removeItem(releaseNotesStorageKey)
   }
 
   const accessibleCampaigns = useMemo(
@@ -290,14 +291,15 @@ export function PostLoginLandingPage({
         draggable={false}
         resizable={false}
         dismissableMask={false}
-        onHide={() => setIsReleaseNotesOpen(false)}
+        onHide={closeReleaseNotes}
         footer={(
           <div className="release-notes-footer">
             <label className="release-notes-checkbox">
-              <Checkbox
-                inputId="release-notes-hide"
+              <input
+                id="release-notes-hide"
+                type="checkbox"
                 checked={hideReleaseNotes}
-                onChange={(event) => setHideReleaseNotes(Boolean(event.checked))}
+                onChange={(event) => setReleaseNotesHidden(event.target.checked)}
               />
               <span>Non mostrare piu</span>
             </label>
@@ -391,8 +393,8 @@ export function PostLoginLandingPage({
               </div>
 
               <Dropdown
-                className="post-login-dropdown"
-                panelClassName="post-login-dropdown-panel"
+                className="surface-field post-login-dropdown"
+                panelClassName="surface-field-panel post-login-dropdown-panel"
                 options={unifiedOptions}
                 optionLabel="title"
                 optionValue="id"
@@ -452,8 +454,8 @@ export function PostLoginLandingPage({
               </div>
 
               <Dropdown
-                className="post-login-dropdown"
-                panelClassName="post-login-dropdown-panel"
+                className="surface-field post-login-dropdown"
+                panelClassName="surface-field-panel post-login-dropdown-panel"
                 options={accessibleOptions}
                 optionLabel="title"
                 optionValue="id"
@@ -490,8 +492,8 @@ export function PostLoginLandingPage({
               </div>
 
               <Dropdown
-                className="post-login-dropdown"
-                panelClassName="post-login-dropdown-panel"
+                className="surface-field post-login-dropdown"
+                panelClassName="surface-field-panel post-login-dropdown-panel"
                 options={requestableOptions}
                 optionLabel="title"
                 optionValue="id"

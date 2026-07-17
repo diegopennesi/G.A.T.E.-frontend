@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
-import { MultiSelect } from 'primereact/multiselect'
 import { Skeleton } from 'primereact/skeleton'
 import { useMissionContext } from '../../../context'
 import { MissionChatPanel } from '../../chat'
@@ -361,7 +360,7 @@ export function MissionsPage() {
   const [createError, setCreateError] = useState('')
   const [searchText, setSearchText] = useState('')
   const [campaignFilters, setCampaignFilters] = useState<Record<string, string>>({})
-  const [missionViewFilters, setMissionViewFilters] = useState<MissionViewFilter[]>(['active'])
+  const [missionViewFilter, setMissionViewFilter] = useState<MissionViewFilter>('active')
   const [sortBy, setSortBy] = useState<MissionSortKey>('session')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
   const [participantSortBy, setParticipantSortBy] = useState<MissionParticipantSortKey>('user')
@@ -382,7 +381,7 @@ export function MissionsPage() {
   const selectedMissionInActiveCampaign = Boolean(selectedMission && selectedMission.campaignId === activeCampaignId)
   const canShareSelectedMission = Boolean(selectedMission) && selectedMissionInActiveCampaign
   const campaignFilter = activeCampaignId ? campaignFilters[activeCampaignId] || 'all' : 'all'
-  const activeMissionView = missionViewFilters[0] || 'active'
+  const activeMissionView = missionViewFilter
   const showExpired = activeMissionView === 'expired'
   const showCompleted = activeMissionView === 'completed'
   const selectedMissionStarted = Boolean(
@@ -1118,28 +1117,20 @@ export function MissionsPage() {
         )}
         <label className="member-filter-field mission-view-filter">
           <span className="muted">Vista</span>
-          <MultiSelect
-            className="member-filter-select"
-            panelClassName="member-filter-select-panel"
-            value={missionViewFilters}
-            options={MISSION_VIEW_FILTER_OPTIONS}
-            optionLabel="label"
-            optionValue="value"
+          <select
+            className="surface-field mission-view-select"
+            value={missionViewFilter}
             onChange={(event) => {
               setNow(Date.now())
-              const nextValues = (event.value as MissionViewFilter[]).slice(-1)
-              setMissionViewFilters(nextValues)
+              setMissionViewFilter(event.target.value as MissionViewFilter)
             }}
-            placeholder="Vista"
-            maxSelectedLabels={1}
-            selectedItemsLabel="{0} selezionata"
-            itemTemplate={(option: MissionFilterOption) => (
-              <span className="member-filter-option-copy">
-                <Icon name={option.icon} />
-                <span>{option.label}</span>
-              </span>
-            )}
-          />
+          >
+            {MISSION_VIEW_FILTER_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
         </label>
       </div>
 

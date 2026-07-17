@@ -104,6 +104,8 @@ import type {
 const CAMPAIGN_ID_KEY = 'gate_campaign_id'
 const KNOWN_CAMPAIGNS_KEY = 'gate_known_campaign_ids'
 const KNOWN_CAMPAIGN_META_KEY = 'gate_known_campaign_meta'
+const SELECTED_CHARACTER_ID_KEY = 'gate_selected_character_id'
+const SELECTED_MISSION_ID_KEY = 'gate_selected_mission_id'
 const THEME_KEY = 'gate_theme'
 const PENDING_APPLICATIONS_CACHE_KEY = 'gate_pending_applications_cache'
 
@@ -120,6 +122,10 @@ function publicProfileDisplayName(profile: Pick<UserProfile, 'profileName' | 'us
 
 function readPendingApplicationsCache(userId?: string | null): Record<string, CampaignApplicationResponse[]> {
   return readStoredJson(sessionStorage, scopedStorageKey(PENDING_APPLICATIONS_CACHE_KEY, userId), {})
+}
+
+function scopedCampaignRouteStorageKey(baseKey: string, userId: string | null | undefined, campaignId: string | null | undefined) {
+  return scopedStorageKey(`${baseKey}:${campaignId?.trim() || 'no-campaign'}`, userId)
 }
 
 function writePendingApplicationsForCampaign(
@@ -328,6 +334,7 @@ function App() {
   const [postLoginLoading, setPostLoginLoading] = useState(false)
   const [postLoginError, setPostLoginError] = useState('')
   const [campaignMembershipsLoaded, setCampaignMembershipsLoaded] = useState(false)
+  const [routeContextHydratedForUserId, setRouteContextHydratedForUserId] = useState<string | null>(null)
   const missionShareTargetRef = useRef<MissionShareTarget | null>(null)
   const missionShareTargetAppliedRef = useRef(false)
   const missionShareTargetActivationStartedRef = useRef(false)
@@ -411,6 +418,9 @@ function App() {
   }, [])
 
   useEffect(() => {
+    const accessTokenPresent = Boolean(getAccessToken())
+    if (!profile && accessTokenPresent) return
+
     const nextPath = buildPathForState({
       realmCode,
       authMode,
@@ -673,44 +683,6 @@ function App() {
     missionShareTargetActivationStartedRef.current = false
   }, [activeUserId, campaignId, campaignMembershipsLoaded, missions, myCampaigns, profile, screen, setScreen, setSelectedMissionId])
 
-  const run = async (label: string, task: () => Promise<void>) => {
-    setBusy(true)
-    setError('')
-    try {
-      await task()
-      addEvent(label, 'ok')
-    } catch (err) {
-      const message = toMessage(err)
-      setError(message)
-      addEvent(`${label}: ${message}`, 'error')
-      if (isUnauthorized(err)) {
-        handleLogout()
-      }
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const runResult = async <T,>(label: string, task: () => Promise<T>): Promise<T> => {
-    setBusy(true)
-    setError('')
-    try {
-      const result = await task()
-      addEvent(label, 'ok')
-      return result
-    } catch (err) {
-      const message = toMessage(err)
-      setError(message)
-      addEvent(`${label}: ${message}`, 'error')
-      if (isUnauthorized(err)) {
-        handleLogout()
-      }
-      throw err
-    } finally {
-      setBusy(false)
-    }
-  }
-
     const normalizeLegacyInvitePreview = (preview: CampaignInvitePreviewResponse): InviteAccessPreview => ({
     campaignId: preview.id,
     campaignName: preview.name,
@@ -751,23 +723,6 @@ function App() {
     }
     const preview = await previewInviteToken(trimmed)
     return normalizeTokenInvitePreview(preview)
-  }
-
-  const loadCharacterDetailBlock = async (targetCampaignId: string, targetCharacterId: string) => {
-    const [detailValue, sheetValue] = await Promise.all([
-      readOrFetchQuery(queryClient, characterQueries.detail(targetCampaignId, targetCharacterId)),
-      readOrFetchQuery(queryClient, characterQueries.sheet(targetCampaignId, targetCharacterId)),
-    ])
-    setCharacterDetail(detailValue)
-    setCharacterSheetDetail(sheetValue)
-  }
-
-  const refreshCharacterBlock = async () => {
-    const targetCampaignId = selectedCharacter?.campaignId || campaignId
-    if (!targetCampaignId || !selectedCharacterId) return
-    await run('Scheda personaggio caricata', async () => {
-      await loadCharacterDetailBlock(targetCampaignId, selectedCharacterId)
-    })
   }
 
   const loadAdminUsers = async (page: number, query = adminUsersSearch) => {
@@ -1207,11 +1162,73 @@ function App() {
     setPostLoginLoading(false)
     setPostLoginError('')
     setCampaignMembershipsLoaded(false)
+    setRouteContextHydratedForUserId(null)
     missionShareTargetRef.current = null
     missionShareTargetAppliedRef.current = false
     missionShareTargetActivationStartedRef.current = false
     addEvent('Logout eseguito', 'info')
   }, [addEvent, logout])
+
+  const run = useCallback(
+    async (label: string, task: () => Promise<void>) => {
+      setBusy(true)
+      setError('')
+      try {
+        await task()
+        addEvent(label, 'ok')
+      } catch (err) {
+        const message = toMessage(err)
+        setError(message)
+        addEvent(`${label}: ${message}`, 'error')
+        if (isUnauthorized(err)) {
+          handleLogout()
+        }
+      } finally {
+        setBusy(false)
+      }
+    },
+    [addEvent, handleLogout, setBusy, setError],
+  )
+
+  const runResult = useCallback(
+    async <T,>(label: string, task: () => Promise<T>): Promise<T> => {
+      setBusy(true)
+      setError('')
+      try {
+        const result = await task()
+        addEvent(label, 'ok')
+        return result
+      } catch (err) {
+        const message = toMessage(err)
+        setError(message)
+        addEvent(`${label}: ${message}`, 'error')
+        if (isUnauthorized(err)) {
+          handleLogout()
+        }
+        throw err
+      } finally {
+        setBusy(false)
+      }
+    },
+    [addEvent, handleLogout, setBusy, setError],
+  )
+
+  const loadCharacterDetailBlock = useCallback(async (targetCampaignId: string, targetCharacterId: string) => {
+    const [detailValue, sheetValue] = await Promise.all([
+      readOrFetchQuery(queryClient, characterQueries.detail(targetCampaignId, targetCharacterId)),
+      readOrFetchQuery(queryClient, characterQueries.sheet(targetCampaignId, targetCharacterId)),
+    ])
+    setCharacterDetail(detailValue)
+    setCharacterSheetDetail(sheetValue)
+  }, [])
+
+  const refreshCharacterBlock = useCallback(async () => {
+    const targetCampaignId = selectedCharacter?.campaignId || campaignId
+    if (!targetCampaignId || !selectedCharacterId) return
+    await run('Scheda personaggio caricata', async () => {
+      await loadCharacterDetailBlock(targetCampaignId, selectedCharacterId)
+    })
+  }, [campaignId, loadCharacterDetailBlock, run, selectedCharacter?.campaignId, selectedCharacterId])
 
   const clearCampaignWorkspace = () => {
       setCampaign(null)
@@ -1444,10 +1461,8 @@ function App() {
   }
 
   const detachActiveCampaign = () => {
-    if (!campaignId.trim()) return
-    rememberCampaignId('')
-    clearCampaignWorkspace()
-    setScreen('Ingresso')
+    setScreen('Lista Campagne')
+    setIsSidebarOpen(false)
   }
 
   useEffect(() => {
@@ -1692,13 +1707,62 @@ function App() {
 
   const activeCampaignListEntry = campaignId ? campaignsForList.find((item) => item.id === campaignId) : undefined
   const activeCampaignIsEnabled = isSystemRole || campaign?.isActive === true || activeCampaignListEntry?.isActive === true
-  const hasActiveCampaign =
-    activeCampaignIsEnabled &&
-    (myCampaigns.some((item) => item.campaignId === campaignId && item.memberStatus === 'APPROVED') ||
-      campaignsForList.some((item) => item.id === campaignId && item.membershipStatus === 'APPROVED'))
+  const routeContextHydrated = Boolean(activeUserId && routeContextHydratedForUserId === activeUserId)
+  const activeCampaignDetailLoaded = Boolean(
+    campaignId.trim() && (campaign?.id === campaignId || campaignDetailsById[campaignId]),
+  )
+  const hasActiveCampaign = Boolean(campaignId.trim())
+  useEffect(() => {
+    if (!routeContextHydrated) return
+    if (!activeUserId) return
+    if (!getAccessToken()) return
+    const targetCampaignId = campaignId.trim()
+    if (!targetCampaignId) return
+    if (campaign?.id === targetCampaignId) return
+
+    let cancelled = false
+    void (async () => {
+      try {
+        await loadCampaignBlockFor({ campaignId: targetCampaignId, force: true })
+      } catch (err) {
+        if (cancelled) return
+        if (err instanceof ApiError && err.status === 404) {
+          rememberCampaignId('')
+          clearCampaignWorkspace()
+          if (screen !== 'Lista Campagne') {
+            setScreen('Lista Campagne')
+          }
+          return
+        }
+        const message = toMessage(err)
+        setError(message)
+        addEvent(`Campagna attiva: ${message}`, 'error')
+        if (isUnauthorized(err)) handleLogout()
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    activeUserId,
+    addEvent,
+    campaign?.id,
+    campaignId,
+    clearCampaignWorkspace,
+    handleLogout,
+    loadCampaignBlockFor,
+    rememberCampaignId,
+    routeContextHydrated,
+    screen,
+    setError,
+    setScreen,
+  ])
   useEffect(() => {
     if (isSystemRole) return
     if (!campaignId.trim()) return
+    if (!routeContextHydrated) return
+    if (!activeCampaignDetailLoaded) return
     if (activeCampaignIsEnabled) return
     if (campaign?.isActive !== false && activeCampaignListEntry?.isActive !== false) return
 
@@ -1710,14 +1774,25 @@ function App() {
       setScreen('Lista Campagne')
     }
     /* eslint-enable react-hooks/set-state-in-effect */
-  }, [activeCampaignIsEnabled, activeCampaignListEntry?.isActive, campaign?.isActive, campaignId, isSystemRole, screen])
+  }, [
+    activeCampaignDetailLoaded,
+    activeCampaignIsEnabled,
+    activeCampaignListEntry?.isActive,
+    campaign?.isActive,
+    campaignId,
+    isSystemRole,
+    routeContextHydrated,
+    screen,
+  ])
   useEffect(() => {
     if (hasActiveCampaign) return
     if (!CAMPAIGN_ACTIVE_REQUIRED_SCREENS.includes(screen)) return
+    if (!routeContextHydrated) return
+    if (campaignId.trim() && !activeCampaignDetailLoaded) return
     // Navigation guard: keep campaign-scoped screens behind an active campaign.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setScreen('Lista Campagne')
-  }, [screen, hasActiveCampaign])
+  }, [activeCampaignDetailLoaded, campaignId, hasActiveCampaign, routeContextHydrated, screen])
 
   useEffect(() => {
     if (screen !== 'Approvazione Accessi') return
@@ -1759,15 +1834,18 @@ function App() {
   }, [screen, campaignId])
 
   useEffect(() => {
+    if (!routeContextHydrated) return
     if (screen !== 'Scheda PG') return
     if (!selectedCharacterId) {
-      // Navigation guard: character detail requires a selected character.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setScreen('Gestione Personaggi')
-      return
+      if (activeCampaignCharacterId) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setSelectedCharacterId(activeCampaignCharacterId)
+      } else {
+        return
+      }
     }
     void refreshCharacterBlock()
-  }, [screen, selectedCharacterId, campaignId])
+  }, [activeCampaignCharacterId, refreshCharacterBlock, routeContextHydrated, screen, selectedCharacterId, setSelectedCharacterId])
 
   useEffect(() => {
     if (!getAccessToken()) return
@@ -2142,11 +2220,17 @@ function App() {
     const scopedCampaignId = localStorage.getItem(scopedCampaignKey)
     const nextCampaignId = scopedCampaignId || ''
 
+    const scopedSelectedCharacterKey = scopedCampaignRouteStorageKey(SELECTED_CHARACTER_ID_KEY, activeUserId, nextCampaignId)
+    const scopedSelectedMissionKey = scopedCampaignRouteStorageKey(SELECTED_MISSION_ID_KEY, activeUserId, nextCampaignId)
+
     const scopedKnownCampaignIds = readStoredJson<string[]>(localStorage, scopedKnownCampaignIdsKey, [])
     const nextKnownCampaignIds = scopedKnownCampaignIds
 
     const scopedKnownCampaignMeta = readStoredJson<KnownCampaignMeta[]>(localStorage, scopedKnownCampaignMetaKey, [])
     const nextKnownCampaignMeta = scopedKnownCampaignMeta
+
+    const scopedSelectedCharacterId = localStorage.getItem(scopedSelectedCharacterKey) || ''
+    const scopedSelectedMissionId = localStorage.getItem(scopedSelectedMissionKey) || ''
 
     const scopedPendingApplications = readPendingApplicationsCache(activeUserId)
     const nextPendingApplications = nextCampaignId ? scopedPendingApplications[nextCampaignId] || [] : []
@@ -2158,8 +2242,44 @@ function App() {
     setKnownCampaignMeta(nextKnownCampaignMeta)
     setPendingApplications(nextPendingApplications)
     setPendingApplicationsByCampaignId(scopedPendingApplications)
+    setSelectedCharacterId(scopedSelectedCharacterId)
+    setSelectedMissionId(scopedSelectedMissionId)
+    setRouteContextHydratedForUserId(activeUserId)
     /* eslint-enable react-hooks/set-state-in-effect */
-  }, [activeUserId, profile])
+  }, [
+    activeUserId,
+    profile,
+    setCampaignId,
+    setKnownCampaignIds,
+    setKnownCampaignMeta,
+    setPendingApplications,
+    setPendingApplicationsByCampaignId,
+    setSelectedCharacterId,
+    setSelectedMissionId,
+    setRouteContextHydratedForUserId,
+  ])
+
+  useEffect(() => {
+    if (!routeContextHydrated) return
+    if (!activeUserId) return
+    const scopedSelectedCharacterKey = scopedCampaignRouteStorageKey(SELECTED_CHARACTER_ID_KEY, activeUserId, campaignId)
+    if (selectedCharacterId) {
+      localStorage.setItem(scopedSelectedCharacterKey, selectedCharacterId)
+    } else {
+      localStorage.removeItem(scopedSelectedCharacterKey)
+    }
+  }, [activeUserId, campaignId, routeContextHydrated, selectedCharacterId])
+
+  useEffect(() => {
+    if (!routeContextHydrated) return
+    if (!activeUserId) return
+    const scopedSelectedMissionKey = scopedCampaignRouteStorageKey(SELECTED_MISSION_ID_KEY, activeUserId, campaignId)
+    if (selectedMissionId) {
+      localStorage.setItem(scopedSelectedMissionKey, selectedMissionId)
+    } else {
+      localStorage.removeItem(scopedSelectedMissionKey)
+    }
+  }, [activeUserId, campaignId, routeContextHydrated, selectedMissionId])
 
   if (realmAvailability === 'loading') {
     return <RealmStatusScreen realmCode={realmCode} state="loading" />
@@ -2273,14 +2393,6 @@ function App() {
         enabled: false,
         title: 'Modulo non attivo per la campagna',
         showOverlayX: true,
-      }
-    }
-
-    if (value === 'Scheda PG' && !selectedCharacter) {
-      return {
-        enabled: false,
-        title: 'Seleziona prima un personaggio',
-        showOverlayX: false,
       }
     }
 
@@ -3093,7 +3205,7 @@ function App() {
           <div className="system-nav-tabs" role="tablist" aria-label="Selettore dashboard sistema">
             <button
               type="button"
-              className={`system-nav-tab ${systemAdminView === 'users' ? 'is-active' : ''}`}
+              className={`surface-control system-nav-tab ${systemAdminView === 'users' ? 'is-active' : ''}`}
               onClick={() => {
                 setSystemAdminView('users')
                 if (!adminUsersPage) void loadAdminUsers(0)
@@ -3103,7 +3215,7 @@ function App() {
             </button>
             <button
               type="button"
-              className={`system-nav-tab ${systemAdminView === 'campaigns' ? 'is-active' : ''}`}
+              className={`surface-control system-nav-tab ${systemAdminView === 'campaigns' ? 'is-active' : ''}`}
               onClick={() => {
                 setSystemAdminView('campaigns')
                 if (!adminCampaignsPage) void loadAdminCampaigns(0)
@@ -3113,7 +3225,7 @@ function App() {
             </button>
             <button
               type="button"
-              className={`system-nav-tab ${systemAdminView === 'realms' ? 'is-active' : ''}`}
+              className={`surface-control system-nav-tab ${systemAdminView === 'realms' ? 'is-active' : ''}`}
               onClick={() => {
                 setSystemAdminView('realms')
                 if (!adminRealmsPage) void loadAdminRealms()
@@ -3123,7 +3235,7 @@ function App() {
             </button>
             <button
               type="button"
-              className={`system-nav-tab ${systemAdminView === 'realmAccess' ? 'is-active' : ''}`}
+              className={`surface-control system-nav-tab ${systemAdminView === 'realmAccess' ? 'is-active' : ''}`}
               onClick={() => {
                 setSystemAdminView('realmAccess')
                 if (!adminRealmsPage) {
@@ -3141,7 +3253,7 @@ function App() {
             </button>
             <button
               type="button"
-              className={`system-nav-tab ${systemAdminView === 'sheets' ? 'is-active' : ''}`}
+              className={`surface-control system-nav-tab ${systemAdminView === 'sheets' ? 'is-active' : ''}`}
               onClick={() => {
                 setSystemAdminView('sheets')
                 if (!adminSheetCatalogsLoaded) void loadAdminSheetCatalogs()
@@ -4400,16 +4512,14 @@ function App() {
                   </div>
                 </div>
                 <div className={`menu-section-grid ${section.label === 'Strumenti' ? 'is-compact' : ''}`}>
-                  {visibleItems.map(({ item, state: itemState }) => (
+                  {visibleItems
+                    .filter(({ item }) => !(hasActiveCampaign && item === 'Lista Campagne'))
+                    .map(({ item, state: itemState }) => (
                     <button
                       key={item}
                       type="button"
                       className={`menu-item ${screen === item ? 'is-active' : ''} ${requiresCampaignSelection(item) && !hasActiveCampaign ? 'is-gated' : ''} ${MODULE_REQUIRED_BY_SCREEN[item] && hasActiveCampaign && !(campaign?.allowedModules || []).includes(MODULE_REQUIRED_BY_SCREEN[item]!) ? 'is-module-disabled' : ''}`}
                       onClick={() => {
-                        if (item === 'Lista Campagne' && hasActiveCampaign) {
-                          goToScreen('Scheda Campagna')
-                          return
-                        }
                         goToScreen(item)
                       }}
                       title={itemState.title}

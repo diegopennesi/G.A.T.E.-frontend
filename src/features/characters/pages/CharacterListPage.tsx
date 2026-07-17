@@ -126,8 +126,8 @@ export function CharacterListPage() {
           <label className="member-filter-field">
             <span className="muted">Tipo</span>
             <MultiSelect
-              className="member-filter-select"
-              panelClassName="member-filter-select-panel"
+              className="surface-field member-filter-select"
+              panelClassName="surface-field-panel member-filter-select-panel"
               value={typeFilters}
               options={TYPE_FILTER_OPTIONS}
               optionLabel="label"
@@ -147,8 +147,8 @@ export function CharacterListPage() {
           <label className="member-filter-field">
             <span className="muted">Stato</span>
             <MultiSelect
-              className="member-filter-select"
-              panelClassName="member-filter-select-panel"
+              className="surface-field member-filter-select"
+              panelClassName="surface-field-panel member-filter-select-panel"
               value={statusFilters}
               options={STATUS_FILTER_OPTIONS}
               optionLabel="label"

@@ -8,7 +8,7 @@ export function GlobalApiLoader() {
 
   return (
     <div className="global-api-loader" role="status" aria-live="polite" aria-label={latestLabel || 'Caricamento in corso'}>
-      <div className="global-api-loader-card">
+      <div className="surface-card global-api-loader-card">
         <ProgressSpinner strokeWidth="4" style={{ width: '3rem', height: '3rem' }} />
         <div className="global-api-loader-copy">
           <strong>{latestLabel || 'Caricamento dati'}</strong>

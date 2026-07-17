@@ -132,6 +132,24 @@ export function useCampaignDataFlow(deps: CampaignDataFlowDeps) {
       const canManageMembersPermission = permissionValue.allowed
       const pendingValue = canManageMembersPermission ? await readPendingApplications(campaignId, { force }) : []
       const memberManagementValue = canManageMembersPermission ? await readMembersForManagement(campaignId, { force }) : []
+      const ownedActiveCharacter = deps.profileId
+        ? characterValue.find(
+            (character) =>
+              character.userId === deps.profileId &&
+              character.campaignId === campaignId &&
+              character.characterStatus === 'ACTIVE' &&
+              !character.isNpc,
+          )
+        : null
+      const ownedCharacter = deps.profileId
+        ? characterValue.find(
+            (character) =>
+              character.userId === deps.profileId &&
+              character.campaignId === campaignId &&
+              !character.isNpc,
+          )
+        : null
+      const preferredCharacterId = ownedActiveCharacter?.id || ownedCharacter?.id || characterValue[0]?.id || ''
 
       deps.setCampaign(campaignValue)
       deps.setCampaignDetailsById((prev) => ({ ...prev, [campaignValue.id]: campaignValue }))
@@ -143,7 +161,12 @@ export function useCampaignDataFlow(deps: CampaignDataFlowDeps) {
       deps.setCharacters(characterValue)
       deps.setMissions(missionValue.map((mission) => ({ ...mission, campaignId })))
       deps.setRooms(roomValue)
-      deps.setSelectedCharacterId((prev) => prev || characterValue[0]?.id || '')
+      deps.setSelectedCharacterId((prev) => {
+        if (prev && characterValue.some((character) => character.id === prev)) {
+          return prev
+        }
+        return preferredCharacterId
+      })
       deps.setSelectedMissionId('')
     },
     [deps, readMembersForManagement, readPendingApplications],

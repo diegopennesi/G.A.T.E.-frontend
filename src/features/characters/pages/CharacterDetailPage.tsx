@@ -231,7 +231,7 @@ export function CharacterDetailPage() {
                     const blockKey = block.key?.trim()
                     if (!blockKey) return null
                     return (
-                      <section key={blockKey} className="sheet-block">
+                      <section key={blockKey} className="surface-card sheet-block">
                         <div className="sheet-block-head">
                           <div>
                             <h4>{block.label || blockKey}</h4>

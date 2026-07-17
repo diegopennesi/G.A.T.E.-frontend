@@ -385,7 +385,7 @@ export function SystemCatalogsPage() {
                   draft.schemaJsonText !== JSON.stringify(item.schemaJson || {}, null, 2)
 
                 return (
-                  <article key={item.code} className="system-sheet-card">
+                  <article key={item.code} className="surface-card system-sheet-card">
                     <div className="system-sheet-card-head">
                       <div>
                         <div className="system-sheet-title-row">

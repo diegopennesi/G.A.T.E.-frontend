@@ -203,7 +203,7 @@ export function CampaignDetailPage() {
                   {canOpenManagement && (
                     <button
                       type="button"
-                      className="campaign-outline-action campaign-outline-action--gold min-w-0 w-full px-[clamp(0.38rem,1.8vw,0.72rem)] text-[clamp(0.56rem,2.35vw,0.78rem)] leading-tight gap-[clamp(0.16rem,1vw,0.34rem)]"
+                      className="surface-control campaign-outline-action campaign-outline-action--gold min-w-0 w-full px-[clamp(0.38rem,1.8vw,0.72rem)] text-[clamp(0.56rem,2.35vw,0.78rem)] leading-tight gap-[clamp(0.16rem,1vw,0.34rem)]"
                       onClick={onOpenManagement}
                     >
                       <Icon name="fa-solid fa-book-open" />
@@ -213,7 +213,7 @@ export function CampaignDetailPage() {
                   {canOpenCharacters && (
                     <button
                       type="button"
-                      className="campaign-outline-action campaign-outline-action--violet min-w-0 w-full px-[clamp(0.38rem,1.8vw,0.72rem)] text-[clamp(0.56rem,2.35vw,0.78rem)] leading-tight gap-[clamp(0.16rem,1vw,0.34rem)]"
+                      className="surface-control campaign-outline-action campaign-outline-action--violet min-w-0 w-full px-[clamp(0.38rem,1.8vw,0.72rem)] text-[clamp(0.56rem,2.35vw,0.78rem)] leading-tight gap-[clamp(0.16rem,1vw,0.34rem)]"
                       onClick={onOpenCharacters}
                     >
                       <Icon name="fa-solid fa-user" />
@@ -225,7 +225,7 @@ export function CampaignDetailPage() {
               {canOpenManagement && (
                 <button
                   type="button"
-                  className="campaign-outline-action campaign-outline-action--gold !hidden min-w-0 px-[clamp(0.55rem,2.5vw,1.05rem)] text-[clamp(0.72rem,3vw,0.94rem)] gap-[clamp(0.25rem,1.5vw,0.6rem)] md:!inline-flex"
+                  className="surface-control campaign-outline-action campaign-outline-action--gold !hidden min-w-0 px-[clamp(0.55rem,2.5vw,1.05rem)] text-[clamp(0.72rem,3vw,0.94rem)] gap-[clamp(0.25rem,1.5vw,0.6rem)] md:!inline-flex"
                   onClick={onOpenManagement}
                 >
                   <Icon name="fa-solid fa-book-open" />
@@ -235,7 +235,7 @@ export function CampaignDetailPage() {
               {canOpenCharacters && (
                 <button
                   type="button"
-                  className="campaign-outline-action campaign-outline-action--violet !hidden min-w-0 px-[clamp(0.55rem,2.5vw,1.05rem)] text-[clamp(0.72rem,3vw,0.94rem)] gap-[clamp(0.25rem,1.5vw,0.6rem)] md:!inline-flex"
+                  className="surface-control campaign-outline-action campaign-outline-action--violet !hidden min-w-0 px-[clamp(0.55rem,2.5vw,1.05rem)] text-[clamp(0.72rem,3vw,0.94rem)] gap-[clamp(0.25rem,1.5vw,0.6rem)] md:!inline-flex"
                   onClick={onOpenCharacters}
                 >
                   <Icon name="fa-solid fa-user" />
@@ -301,8 +301,8 @@ export function CampaignDetailPage() {
                   <label className="member-filter-field">
                     <span className="muted">Stato</span>
                     <MultiSelect
-                      className="member-filter-select"
-                      panelClassName="member-filter-select-panel"
+                      className="surface-field member-filter-select"
+                      panelClassName="surface-field-panel member-filter-select-panel"
                       value={statusFilters}
                       options={STATUS_FILTER_OPTIONS}
                       optionLabel="label"
@@ -322,8 +322,8 @@ export function CampaignDetailPage() {
                   <label className="member-filter-field">
                     <span className="muted">Grado</span>
                     <MultiSelect
-                      className="member-filter-select"
-                      panelClassName="member-filter-select-panel"
+                      className="surface-field member-filter-select"
+                      panelClassName="surface-field-panel member-filter-select-panel"
                       value={roleFilters}
                       options={ROLE_FILTER_OPTIONS}
                       optionLabel="label"
