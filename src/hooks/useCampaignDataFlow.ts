@@ -132,6 +132,18 @@ export function useCampaignDataFlow(deps: CampaignDataFlowDeps) {
       const canManageMembersPermission = permissionValue.allowed
       const pendingValue = canManageMembersPermission ? await readPendingApplications(campaignId, { force }) : []
       const memberManagementValue = canManageMembersPermission ? await readMembersForManagement(campaignId, { force }) : []
+      const currentMembership = deps.profileId
+        ? memberValue.find(
+            (membership) =>
+              membership.userId === deps.profileId &&
+              membership.campaignId === campaignId &&
+              membership.memberStatus === 'APPROVED',
+          ) || null
+        : null
+      const canKeepForeignCharacterSelection =
+        currentMembership?.role === 'CO_MASTER' ||
+        currentMembership?.role === 'MASTER' ||
+        currentMembership?.role === 'SUPER_MASTER'
       const ownedActiveCharacter = deps.profileId
         ? characterValue.find(
             (character) =>
@@ -149,7 +161,7 @@ export function useCampaignDataFlow(deps: CampaignDataFlowDeps) {
               !character.isNpc,
           )
         : null
-      const preferredCharacterId = ownedActiveCharacter?.id || ownedCharacter?.id || characterValue[0]?.id || ''
+      const preferredCharacterId = ownedActiveCharacter?.id || ownedCharacter?.id || ''
 
       deps.setCampaign(campaignValue)
       deps.setCampaignDetailsById((prev) => ({ ...prev, [campaignValue.id]: campaignValue }))
@@ -162,7 +174,10 @@ export function useCampaignDataFlow(deps: CampaignDataFlowDeps) {
       deps.setMissions(missionValue.map((mission) => ({ ...mission, campaignId })))
       deps.setRooms(roomValue)
       deps.setSelectedCharacterId((prev) => {
-        if (prev && characterValue.some((character) => character.id === prev)) {
+        if (canKeepForeignCharacterSelection && prev && characterValue.some((character) => character.id === prev)) {
+          return prev
+        }
+        if (prev && preferredCharacterId && prev === preferredCharacterId) {
           return prev
         }
         return preferredCharacterId
