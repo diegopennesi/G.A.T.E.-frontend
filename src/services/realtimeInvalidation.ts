@@ -27,6 +27,14 @@ export type RealtimeInvalidationActions = {
   loadAdminRealms: (page?: number, query?: string) => Promise<void>
   loadAdminRealmUserRoles: (realmId?: string) => Promise<void>
   loadAdminSheetCatalogs: () => Promise<void>
+  clearActiveCampaignContext: () => void
+}
+
+function parseCampaignIdFromKey(key: string): string | null {
+  const match = key.match(/^campaigns:([^:]+)(?::.*)?$/)
+  const campaignId = match?.[1]?.trim() || null
+  if (!campaignId || campaignId === 'discover') return null
+  return campaignId
 }
 
 export function applyRealtimeInvalidation(
@@ -36,6 +44,14 @@ export function applyRealtimeInvalidation(
 ): void {
   const keys = new Set(payload.keys)
   const currentCampaignKey = state.campaignId.trim() ? `campaigns:${state.campaignId}` : ''
+  const deactivatedCampaignId =
+    payload.reason === 'campaign.deactivated'
+      ? payload.keys.map((key) => parseCampaignIdFromKey(key)).find((value) => Boolean(value)) || null
+      : null
+  if (deactivatedCampaignId && deactivatedCampaignId === state.campaignId.trim()) {
+    actions.clearActiveCampaignContext()
+    return
+  }
   const campaignKeyMatch = currentCampaignKey
     ? payload.keys.some((key) => key === currentCampaignKey || key.startsWith(`${currentCampaignKey}:`))
     : false

@@ -118,6 +118,10 @@ export function CampaignListPage() {
       setInviteFeedback('Inserisci un codice o token invito.')
       return
     }
+    if (invitePreview && !invitePreview.isActive) {
+      setInviteFeedback('Campagna disattivata: accesso non disponibile.')
+      return
+    }
     setInviteBusy(true)
     setInviteFeedback('')
     try {
@@ -180,7 +184,12 @@ export function CampaignListPage() {
                   <Icon name="fa-solid fa-magnifying-glass" />
                   Verifica
                 </button>
-                <button type="button" className="primary-btn" onClick={applyCampaignByCode} disabled={inviteBusy}>
+                <button
+                  type="button"
+                  className="primary-btn"
+                  onClick={applyCampaignByCode}
+                  disabled={inviteBusy || (invitePreview ? !invitePreview.isActive : false)}
+                >
                   <Icon name="fa-solid fa-paper-plane" />
                   Richiedi accesso
                 </button>
@@ -202,6 +211,9 @@ export function CampaignListPage() {
                 </span>
                 <span className={`status ${invitePreview.isOpen ? 'status-success' : 'status-neutral'}`}>
                   {invitePreview.isOpen ? 'Aperta' : 'Chiusa'}
+                </span>
+                <span className={`status ${invitePreview.isActive ? 'status-success' : 'status-warning'}`}>
+                  {invitePreview.isActive ? 'Attiva' : 'Disattivata'}
                 </span>
               </div>
             </div>

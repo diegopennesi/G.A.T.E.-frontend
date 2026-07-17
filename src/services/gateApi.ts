@@ -258,6 +258,13 @@ export async function updateAdminCampaign(
   })
 }
 
+export async function deactivateAdminCampaign(campaignId: string): Promise<CampaignResponse> {
+  return apiRequest<CampaignResponse>(`/admin/campaigns/${campaignId}/deactivate`, {
+    method: 'POST',
+    realm: false,
+  })
+}
+
 export async function listAdminGameSystems(): Promise<CampaignCatalogEntry[]> {
   return apiRequest<CampaignCatalogEntry[]>('/admin/catalogs/game-systems', { realm: false })
 }
@@ -406,6 +413,12 @@ export async function updateCampaign(
       autoJoinEnabled: payload.autoJoinEnabled,
       allowedModules: payload.allowedModules ?? [],
     },
+  })
+}
+
+export async function deactivateCampaign(campaignId: string): Promise<CampaignResponse> {
+  return apiRequest<CampaignResponse>(`/campaigns/${campaignId}/deactivate`, {
+    method: 'POST',
   })
 }
 

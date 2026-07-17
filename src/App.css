@@ -2382,6 +2382,24 @@ textarea {
   gap: 14px;
 }
 
+.campaign-deactivate-panel {
+  width: min(640px, 100%);
+  gap: 14px;
+}
+
+.campaign-detail-danger-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 0 2px;
+}
+
+.campaign-detail-danger-action .danger-btn {
+  min-width: min(280px, 100%);
+  gap: 8px;
+  justify-content: center;
+}
+
 .leave-warning-box {
   border: 1px solid rgba(239, 143, 132, 0.28);
   background: rgba(239, 143, 132, 0.08);

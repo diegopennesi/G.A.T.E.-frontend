@@ -137,7 +137,7 @@ export function useBootstrapDataFlow(deps: BootstrapDataFlowDeps) {
         bootstrapQueries.discoverCampaigns({ userId: activeUserId, realmCode }),
         options,
       )
-      setDiscoverableCampaigns(list)
+      setDiscoverableCampaigns(list.filter((item) => item.isActive))
     },
     [activeUserId, realmCode, setDiscoverableCampaigns],
   )
@@ -169,7 +169,7 @@ export function useBootstrapDataFlow(deps: BootstrapDataFlowDeps) {
         try {
           const summary = await readOrFetchQuery(queryClient, summaryQuery, options)
           setPostLoginCanCreateCampaign(summary.canCreateCampaign)
-          setPostLoginCampaigns(summary.campaigns)
+          setPostLoginCampaigns(summary.campaigns.filter((item) => item.isActive))
         } catch (err) {
           const message = toMessage(err)
           setPostLoginError(message)

@@ -83,6 +83,7 @@ export type CampaignContextValue = {
   }) => void
   refreshPermissionChecklist: () => void
   transferCampaignOwnership: (newOwnerId: string) => void
+  deactivateCampaign: () => Promise<void>
   createCampaignInviteToken: (payload: CreateInviteTokenRequest) => Promise<InviteTokenResponse>
   selectedCampaignMember: CampaignMembershipResponse | null
   selectedCampaignMemberProfile: UserProfile | null

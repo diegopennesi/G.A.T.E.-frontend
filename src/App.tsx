@@ -28,6 +28,7 @@ import { useCampaignState } from './hooks/useCampaignState'
 import { useCampaignDataFlow } from './hooks/useCampaignDataFlow'
 import { useCampaignMutations } from './hooks/useCampaignMutations'
 import { useCampaignMemberMutations } from './hooks/useCampaignMemberMutations'
+import { buildCampaignsForList } from './features/campaigns/utils/campaignListModel'
 import { useCharacterState } from './hooks/useCharacterState'
 import { useCharacterMutations } from './hooks/useCharacterMutations'
 import { useMissionState } from './hooks/useMissionState'
@@ -81,7 +82,6 @@ import type {
   AdminUserPage,
   AuthSession,
   CampaignApplicationResponse,
-  CampaignDiscoverResponse,
   CampaignMembershipResponse,
   CampaignRole,
   CampaignResponse,
@@ -418,6 +418,23 @@ function App() {
   }, [])
 
   useEffect(() => {
+    if (getAccessToken()) return
+
+    const resolved = resolveRealmContextFromPath(window.location.pathname)
+    if (!resolved.screen) return
+
+    const nextPath = buildPathForState({
+      realmCode: resolved.realmCode,
+      authMode: resolved.authMode,
+      screen: 'Ingresso',
+      isAuthenticated: false,
+    })
+    if (window.location.pathname !== nextPath) {
+      window.history.replaceState(window.history.state, '', nextPath)
+    }
+  }, [])
+
+  useEffect(() => {
     const accessTokenPresent = Boolean(getAccessToken())
     if (!profile && accessTokenPresent) return
 
@@ -548,57 +565,15 @@ function App() {
   const canAccessCampaignManagement = activeCampaignRole === 'MASTER' || activeCampaignRole === 'SUPER_MASTER'
   const missionWindowSinceRef = useRef(new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString())
   const missionWindowSince = useCallback(() => missionWindowSinceRef.current, [])
-  const campaignsForList = useMemo(() => {
-    const byId = new Map<string, CampaignDiscoverResponse>()
-    for (const item of discoverableCampaigns) {
-      byId.set(item.id, item)
-    }
-
-    for (const membership of myCampaigns) {
-      const existing = byId.get(membership.campaignId)
-      const detail = campaignDetailsById[membership.campaignId]
-      if (existing) {
-        byId.set(membership.campaignId, {
-          ...existing,
-          isOpen: detail?.isOpen ?? existing.isOpen,
-          isActive: detail?.isActive ?? existing.isActive,
-          isSearchable: detail?.isSearchable ?? existing.isSearchable,
-          membershipStatus: membership.memberStatus,
-          membershipRole: membership.role,
-          moderationReason: membership.moderationReason,
-          name: detail?.name || existing.name || membership.campaignName,
-          description: detail?.description ?? existing.description,
-          summary: detail?.summary ?? existing.summary,
-          coverImageUrl: detail?.coverImageUrl ?? existing.coverImageUrl,
-          founderId: detail?.founderId || existing.founderId,
-          autoJoinEnabled: detail?.autoJoinEnabled ?? existing.autoJoinEnabled,
-          gameSystem: detail?.gameSystem ?? existing.gameSystem,
-          createdAt: detail?.createdAt || existing.createdAt,
-        })
-      } else {
-        byId.set(membership.campaignId, {
-          id: membership.campaignId,
-          name: detail?.name || membership.campaignName,
-          description: detail?.description ?? null,
-          summary: detail?.summary ?? null,
-          coverImageUrl: detail?.coverImageUrl ?? null,
-          founderId: detail?.founderId || '',
-          isOpen: detail?.isOpen ?? false,
-          isActive: detail?.isActive ?? false,
-          isSearchable: detail?.isSearchable ?? false,
-          autoJoinEnabled: detail?.autoJoinEnabled ?? false,
-          inviteCode: detail?.inviteCode || '',
-          gameSystem: detail?.gameSystem ?? null,
-          createdAt: detail?.createdAt || '',
-          membershipStatus: membership.memberStatus,
-          membershipRole: membership.role,
-          moderationReason: membership.moderationReason,
-        })
-      }
-    }
-
-    return Array.from(byId.values())
-  }, [campaignDetailsById, discoverableCampaigns, myCampaigns])
+  const campaignsForList = useMemo(
+    () =>
+      buildCampaignsForList({
+        discoverableCampaigns,
+        myCampaigns,
+        campaignDetailsById,
+      }),
+    [campaignDetailsById, discoverableCampaigns, myCampaigns],
+  )
   const missionAlertsByCampaign = useMemo(() => {
     const map: Record<string, number> = {}
     for (const mission of missions) {
@@ -683,13 +658,14 @@ function App() {
     missionShareTargetActivationStartedRef.current = false
   }, [activeUserId, campaignId, campaignMembershipsLoaded, missions, myCampaigns, profile, screen, setScreen, setSelectedMissionId])
 
-    const normalizeLegacyInvitePreview = (preview: CampaignInvitePreviewResponse): InviteAccessPreview => ({
+  const normalizeLegacyInvitePreview = (preview: CampaignInvitePreviewResponse): InviteAccessPreview => ({
     campaignId: preview.id,
     campaignName: preview.name,
     campaignSummary: preview.summary || preview.description || null,
     coverImageUrl: preview.coverImageUrl,
     founderId: preview.founderId,
     isOpen: preview.isOpen,
+    isActive: preview.isActive,
     gameSystem: preview.gameSystem || null,
     capabilities: [],
     modeLabel: 'Richiesta manuale',
@@ -705,6 +681,7 @@ function App() {
       coverImageUrl: preview.coverImageUrl,
       founderId: preview.founderId,
       isOpen: preview.isOpen,
+      isActive: true,
       gameSystem: preview.gameSystem,
       capabilities: preview.capabilities,
       modeLabel: autoJoin ? 'AUTOJOIN attivo' : 'Richiesta manuale',
@@ -793,6 +770,60 @@ function App() {
       setBusy(false)
     }
   }
+
+  const clearActiveCampaignContext = useCallback(() => {
+    rememberCampaignId('')
+    setCampaign(null)
+    setMembers([])
+    setCampaignMembersForManagement([])
+    setCanManageCampaignMembers(false)
+    setPendingApplications([])
+    setPermissions([])
+    setCharacters([])
+    setSelectedCharacterId('')
+    setCharacterDetail(null)
+    setCharacterSheetDetail(null)
+    setMissions([])
+    setMissionParticipantsById({})
+    setMyMissionParticipationById({})
+    setMissionParticipantCharacterLabelById({})
+    setSelectedMissionId('')
+    setRooms([])
+    setSelectedMissionChatContext(null)
+    setMissionChat(null)
+    setMissionChatBusy(false)
+    setMissionChatError('')
+    setSelectedCampaignMember(null)
+    setSelectedCampaignMemberProfile(null)
+    setScreen('Lista Campagne')
+    setIsSidebarOpen(false)
+  }, [
+    rememberCampaignId,
+    setCanManageCampaignMembers,
+    setCharacterDetail,
+    setCharacterSheetDetail,
+    setCharacters,
+    setCampaign,
+    setCampaignMembersForManagement,
+    setIsSidebarOpen,
+    setMembers,
+    setMissions,
+    setMissionChat,
+    setMissionChatBusy,
+    setMissionChatError,
+    setMissionParticipantCharacterLabelById,
+    setMissionParticipantsById,
+    setMyMissionParticipationById,
+    setPendingApplications,
+    setPermissions,
+    setRooms,
+    setScreen,
+    setSelectedCampaignMember,
+    setSelectedCampaignMemberProfile,
+    setSelectedCharacterId,
+    setSelectedMissionChatContext,
+    setSelectedMissionId,
+  ])
 
   const loadAdminRealms = async (page = 0, query = adminRealmsSearch) => {
     setBusy(true)
@@ -957,6 +988,24 @@ function App() {
       const message = toMessage(err)
       setError(message)
       addEvent(`Aggiornamento campagna: ${message}`, 'error')
+      if (isUnauthorized(err)) {
+        handleLogout()
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const deactivateAdminCampaign = async (campaignIdValue: string) => {
+    setBusy(true)
+    setError('')
+    try {
+      await adminMutations.deactivateAdminCampaign(campaignIdValue)
+      addEvent('Campagna disattivata', 'ok')
+    } catch (err) {
+      const message = toMessage(err)
+      setError(message)
+      addEvent(`Disattivazione campagna: ${message}`, 'error')
       if (isUnauthorized(err)) {
         handleLogout()
       }
@@ -1247,6 +1296,10 @@ function App() {
     setMissionParticipantCharacterLabelById({})
     setSelectedMissionId('')
     setRooms([])
+    setSelectedMissionChatContext(null)
+    setMissionChat(null)
+    setMissionChatBusy(false)
+    setMissionChatError('')
       setSelectedCampaignMember(null)
       setSelectedCampaignMemberProfile(null)
     }
@@ -1394,10 +1447,12 @@ function App() {
       setRooms,
       setCanManageCampaignMembers,
       setScreen,
+      refreshProfile,
       loadDiscoverableCampaigns,
       loadPostLoginCampaignSummary,
       rememberCampaignId,
       rememberCampaignMeta,
+      clearActiveCampaignContext,
     })
 
     const campaignMemberMutations = useCampaignMemberMutations({
@@ -1419,6 +1474,10 @@ function App() {
       adminRealmsSearch,
       adminRealmDraft,
       adminRealmHostsInput,
+      currentCampaignId: campaignId,
+      clearActiveCampaignContext,
+      loadDiscoverableCampaigns,
+      loadPostLoginCampaignSummary,
       setAdminRealmDraft,
       setAdminRealmHostsInput,
       setSelectedAdminRealmId,
@@ -1461,8 +1520,7 @@ function App() {
   }
 
   const detachActiveCampaign = () => {
-    setScreen('Lista Campagne')
-    setIsSidebarOpen(false)
+    clearActiveCampaignContext()
   }
 
   useEffect(() => {
@@ -1974,6 +2032,7 @@ function App() {
     loadAdminRealms: async () => {},
     loadAdminRealmUserRoles: async () => {},
     loadAdminSheetCatalogs: async () => {},
+    clearActiveCampaignContext: async () => {},
   })
   const realtimeStateRef = useRef<RealtimeInvalidationState>({
     screen,
@@ -2017,6 +2076,7 @@ function App() {
       loadAdminRealms,
       loadAdminRealmUserRoles,
       loadAdminSheetCatalogs,
+      clearActiveCampaignContext,
     }
     realtimeStateRef.current = {
       screen,
@@ -2050,6 +2110,7 @@ function App() {
     refreshMissions,
     refreshMissionChat,
     refreshProfile,
+    clearActiveCampaignContext,
     campaignsForList,
     screen,
     systemAdminView,
@@ -2826,6 +2887,12 @@ function App() {
       void run('Ownership trasferita', async () => {
         await campaignCommandMutations.transferCampaignOwnership(campaignId, newOwnerId)
       }),
+    deactivateCampaign: async () => {
+      if (!campaign?.id) return
+      await runResult('Campagna disattivata', async () => {
+        await campaignCommandMutations.deactivateCampaign(campaign.id)
+      })
+    },
     createCampaignInviteToken: (payload: CreateInviteTokenRequest) =>
       runResult('Token invito creato', async () => {
         if (!campaignId.trim()) {
@@ -3678,6 +3745,16 @@ function App() {
                                           >
                                             <Icon name="fa-solid fa-floppy-disk" />
                                             <span>Salva modifiche</span>
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="danger-btn"
+                                            disabled={busy || !item.isActive}
+                                            onClick={() => void deactivateAdminCampaign(item.id)}
+                                            title={item.isActive ? 'Disattiva la campagna e rimuovila dai flussi utente' : 'Campagna già disattivata'}
+                                          >
+                                            <Icon name="fa-solid fa-power-off" />
+                                            <span>Disattiva campagna</span>
                                           </button>
                                         </div>
                                       </div>

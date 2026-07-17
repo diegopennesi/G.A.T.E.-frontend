@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { MultiSelect } from 'primereact/multiselect'
 import { useCampaignContext } from '../../../context'
-import { BadgeGroup, Icon, InfoBlock, MobileDataCard, ResponsiveDataList } from '../../../shared/components'
+import { BadgeGroup, FieldLabel, Icon, InfoBlock, MobileDataCard, ResponsiveDataList } from '../../../shared/components'
 import {
   CAMPAIGN_MODULE_HIDDEN_CODES,
   campaignModuleIconName,
@@ -93,12 +93,16 @@ export function CampaignDetailPage() {
     applyCurrentCampaign: onApply,
     activateCurrentCampaign: onActivate,
     leaveCurrentCampaign: onLeaveCampaign,
+    deactivateCampaign: onDeactivateCampaign,
     membershipStatus,
     membershipRole,
   } = useCampaignContext()
   const [memberQuery, setMemberQuery] = useState('')
   const [statusFilters, setStatusFilters] = useState<CampaignCharacterStatus[]>(['ACTIVE', 'RETIRED', 'DEAD'])
   const [roleFilters, setRoleFilters] = useState<CampaignRole[]>(['SUPER_MASTER', 'MASTER', 'CO_MASTER', 'GIOCATORE'])
+  const [deactivateModalOpen, setDeactivateModalOpen] = useState(false)
+  const [deactivateConfirmName, setDeactivateConfirmName] = useState('')
+  const [deactivationSubmitting, setDeactivationSubmitting] = useState(false)
 
   const normalizedQuery = memberQuery.trim().toLowerCase()
   const approvedMembers = useMemo(() => members.filter((member) => member.memberStatus === 'APPROVED'), [members])
@@ -139,6 +143,27 @@ export function CampaignDetailPage() {
   const canOpenManagement = membershipRole === 'MASTER' || membershipRole === 'SUPER_MASTER'
   const canOpenCharacters = membershipStatus === 'APPROVED'
   const canLeaveCampaign = membershipStatus === 'APPROVED' && campaign?.founderId !== currentUserId
+  const canDeactivateCampaign = membershipRole === 'SUPER_MASTER'
+  const campaignNameForConfirmation = campaign?.name.trim() || ''
+  const deactivateConfirmationMatches = deactivateConfirmName.trim() === campaignNameForConfirmation
+
+  const closeDeactivateModal = () => {
+    if (deactivationSubmitting) return
+    setDeactivateModalOpen(false)
+    setDeactivateConfirmName('')
+  }
+
+  const confirmDeactivateCampaign = async () => {
+    if (!campaign || !deactivateConfirmationMatches) return
+    setDeactivationSubmitting(true)
+    try {
+      await onDeactivateCampaign()
+      setDeactivateModalOpen(false)
+      setDeactivateConfirmName('')
+    } finally {
+      setDeactivationSubmitting(false)
+    }
+  }
 
   return (
     <section className="panel">
@@ -288,6 +313,14 @@ export function CampaignDetailPage() {
               <p className="muted">Lista addon non ancora disponibile.</p>
             )}
           </div>
+          {canDeactivateCampaign && (
+            <div className="campaign-detail-danger-action">
+              <button type="button" className="danger-btn" onClick={() => setDeactivateModalOpen(true)}>
+                <Icon name="fa-solid fa-ban" />
+                Disattiva campagna
+              </button>
+            </div>
+          )}
           {canManageMembers && (
             <>
               <div className="divider" />
@@ -415,6 +448,53 @@ export function CampaignDetailPage() {
                 <p className="muted">Nessun membro trovato con questo filtro.</p>
               )}
             </>
+          )}
+          {deactivateModalOpen && (
+            <div className="modal-backdrop">
+              <div className="modal-panel campaign-deactivate-panel">
+                <div className="modal-panel-head">
+                  <div>
+                    <h3>Disattiva campagna</h3>
+                    <p className="muted">attenzione vuoi disattivare la campagna?</p>
+                  </div>
+                  <button type="button" className="drawer-close-btn" onClick={closeDeactivateModal} disabled={deactivationSubmitting}>
+                    <Icon name="fa-solid fa-xmark" />
+                  </button>
+                </div>
+
+                <div className="leave-warning-box">
+                  <p className="leave-warning-title">Operazione irreversibile dal flusso utente</p>
+                  <p className="muted">
+                    La campagna <strong>{campaign.name}</strong> verrà rimossa dalle liste utente e bloccherà nuovi personaggi, missioni, inviti e ingressi.
+                  </p>
+                </div>
+
+                <label>
+                  <FieldLabel icon="fa-solid fa-signature" label="Scrivi il nome campagna per confermare" />
+                  <input
+                    value={deactivateConfirmName}
+                    placeholder={campaign.name}
+                    onChange={(event) => setDeactivateConfirmName(event.target.value)}
+                    disabled={deactivationSubmitting}
+                  />
+                </label>
+
+                <div className="inline-actions">
+                  <button type="button" className="secondary-btn" onClick={closeDeactivateModal} disabled={deactivationSubmitting}>
+                    Annulla
+                  </button>
+                  <button
+                    type="button"
+                    className="danger-btn"
+                    onClick={() => void confirmDeactivateCampaign()}
+                    disabled={deactivationSubmitting || !deactivateConfirmationMatches}
+                  >
+                    <Icon name="fa-solid fa-ban" />
+                    Disattiva campagna
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
         </>
       )}

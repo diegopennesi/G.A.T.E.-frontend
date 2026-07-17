@@ -4,33 +4,33 @@ export const POST_LOGIN_RELEASE_NOTES: PostLoginReleaseNotes = {
   version: '2026.07.17.1',
   eyebrow: 'What\'s new',
   title: 'Novita di oggi',
-  summary: 'Da oggi riprendere una campagna e piu semplice: il sistema ricorda meglio dove eri e rende piu immediato arrivare a personaggi, missioni e liste anche da mobile.',
+  summary: 'Da oggi tornare nella tua campagna e piu semplice, rapido e ordinato.',
   sections: [
     {
-      title: 'Ripresa piu fluida',
+      title: 'Accesso piu immediato',
       items: [
         {
-          label: 'Quando rientri, ritrovi piu facilmente il punto in cui eri rimasto.',
+          label: 'Quando rientri, ritrovi piu facilmente da dove avevi lasciato.',
           details: [
-            'La campagna attiva viene recuperata in modo piu affidabile, cosi il rientro e piu lineare.',
-            'Se stavi lavorando su un personaggio o su una missione, l applicativo prova a riportarti li invece di farti ripartire da zero.',
+            'Il rientro nella campagna e piu lineare.',
+            'Personaggi e missioni sono piu facili da riprendere senza dover ricominciare ogni volta.',
           ],
         },
         {
-          label: 'L accesso ai personaggi e piu immediato.',
+          label: 'Arrivi piu velocemente al personaggio giusto.',
           details: [
-            'Quando entri in una campagna viene selezionato in automatico il personaggio piu pertinente per te, cosi arrivi prima alle informazioni che ti servono.',
+            'L accesso alle informazioni principali e piu rapido.',
           ],
         },
       ],
     },
     {
-      title: 'Missioni piu semplici',
+      title: 'Missioni piu chiare',
       items: [
         {
-          label: 'La vista delle missioni e piu chiara da cambiare.',
+          label: 'Consultare le missioni e piu semplice.',
           details: [
-            'Passare tra missioni attive, concluse o scadute e diventato piu diretto e leggibile.',
+            'Passare tra le diverse viste e ora piu immediato.',
           ],
         },
       ],
@@ -39,15 +39,9 @@ export const POST_LOGIN_RELEASE_NOTES: PostLoginReleaseNotes = {
       title: 'Esperienza piu ordinata',
       items: [
         {
-          label: 'Alcune schermate sono state rese piu pulite e uniformi.',
+          label: 'Le schermate principali sono piu pulite e leggibili.',
           details: [
-            'Liste, filtri, schede e finestre di caricamento hanno ora un aspetto piu coerente, con una lettura piu comoda soprattutto su schermi piccoli.',
-          ],
-        },
-        {
-          label: 'Il messaggio delle novita si comporta in modo piu prevedibile.',
-          details: [
-            'Puoi scegliere di non mostrarlo piu, e la preferenza viene rispettata per questa versione.',
+            'La navigazione risulta piu comoda, soprattutto su schermi piccoli.',
           ],
         },
       ],

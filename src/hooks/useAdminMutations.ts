@@ -2,6 +2,7 @@ import { useMutation } from '@tanstack/react-query'
 import { queryClient } from '../services/queryClient'
 import { queryKeys } from '../services/queryKeys'
 import {
+  deactivateAdminCampaign,
   createAdminGameSystem,
   createAdminRealm,
   createAdminSheetType,
@@ -30,6 +31,10 @@ type AdminMutationsDeps = {
   adminRealmsSearch: string
   adminRealmDraft: AdminRealmCreateRequest
   adminRealmHostsInput: string
+  currentCampaignId: string
+  clearActiveCampaignContext: () => void
+  loadDiscoverableCampaigns: (options?: { force?: boolean }) => Promise<void>
+  loadPostLoginCampaignSummary: (options?: { force?: boolean }) => Promise<void>
   setAdminRealmDraft: (value: AdminRealmCreateRequest) => void
   setAdminRealmHostsInput: (value: string) => void
   setSelectedAdminRealmId: (value: string) => void
@@ -77,6 +82,21 @@ export function useAdminMutations(deps: AdminMutationsDeps) {
     onSuccess: async () => {
       await invalidateAdminCampaigns()
       await deps.loadAdminCampaigns(deps.adminCampaignsPageIndex)
+    },
+  })
+
+  const deactivateAdminCampaignMutation = useMutation({
+    mutationFn: (campaignId: string) => deactivateAdminCampaign(campaignId),
+    onSuccess: async (updated, campaignId) => {
+      if (campaignId === deps.currentCampaignId && updated.isActive === false) {
+        deps.clearActiveCampaignContext()
+      }
+      await Promise.all([
+        invalidateAdminCampaigns(),
+        deps.loadAdminCampaigns(deps.adminCampaignsPageIndex),
+        deps.loadDiscoverableCampaigns({ force: true }),
+        deps.loadPostLoginCampaignSummary({ force: true }),
+      ])
     },
   })
 
@@ -178,6 +198,8 @@ export function useAdminMutations(deps: AdminMutationsDeps) {
       saveAdminUserMutation.mutateAsync({ userId, draft }),
     saveAdminCampaign: (campaignId: string, draft: unknown) =>
       saveAdminCampaignMutation.mutateAsync({ campaignId, draft }),
+    deactivateAdminCampaign: (campaignId: string) =>
+      deactivateAdminCampaignMutation.mutateAsync(campaignId),
     saveAdminGameSystem: (code: string, payload: AdminGameSystemUpsertRequest) =>
       saveAdminGameSystemMutation.mutateAsync({ code, payload }),
     createAdminGameSystemEntry: (payload: AdminGameSystemUpsertRequest) =>

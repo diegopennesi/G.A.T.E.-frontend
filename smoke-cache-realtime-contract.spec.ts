@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { QueryClient } from '@tanstack/react-query'
+import { buildCampaignsForList } from './src/features/campaigns/utils/campaignListModel'
 import { readOrFetchQuery } from './src/services/queryCache'
 import { queryKeys } from './src/services/queryKeys'
 import { applyRealtimeInvalidation, type RealtimeInvalidationActions, type RealtimeInvalidationState } from './src/services/realtimeInvalidation'
@@ -42,9 +43,9 @@ async function flushInvalidation() {
   await new Promise((resolve) => setTimeout(resolve, 0))
 }
 
-function invalidate(queryClient: QueryClient, keys: string[]) {
+function invalidate(queryClient: QueryClient, keys: string[], reason = 'test.invalidated') {
   const payload: ResourceInvalidationPayload = {
-    reason: 'test.invalidated',
+    reason,
     keys,
   }
   invalidateQueriesForResourceEvent(queryClient, payload, scope)
@@ -85,6 +86,7 @@ function createRealtimeActions() {
     loadAdminRealms: async (page, query) => push('loadAdminRealms', { page, query }),
     loadAdminRealmUserRoles: async (realmId) => push('loadAdminRealmUserRoles', { realmId }),
     loadAdminSheetCatalogs: async () => push('loadAdminSheetCatalogs'),
+    clearActiveCampaignContext: () => push('clearActiveCampaignContext'),
   }
   return { actions, calls }
 }
@@ -102,6 +104,80 @@ async function applyRealtime(keys: string[], state: Partial<RealtimeInvalidation
   await flushInvalidation()
   return calls
 }
+
+test('campaign list model drops inactive campaigns even when they still exist in local membership data', async () => {
+  const result = buildCampaignsForList({
+    discoverableCampaigns: [
+      {
+        id: 'campaign-a',
+        name: 'Campagna A',
+        description: null,
+        summary: null,
+        coverImageUrl: null,
+        founderId: 'founder-a',
+        isOpen: true,
+        isActive: true,
+        isSearchable: true,
+        autoJoinEnabled: false,
+        createdAt: '2026-07-17T00:00:00Z',
+        membershipStatus: null,
+        membershipRole: null,
+        moderationReason: null,
+      },
+      {
+        id: 'campaign-b',
+        name: 'Campagna B',
+        description: null,
+        summary: null,
+        coverImageUrl: null,
+        founderId: 'founder-b',
+        isOpen: true,
+        isActive: false,
+        isSearchable: true,
+        autoJoinEnabled: false,
+        createdAt: '2026-07-17T00:00:00Z',
+        membershipStatus: null,
+        membershipRole: null,
+        moderationReason: null,
+      },
+    ],
+    myCampaigns: [
+      {
+        campaignId: 'campaign-c',
+        campaignName: 'Campagna C',
+        role: 'GIOCATORE',
+        memberStatus: 'APPROVED',
+        characterStatus: null,
+        moderationReason: null,
+        isFounder: false,
+      },
+    ],
+    campaignDetailsById: {
+      'campaign-c': {
+        id: 'campaign-c',
+        name: 'Campagna C',
+        description: null,
+        summary: null,
+        setting: null,
+        tone: null,
+        rules: null,
+        requirements: null,
+        coverImageUrl: null,
+        founderId: 'founder-c',
+        isOpen: true,
+        isActive: false,
+        isSearchable: true,
+        autoJoinEnabled: false,
+        gameSystem: 'DND5E',
+        allowedModules: [],
+        createdAt: '2026-07-17T00:00:00Z',
+        inviteCode: 'inv-1',
+      },
+    },
+  })
+
+  expect(result.map((item) => item.id)).toEqual(['campaign-a'])
+})
 
 test('cache-first read calls BE once and then reuses TanStack cache', async () => {
   const queryClient = createTestQueryClient()
@@ -230,6 +306,49 @@ test('discover invalidation refreshes campaign discovery and landing summary, no
   expect(standaloneDiscover.calls()).toBe(2)
   expect(postLoginSummary.calls()).toBe(2)
   expect(profile.calls()).toBe(1)
+})
+
+test('campaign deactivation realtime invalidation clears the active campaign context', async () => {
+  const { actions, calls } = createRealtimeActions()
+  applyRealtimeInvalidation(
+    {
+      reason: 'campaign.deactivated',
+      keys: ['campaigns:campaign-1', 'campaigns:discover'],
+      occurredAt: new Date().toISOString(),
+    },
+    createRealtimeState({ screen: 'Scheda Campagna' }),
+    actions,
+  )
+  await flushInvalidation()
+
+  expect(calls.clearActiveCampaignContext).toHaveLength(1)
+  expect(calls.refreshCampaignBlock || []).toHaveLength(0)
+  expect(calls.loadDiscoverableCampaigns || []).toHaveLength(0)
+})
+
+test('campaign deactivation invalidation refreshes bootstrap discovery and landing summary', async () => {
+  const queryClient = createTestQueryClient()
+  const bootstrapDiscover = countedQuery([...queryKeys.bootstrap(scope), 'discover-campaigns', { openOnly: false }], [
+    'discover-v1',
+    'discover-v2',
+  ])
+  const standaloneDiscover = countedQuery(queryKeys.discoverCampaigns(false), ['standalone-discover-v1', 'standalone-discover-v2'])
+  const postLoginSummary = countedQuery([...queryKeys.bootstrap(scope), 'post-login-summary'], ['summary-v1', 'summary-v2'])
+
+  await readOrFetchQuery(queryClient, bootstrapDiscover)
+  await readOrFetchQuery(queryClient, standaloneDiscover)
+  await readOrFetchQuery(queryClient, postLoginSummary)
+
+  invalidate(queryClient, ['campaigns:campaign-1'], 'campaign.deactivated')
+  await flushInvalidation()
+
+  await expect(readOrFetchQuery(queryClient, bootstrapDiscover)).resolves.toBe('discover-v2')
+  await expect(readOrFetchQuery(queryClient, standaloneDiscover)).resolves.toBe('standalone-discover-v2')
+  await expect(readOrFetchQuery(queryClient, postLoginSummary)).resolves.toBe('summary-v2')
+
+  expect(bootstrapDiscover.calls()).toBe(2)
+  expect(standaloneDiscover.calls()).toBe(2)
+  expect(postLoginSummary.calls()).toBe(2)
 })
 
 test('current user profile invalidation refreshes own bootstrap data without touching campaign details', async () => {

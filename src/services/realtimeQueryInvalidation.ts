@@ -148,6 +148,13 @@ export function invalidateQueriesForResourceEvent(
   if (!normalizedScope) return
 
   const keys = new Set(payload.keys)
+  const campaignDeactivated = payload.reason === 'campaign.deactivated'
+
+  if (campaignDeactivated) {
+    invalidateBootstrapDiscoverCampaigns(queryClient, normalizedScope)
+    invalidateBootstrapPostLoginSummary(queryClient, normalizedScope)
+    invalidateDiscoverCampaigns(queryClient)
+  }
 
   if (keys.has('campaigns:discover')) {
     invalidateBootstrapDiscoverCampaigns(queryClient, normalizedScope)

@@ -55,6 +55,7 @@ export type InviteAccessPreview = {
   coverImageUrl: string | null
   founderId: string
   isOpen: boolean
+  isActive: boolean
   gameSystem: string | null
   capabilities: string[]
   modeLabel: string

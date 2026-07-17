@@ -2,7 +2,7 @@ import { useMutation } from '@tanstack/react-query'
 import type { Dispatch, SetStateAction } from 'react'
 import { queryClient } from '../services/queryClient'
 import { queryKeys } from '../services/queryKeys'
-import { createCampaign, createInviteToken, createRoom, transferOwnership, updateCampaign } from '../services/gateApi'
+import { createCampaign, createInviteToken, createRoom, deactivateCampaign, transferOwnership, updateCampaign } from '../services/gateApi'
 import type { CampaignResponse, CreateInviteTokenRequest } from '../types/domain'
 import type { Screen } from '../types/ui'
 
@@ -15,10 +15,12 @@ type CampaignCommandDeps = {
   setRooms: Dispatch<SetStateAction<any[]>>
   setCanManageCampaignMembers: (value: boolean) => void
   setScreen: (value: Screen) => void
+  refreshProfile: (options?: { force?: boolean }) => Promise<void>
   loadDiscoverableCampaigns: (options?: { force?: boolean }) => Promise<void>
   loadPostLoginCampaignSummary: (options?: { force?: boolean }) => Promise<void>
   rememberCampaignId: (campaignId: string) => void
   rememberCampaignMeta: (campaignId: string, campaignName: string) => void
+  clearActiveCampaignContext: () => void
 }
 
 export function useCampaignCommandMutations(deps: CampaignCommandDeps) {
@@ -110,6 +112,28 @@ export function useCampaignCommandMutations(deps: CampaignCommandDeps) {
     },
   })
 
+  const deactivateCampaignMutation = useMutation({
+    mutationFn: (campaignId: string) => deactivateCampaign(campaignId),
+    onSuccess: async (updated) => {
+      queryClient.setQueryData(queryKeys.campaignDetails(updated.id), updated)
+      queryClient.removeQueries({ queryKey: ['bootstrap'], exact: false })
+      deps.setCampaignDetailsById((prev) => {
+        const next = { ...prev }
+        delete next[updated.id]
+        return next
+      })
+      deps.setMyCampaigns((prev: any[]) => prev.filter((item) => item.campaignId !== updated.id))
+      deps.clearActiveCampaignContext()
+      await invalidateBootstrap()
+      await Promise.all([
+        deps.refreshProfile({ force: true }),
+        deps.loadDiscoverableCampaigns({ force: true }),
+        deps.loadPostLoginCampaignSummary({ force: true }),
+        invalidateCampaign(updated.id),
+      ])
+    },
+  })
+
   const createInviteTokenMutation = useMutation({
     mutationFn: ({ campaignId, payload }: { campaignId: string; payload: CreateInviteTokenRequest }) =>
       createInviteToken(campaignId, payload),
@@ -133,6 +157,7 @@ export function useCampaignCommandMutations(deps: CampaignCommandDeps) {
       saveCampaignMutation.mutateAsync({ campaignId, payload }),
     transferCampaignOwnership: (campaignId: string, newOwnerId: string) =>
       transferOwnershipMutation.mutateAsync({ campaignId, newOwnerId }),
+    deactivateCampaign: (campaignId: string) => deactivateCampaignMutation.mutateAsync(campaignId),
     createCampaignInviteToken: (campaignId: string, payload: CreateInviteTokenRequest) =>
       createInviteTokenMutation.mutateAsync({ campaignId, payload }),
     createRoom: (
