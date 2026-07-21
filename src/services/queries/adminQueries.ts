@@ -2,6 +2,8 @@ import { queryOptions } from '@tanstack/react-query'
 import {
   listAdminCampaigns,
   listAdminGameSystems,
+  listAdminGameSystemRules,
+  listAdminMissionRules,
   listAdminRealmUserRoles,
   listAdminRealms,
   listAdminSheetTypes,
@@ -39,5 +41,15 @@ export const adminQueries = {
     queryOptions({
       queryKey: queryKeys.adminSheetTypes(),
       queryFn: () => listAdminSheetTypes(),
+    }),
+  missionRules: () =>
+    queryOptions({
+      queryKey: queryKeys.adminMissionRules(),
+      queryFn: () => listAdminMissionRules(),
+    }),
+  gameSystemRules: () =>
+    queryOptions({
+      queryKey: queryKeys.adminGameSystemRules(),
+      queryFn: () => listAdminGameSystemRules(),
     }),
 } as const

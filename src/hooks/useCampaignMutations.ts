@@ -127,6 +127,9 @@ export function useCampaignMutations(deps: MutationDeps) {
 
   const joinMissionMutation = useMutation({
     mutationFn: async ({ missionId, participationType }: { missionId: string; participationType: Parameters<typeof joinMission>[2]['participationType'] }) => {
+      if (!deps.selectedMissionCharacterId) {
+        throw new Error('Non hai un PG attivo nella campagna della missione.')
+      }
       return joinMission(deps.campaignId, missionId, {
         characterId: deps.selectedMissionCharacterId,
         participationType,

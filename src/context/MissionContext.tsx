@@ -38,6 +38,8 @@ export type MissionContextValue = {
     closesAt?: string
     quorum?: number | null
     maxParticipants?: number | null
+    minCharacterLevel?: number | null
+    maxCharacterLevel?: number | null
     autoReopenOnDrop?: boolean
   }) => void
   selectMission: (missionId: string) => void
@@ -57,6 +59,8 @@ export type MissionContextValue = {
     closesAt?: string
     quorum?: number | null
     maxParticipants?: number | null
+    minCharacterLevel?: number | null
+    maxCharacterLevel?: number | null
     autoReopenOnDrop?: boolean
   }) => void
   completeMission: (missionId: string) => void

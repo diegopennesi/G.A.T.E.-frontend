@@ -77,6 +77,14 @@ export function useCampaignCommandMutations(deps: CampaignCommandDeps) {
         isSearchable: payload.isSearchable,
         autoJoinEnabled: payload.autoJoinEnabled ?? previousCampaign.autoJoinEnabled,
         allowedModules: payload.allowedModules ? [...payload.allowedModules] : [...previousCampaign.allowedModules],
+        missionRules: payload.missionRules
+          ? payload.missionRules.map((update) => {
+              const current = previousCampaign.missionRules?.find((rule) => rule.code === update.code)
+              return current
+                ? { ...current, campaignEnabled: update.enabled, effectiveEnabled: current.globallyActive && update.enabled, configJson: update.configJson ?? current.configJson }
+                : current
+            }).filter(Boolean) as CampaignResponse['missionRules']
+          : previousCampaign.missionRules,
       }
       queryClient.setQueryData(queryKeys.campaignDetails(campaignId), optimisticCampaign)
       deps.setCampaign(optimisticCampaign)

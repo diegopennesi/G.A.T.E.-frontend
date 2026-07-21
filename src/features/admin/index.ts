@@ -1,1 +1,1 @@
-export { SystemCatalogsPage } from './pages'
+export { SystemCatalogsPage, SystemGameSystemRulesPage } from './pages'

@@ -1,6 +1,10 @@
 import { ApiError, apiRequest, clearTokens, setTokens } from './apiClient'
 import type {
   AdminGameSystemUpsertRequest,
+  AdminGameSystemRuleResponse,
+  AdminGameSystemRuleUpsertRequest,
+  AdminMissionRuleResponse,
+  AdminMissionRuleUpsertRequest,
   AdminUserPage,
   AdminUserUpdateRequest,
   AdminCampaignPage,
@@ -20,6 +24,7 @@ import type {
   CurrentRealmPermissionsResponse,
   AuthSession,
   CampaignMembershipResponse,
+  CampaignMissionRuleResponse,
   CampaignPermissionResponse,
   CampaignResponse,
   Character,
@@ -36,6 +41,7 @@ import type {
   RoomResponse,
   SheetTypeCatalogEntry,
   AdminSheetTypeUpsertRequest,
+  UpdateCampaignMissionRuleRequest,
   UpdateCharacterSheetRequest,
   UserProfile,
   InviteTokenPreviewResponse,
@@ -317,6 +323,45 @@ export async function updateAdminSheetType(
   })
 }
 
+export async function listAdminMissionRules(): Promise<AdminMissionRuleResponse[]> {
+  return apiRequest<AdminMissionRuleResponse[]>('/admin/catalogs/mission-rules', { realm: false })
+}
+
+export async function createAdminMissionRule(
+  payload: AdminMissionRuleUpsertRequest,
+): Promise<AdminMissionRuleResponse> {
+  return apiRequest<AdminMissionRuleResponse>('/admin/catalogs/mission-rules', {
+    method: 'POST',
+    body: payload,
+    realm: false,
+  })
+}
+
+export async function updateAdminMissionRule(
+  code: string,
+  payload: AdminMissionRuleUpsertRequest,
+): Promise<AdminMissionRuleResponse> {
+  return apiRequest<AdminMissionRuleResponse>(`/admin/catalogs/mission-rules/${encodeURIComponent(code)}`, {
+    method: 'PATCH',
+    body: payload,
+    realm: false,
+  })
+}
+
+export async function listAdminGameSystemRules(): Promise<AdminGameSystemRuleResponse[]> {
+  return apiRequest<AdminGameSystemRuleResponse[]>('/admin/catalogs/game-system-rules', { realm: false })
+}
+
+export async function upsertAdminGameSystemRule(
+  payload: AdminGameSystemRuleUpsertRequest,
+): Promise<AdminGameSystemRuleResponse> {
+  return apiRequest<AdminGameSystemRuleResponse>('/admin/catalogs/game-system-rules', {
+    method: 'POST',
+    body: payload,
+    realm: false,
+  })
+}
+
 export async function createCampaign(payload: {
   name: string
   description?: string
@@ -397,6 +442,7 @@ export async function updateCampaign(
     isSearchable: boolean
     autoJoinEnabled?: boolean
     allowedModules?: string[]
+    missionRules?: UpdateCampaignMissionRuleRequest[]
   },
 ): Promise<CampaignResponse> {
   return apiRequest<CampaignResponse>(`/campaigns/${campaignId}`, {
@@ -414,7 +460,22 @@ export async function updateCampaign(
       isSearchable: payload.isSearchable,
       autoJoinEnabled: payload.autoJoinEnabled,
       allowedModules: payload.allowedModules ?? [],
+      missionRules: payload.missionRules ?? [],
     },
+  })
+}
+
+export async function listCampaignMissionRules(campaignId: string): Promise<CampaignMissionRuleResponse[]> {
+  return apiRequest<CampaignMissionRuleResponse[]>(`/campaigns/${campaignId}/mission-rules`)
+}
+
+export async function updateCampaignMissionRules(
+  campaignId: string,
+  payload: UpdateCampaignMissionRuleRequest[],
+): Promise<CampaignMissionRuleResponse[]> {
+  return apiRequest<CampaignMissionRuleResponse[]>(`/campaigns/${campaignId}/mission-rules`, {
+    method: 'PATCH',
+    body: payload,
   })
 }
 
@@ -678,6 +739,8 @@ export async function createMission(
     closesAt?: string
     quorum?: number | null
     maxParticipants?: number | null
+    minCharacterLevel?: number | null
+    maxCharacterLevel?: number | null
     autoReopenOnDrop?: boolean
   },
 ): Promise<MissionResponse> {
@@ -691,6 +754,8 @@ export async function createMission(
       closesAt: payload.closesAt || null,
       quorum: payload.quorum ?? null,
       maxParticipants: payload.maxParticipants ?? null,
+      minCharacterLevel: payload.minCharacterLevel ?? null,
+      maxCharacterLevel: payload.maxCharacterLevel ?? null,
       autoReopenOnDrop: payload.autoReopenOnDrop ?? true,
     },
   })
@@ -728,6 +793,8 @@ export async function updateMission(
     closesAt?: string
     quorum?: number | null
     maxParticipants?: number | null
+    minCharacterLevel?: number | null
+    maxCharacterLevel?: number | null
     autoReopenOnDrop?: boolean
   },
 ): Promise<MissionResponse> {
@@ -741,6 +808,8 @@ export async function updateMission(
       closesAt: payload.closesAt || null,
       quorum: payload.quorum ?? null,
       maxParticipants: payload.maxParticipants ?? null,
+      minCharacterLevel: payload.minCharacterLevel ?? null,
+      maxCharacterLevel: payload.maxCharacterLevel ?? null,
       autoReopenOnDrop: payload.autoReopenOnDrop ?? true,
     },
   })

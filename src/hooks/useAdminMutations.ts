@@ -4,17 +4,22 @@ import { queryKeys } from '../services/queryKeys'
 import {
   deactivateAdminCampaign,
   createAdminGameSystem,
+  createAdminMissionRule,
   createAdminRealm,
   createAdminSheetType,
   updateAdminCampaign,
   updateAdminGameSystem,
+  updateAdminMissionRule,
   updateAdminRealm,
   updateAdminSheetType,
   updateAdminUser,
+  upsertAdminGameSystemRule,
   upsertAdminRealmUserRole,
 } from '../services/gateApi'
 import type {
   AdminGameSystemUpsertRequest,
+  AdminGameSystemRuleUpsertRequest,
+  AdminMissionRuleUpsertRequest,
   AdminRealmCreateRequest,
   AdminSheetTypeUpsertRequest,
   RealmRole,
@@ -56,6 +61,8 @@ export function useAdminMutations(deps: AdminMutationsDeps) {
     Promise.all([
       queryClient.invalidateQueries({ queryKey: queryKeys.adminGameSystems(), exact: false }),
       queryClient.invalidateQueries({ queryKey: queryKeys.adminSheetTypes(), exact: false }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminMissionRules(), exact: false }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminGameSystemRules(), exact: false }),
     ])
 
   const saveAdminRealmUserRoleMutation = useMutation({
@@ -126,6 +133,30 @@ export function useAdminMutations(deps: AdminMutationsDeps) {
 
   const createAdminSheetTypeMutation = useMutation({
     mutationFn: (payload: AdminSheetTypeUpsertRequest) => createAdminSheetType(payload),
+    onSuccess: async () => {
+      await invalidateAdminCatalogs()
+      await deps.loadAdminSheetCatalogs()
+    },
+  })
+
+  const saveAdminMissionRuleMutation = useMutation({
+    mutationFn: ({ code, payload }: { code: string; payload: AdminMissionRuleUpsertRequest }) => updateAdminMissionRule(code, payload),
+    onSuccess: async () => {
+      await invalidateAdminCatalogs()
+      await deps.loadAdminSheetCatalogs()
+    },
+  })
+
+  const createAdminMissionRuleMutation = useMutation({
+    mutationFn: (payload: AdminMissionRuleUpsertRequest) => createAdminMissionRule(payload),
+    onSuccess: async () => {
+      await invalidateAdminCatalogs()
+      await deps.loadAdminSheetCatalogs()
+    },
+  })
+
+  const saveAdminGameSystemRuleMutation = useMutation({
+    mutationFn: (payload: AdminGameSystemRuleUpsertRequest) => upsertAdminGameSystemRule(payload),
     onSuccess: async () => {
       await invalidateAdminCatalogs()
       await deps.loadAdminSheetCatalogs()
@@ -208,6 +239,12 @@ export function useAdminMutations(deps: AdminMutationsDeps) {
       saveAdminSheetTypeMutation.mutateAsync({ code, payload }),
     createAdminSheetTypeEntry: (payload: AdminSheetTypeUpsertRequest) =>
       createAdminSheetTypeMutation.mutateAsync(payload),
+    saveAdminMissionRule: (code: string, payload: AdminMissionRuleUpsertRequest) =>
+      saveAdminMissionRuleMutation.mutateAsync({ code, payload }),
+    createAdminMissionRuleEntry: (payload: AdminMissionRuleUpsertRequest) =>
+      createAdminMissionRuleMutation.mutateAsync(payload),
+    saveAdminGameSystemRule: (payload: AdminGameSystemRuleUpsertRequest) =>
+      saveAdminGameSystemRuleMutation.mutateAsync(payload),
     createAdminRealmEntry: () => createAdminRealmMutation.mutateAsync(),
     saveAdminRealm: (realmId: string) => saveAdminRealmMutation.mutateAsync(realmId),
   }

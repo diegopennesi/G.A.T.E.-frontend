@@ -35,4 +35,6 @@ export const queryKeys = {
   adminRealmUserRoles: (realmId: string) => ['admin', 'realm-user-roles', realmId] as const,
   adminGameSystems: () => ['admin', 'catalogs', 'game-systems'] as const,
   adminSheetTypes: () => ['admin', 'catalogs', 'sheet-types'] as const,
+  adminMissionRules: () => ['admin', 'catalogs', 'mission-rules'] as const,
+  adminGameSystemRules: () => ['admin', 'catalogs', 'game-system-rules'] as const,
 } as const

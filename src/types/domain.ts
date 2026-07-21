@@ -48,6 +48,27 @@ export interface CampaignCatalogEntry {
   description: string | null
   active: boolean
   sortOrder: number
+  missionRules?: CampaignMissionRuleResponse[]
+}
+
+export interface CampaignMissionRuleResponse {
+  code: string
+  label: string
+  description: string | null
+  globallyActive: boolean
+  availableForGameSystem: boolean
+  defaultEnabled: boolean
+  campaignEnabled: boolean
+  effectiveEnabled: boolean
+  benchReasonCode: string
+  defaultMessage: string
+  configJson: Record<string, unknown>
+}
+
+export interface UpdateCampaignMissionRuleRequest {
+  code: string
+  enabled: boolean
+  configJson?: Record<string, unknown>
 }
 
 export interface SheetTypeCatalogEntry {
@@ -84,6 +105,40 @@ export interface AdminSheetTypeUpsertRequest {
   active: boolean
   isDefault: boolean
   schemaJson: Record<string, unknown>
+}
+
+export interface AdminMissionRuleResponse {
+  code: string
+  label: string
+  description: string | null
+  globallyActive: boolean
+  benchReasonCode: string
+  defaultMessage: string
+  sortOrder: number
+}
+
+export interface AdminMissionRuleUpsertRequest {
+  code: string
+  label: string
+  description?: string
+  globallyActive: boolean
+  benchReasonCode: string
+  defaultMessage: string
+  sortOrder: number
+}
+
+export interface AdminGameSystemRuleResponse {
+  gameSystemCode: string
+  ruleCode: string
+  defaultEnabled: boolean
+  configJson: Record<string, unknown>
+}
+
+export interface AdminGameSystemRuleUpsertRequest {
+  gameSystemCode: string
+  ruleCode: string
+  defaultEnabled: boolean
+  configJson: Record<string, unknown>
 }
 
 export interface CharacterSheetResponse {
@@ -284,6 +339,7 @@ export interface CampaignResponse {
   inviteCode: string
   gameSystem?: string | null
   allowedModules: string[]
+  missionRules?: CampaignMissionRuleResponse[]
   createdAt: string
 }
 
@@ -469,6 +525,8 @@ export interface MissionResponse {
   closesAt: string | null
   quorum: number | null
   maxParticipants: number | null
+  minCharacterLevel: number | null
+  maxCharacterLevel: number | null
   participantCount: number
   autoReopenOnDrop: boolean
   createdAt: string
@@ -478,7 +536,10 @@ export interface MissionParticipantResponse {
   missionId: string
   userId: string
   characterId: string
+  characterLevel: number | null
   participationType: MissionParticipationType
+  benchReasonCode: string | null
+  benchReasonMessage: string | null
   priorityScore: number
   joinedAt: string
 }

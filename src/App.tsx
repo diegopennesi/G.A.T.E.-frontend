@@ -11,7 +11,7 @@ import { MissionsPage } from './features/missions'
 import { LogPage } from './features/notifications'
 import { EditProfilePage, ProfilePage } from './features/profile'
 import { RoomsPage } from './features/rooms'
-import { SystemCatalogsPage } from './features/admin'
+import { SystemCatalogsPage, SystemGameSystemRulesPage } from './features/admin'
 import {
   AdminProvider,
   CampaignProvider,
@@ -93,7 +93,9 @@ import type {
   PublicRealmBrandingResponse,
   RealmRole,
   RealmType,
+  AdminGameSystemRuleUpsertRequest,
   AdminGameSystemUpsertRequest,
+  AdminMissionRuleUpsertRequest,
   AdminSheetTypeUpsertRequest,
   CampaignInvitePreviewResponse,
   InviteTokenPreviewResponse,
@@ -287,6 +289,10 @@ function App() {
     setAdminGameSystems,
     adminSheetTypes,
     setAdminSheetTypes,
+    adminMissionRules,
+    setAdminMissionRules,
+    adminGameSystemRules,
+    setAdminGameSystemRules,
     adminSheetCatalogsLoaded,
     setAdminSheetCatalogsLoaded,
     systemAdminView,
@@ -531,15 +537,18 @@ function App() {
     )?.characterId
     if (participantCharacterId) return participantCharacterId
 
+    const missionCampaignId = selectedMission.campaignId
     const activeCharacter = characters.find(
       (character) =>
         character.userId === currentUserId &&
-        character.campaignId === selectedMission.campaignId &&
+        character.campaignId === missionCampaignId &&
         character.characterStatus === 'ACTIVE' &&
         !character.isNpc,
     )
-    return activeCharacter?.id || activeCampaignCharacterId
-  }, [activeCampaignCharacterId, characters, missionParticipantsById, profile?.id, selectedMission])
+    return activeCharacter?.id || members.find(
+      (item) => item.userId === currentUserId && item.campaignId === missionCampaignId && item.characterStatus === 'ACTIVE',
+    )?.characterId || ''
+  }, [activeCampaignCharacterId, characters, members, missionParticipantsById, profile?.id, selectedMission])
   const approvedCampaignMemberships = useMemo(
     () => myCampaigns.filter((item) => item.memberStatus === 'APPROVED'),
     [myCampaigns],
@@ -913,21 +922,29 @@ function App() {
     setError('')
     setAdminSheetCatalogsLoaded(true)
     try {
-      const [gameSystems, sheetTypes] = await Promise.all([
+      const [gameSystems, sheetTypes, missionRules, gameSystemRules] = await Promise.all([
         queryClient.fetchQuery({
           ...adminQueries.gameSystems(),
         }),
         queryClient.fetchQuery({
           ...adminQueries.sheetTypes(),
         }),
+        queryClient.fetchQuery({
+          ...adminQueries.missionRules(),
+        }),
+        queryClient.fetchQuery({
+          ...adminQueries.gameSystemRules(),
+        }),
       ])
       setAdminGameSystems(gameSystems)
       setAdminSheetTypes(sheetTypes)
-      addEvent('Cataloghi schede caricati', 'ok')
+      setAdminMissionRules(missionRules)
+      setAdminGameSystemRules(gameSystemRules)
+      addEvent('Game system caricati', 'ok')
     } catch (err) {
       const message = toMessage(err)
       setError(message)
-      addEvent(`Cataloghi schede: ${message}`, 'error')
+      addEvent(`Game system: ${message}`, 'error')
       if (isUnauthorized(err)) {
         handleLogout()
       }
@@ -1086,6 +1103,60 @@ function App() {
     }
   }
 
+  const saveAdminMissionRule = async (code: string, payload: AdminMissionRuleUpsertRequest) => {
+    setBusy(true)
+    setError('')
+    try {
+      await adminMutations.saveAdminMissionRule(code, payload)
+      addEvent('Regola missione aggiornata', 'ok')
+    } catch (err) {
+      const message = toMessage(err)
+      setError(message)
+      addEvent(`Aggiornamento regola missione: ${message}`, 'error')
+      if (isUnauthorized(err)) {
+        handleLogout()
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const createAdminMissionRuleEntry = async (payload: AdminMissionRuleUpsertRequest) => {
+    setBusy(true)
+    setError('')
+    try {
+      await adminMutations.createAdminMissionRuleEntry(payload)
+      addEvent('Regola missione creata', 'ok')
+    } catch (err) {
+      const message = toMessage(err)
+      setError(message)
+      addEvent(`Creazione regola missione: ${message}`, 'error')
+      if (isUnauthorized(err)) {
+        handleLogout()
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const saveAdminGameSystemRule = async (payload: AdminGameSystemRuleUpsertRequest) => {
+    setBusy(true)
+    setError('')
+    try {
+      await adminMutations.saveAdminGameSystemRule(payload)
+      addEvent('Regola agganciata al game system', 'ok')
+    } catch (err) {
+      const message = toMessage(err)
+      setError(message)
+      addEvent(`Aggancio regola game system: ${message}`, 'error')
+      if (isUnauthorized(err)) {
+        handleLogout()
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const createAdminRealmEntry = async () => {
     setBusy(true)
     setError('')
@@ -1193,6 +1264,8 @@ function App() {
     setCharacters([])
     setAdminGameSystems([])
     setAdminSheetTypes([])
+    setAdminMissionRules([])
+    setAdminGameSystemRules([])
     setAdminSheetCatalogsLoaded(false)
     setMissions([])
     setMissionParticipantsById({})
@@ -2233,7 +2306,7 @@ function App() {
         }
       }
     }
-    if (systemAdminView === 'sheets' && !adminSheetCatalogsLoaded) {
+    if ((systemAdminView === 'sheets' || systemAdminView === 'gameSystemRules') && !adminSheetCatalogsLoaded) {
       void loadAdminSheetCatalogs()
     }
   }, [isSystemSession, profile?.id, systemAdminView, adminRealms.length, adminRealmsPage, adminSheetCatalogsLoaded])
@@ -3084,11 +3157,16 @@ function App() {
     busy,
     gameSystems: adminGameSystems,
     sheetTypes: adminSheetTypes,
+    missionRules: adminMissionRules,
+    gameSystemRules: adminGameSystemRules,
     refreshSystemCatalogs: () => void loadAdminSheetCatalogs(),
     createGameSystem: createAdminGameSystemEntry,
     saveGameSystem: saveAdminGameSystem,
     createSheetType: createAdminSheetTypeEntry,
     saveSheetType: saveAdminSheetType,
+    createMissionRule: createAdminMissionRuleEntry,
+    saveMissionRule: saveAdminMissionRule,
+    saveGameSystemRule: saveAdminGameSystemRule,
   }
 
   const systemUsers = adminUsersPage?.items ?? []
@@ -3235,11 +3313,19 @@ function App() {
         }
       case 'sheets':
         return {
-          kicker: 'Schede',
-          title: 'Catalogo schede di gioco',
-          subtitle: 'Definisci i sistemi di gioco e i template scheda riusabili per ogni campaign module.',
-          primaryMeta: `Sistemi ${adminGameSystems.length}`,
-          secondaryMeta: `Schede ${adminSheetTypes.length}`,
+          kicker: 'Game system',
+          title: 'Game system',
+          subtitle: 'Anagrafica dei sistemi di gioco disponibili.',
+          primaryMeta: `Game system ${adminGameSystems.length}`,
+          secondaryMeta: `Attivi ${adminGameSystems.filter((item) => item.active).length}`,
+        }
+      case 'gameSystemRules':
+        return {
+          kicker: 'Game System Rules',
+          title: 'Game System Rules',
+          subtitle: 'Crea regole e agganciale ai game system tramite selezione multipla.',
+          primaryMeta: `Regole ${adminMissionRules.length}`,
+          secondaryMeta: `Mapping ${adminGameSystemRules.length}`,
         }
       default:
         return {
@@ -3276,7 +3362,7 @@ function App() {
 
           <div className="system-dashboard-copy">
             <p className="menu-group-label">Console</p>
-            <p className="muted">Da qui gestirai utenti, campagne, realm, sistemi di gioco e cataloghi moduli.</p>
+            <p className="muted">Da qui gestirai utenti, campagne, realm, game system e cataloghi moduli.</p>
           </div>
 
           <div className="system-nav-tabs" role="tablist" aria-label="Selettore dashboard sistema">
@@ -3336,7 +3422,17 @@ function App() {
                 if (!adminSheetCatalogsLoaded) void loadAdminSheetCatalogs()
               }}
             >
-              Schede
+              Game system
+            </button>
+            <button
+              type="button"
+              className={`surface-control system-nav-tab ${systemAdminView === 'gameSystemRules' ? 'is-active' : ''}`}
+              onClick={() => {
+                setSystemAdminView('gameSystemRules')
+                if (!adminSheetCatalogsLoaded) void loadAdminSheetCatalogs()
+              }}
+            >
+              Game System Rules
             </button>
           </div>
 
@@ -4542,6 +4638,10 @@ function App() {
                   />
                 )}
               </>
+            ) : systemAdminView === 'gameSystemRules' ? (
+              <AdminProvider value={adminContextValue}>
+                <SystemGameSystemRulesPage />
+              </AdminProvider>
             ) : (
               <AdminProvider value={adminContextValue}>
                 <SystemCatalogsPage />

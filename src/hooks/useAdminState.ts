@@ -2,6 +2,8 @@ import { useState } from 'react'
 import type {
   AdminCampaignPage,
   AdminCampaignUpdateRequest,
+  AdminGameSystemRuleResponse,
+  AdminMissionRuleResponse,
   AdminRealmCreateRequest,
   AdminRealmListItem,
   AdminRealmPage,
@@ -51,8 +53,10 @@ export function useAdminState() {
   const [adminRealmHostsInput, setAdminRealmHostsInput] = useState('')
   const [adminGameSystems, setAdminGameSystems] = useState<CampaignCatalogEntry[]>([])
   const [adminSheetTypes, setAdminSheetTypes] = useState<SheetTypeCatalogEntry[]>([])
+  const [adminMissionRules, setAdminMissionRules] = useState<AdminMissionRuleResponse[]>([])
+  const [adminGameSystemRules, setAdminGameSystemRules] = useState<AdminGameSystemRuleResponse[]>([])
   const [adminSheetCatalogsLoaded, setAdminSheetCatalogsLoaded] = useState(false)
-  const [systemAdminView, setSystemAdminView] = useState<'users' | 'campaigns' | 'realms' | 'realmAccess' | 'sheets'>('users')
+  const [systemAdminView, setSystemAdminView] = useState<'users' | 'campaigns' | 'realms' | 'realmAccess' | 'sheets' | 'gameSystemRules'>('users')
 
   return {
     adminUsersPage,
@@ -105,6 +109,10 @@ export function useAdminState() {
     setAdminGameSystems,
     adminSheetTypes,
     setAdminSheetTypes,
+    adminMissionRules,
+    setAdminMissionRules,
+    adminGameSystemRules,
+    setAdminGameSystemRules,
     adminSheetCatalogsLoaded,
     setAdminSheetCatalogsLoaded,
     systemAdminView,

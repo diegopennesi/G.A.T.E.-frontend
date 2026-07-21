@@ -4025,6 +4025,19 @@ textarea {
   margin-top: 6px;
 }
 
+.mission-entry-cell {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+}
+
+.mission-bench-reason {
+  color: var(--text-soft);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
 .mission-campaign-entry {
   display: flex;
   align-items: center;
@@ -4086,6 +4099,45 @@ textarea {
   align-items: center;
 }
 
+.mission-level-range-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.mission-level-pill {
+  border-color: rgba(125, 211, 252, 0.36);
+}
+
+.mission-rule-settings-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.mission-rule-setting-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.mission-rule-config-row {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.mission-rule-config-row select,
+.mission-rule-config-row input {
+  max-width: 16rem;
+}
+
 .mission-actions {
   flex-wrap: wrap;
 }
@@ -4119,6 +4171,12 @@ textarea {
   .mission-toolbar {
     grid-template-columns: 1fr;
     align-items: stretch;
+  }
+}
+
+@media (max-width: 720px) {
+  .mission-rule-setting-row {
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 }
 

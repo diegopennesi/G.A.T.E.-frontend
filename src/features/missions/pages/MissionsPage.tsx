@@ -21,6 +21,8 @@ type MissionPayload = {
   closesAt?: string
   quorum?: number | null
   maxParticipants?: number | null
+  minCharacterLevel?: number | null
+  maxCharacterLevel?: number | null
   autoReopenOnDrop?: boolean
 }
 
@@ -48,6 +50,8 @@ type MissionDraft = {
   closesTime: string
   quorum: string
   maxParticipants: string
+  minCharacterLevel: string
+  maxCharacterLevel: string
   autoReopenOnDrop: boolean
 }
 
@@ -98,7 +102,8 @@ function combineDateAndTime(dateValue: string, timeValue: string): string | null
 
 function shiftCount(value: string, direction: 1 | -1, minValue = 1, maxValue = 999) {
   const parsed = Number.parseInt(value, 10)
-  const current = Number.isFinite(parsed) ? parsed : minValue
+  if (!Number.isFinite(parsed)) return String(minValue)
+  const current = parsed
   return String(Math.min(Math.max(current + direction, minValue), maxValue))
 }
 
@@ -163,6 +168,15 @@ function formatMissionParticipants(mission: MissionResponse) {
   const current = Number.isFinite(mission.participantCount) ? mission.participantCount : 0
   const total = mission.maxParticipants ?? 'illimitato'
   return `${current}/${total}`
+}
+
+function formatMissionLevelRange(mission: MissionResponse) {
+  const minLevel = mission.minCharacterLevel
+  const maxLevel = mission.maxCharacterLevel
+  if (minLevel == null && maxLevel == null) return ''
+  if (minLevel != null && maxLevel != null) return `Liv. ${minLevel}-${maxLevel}`
+  if (minLevel != null) return `Liv. ${minLevel}+`
+  return `Liv. <= ${maxLevel}`
 }
 
 function missionReachedMaxParticipants(mission: MissionResponse) {
@@ -300,6 +314,8 @@ function defaultDraft(): MissionDraft {
     closesTime: sessionTime,
     quorum: '3',
     maxParticipants: '5',
+    minCharacterLevel: '',
+    maxCharacterLevel: '',
     autoReopenOnDrop: true,
   }
 }
@@ -315,6 +331,8 @@ function draftFromMission(mission: MissionResponse): MissionDraft {
     closesTime: formatTimeInputValue(mission.closesAt || ''),
     quorum: mission.quorum ? String(mission.quorum) : '',
     maxParticipants: mission.maxParticipants ? String(mission.maxParticipants) : '',
+    minCharacterLevel: mission.minCharacterLevel ? String(mission.minCharacterLevel) : '',
+    maxCharacterLevel: mission.maxCharacterLevel ? String(mission.maxCharacterLevel) : '',
     autoReopenOnDrop: mission.autoReopenOnDrop,
   }
 }
@@ -621,6 +639,21 @@ export function MissionsPage() {
           <span className="mission-inline-table-label">Capienza</span>
           <MissionCountStepper label="Max" value={draft.maxParticipants} minValue={1} maxValue={999} onChange={(value) => setDraft((prev) => ({ ...prev, maxParticipants: value }))} />
         </div>
+        <div className="mission-inline-table-row">
+          <span className="mission-inline-table-label">Livello PG</span>
+          <div className="mission-level-range-controls">
+            <MissionCountStepper label="Min" value={draft.minCharacterLevel} minValue={1} maxValue={999} emptyLabel="-" onChange={(value) => setDraft((prev) => ({ ...prev, minCharacterLevel: value }))} />
+            <MissionCountStepper label="Max" value={draft.maxCharacterLevel} minValue={1} maxValue={999} emptyLabel="-" onChange={(value) => setDraft((prev) => ({ ...prev, maxCharacterLevel: value }))} />
+            <button
+              type="button"
+              className="secondary-btn mission-time-step-btn"
+              title="Rimuovi range livello"
+              onClick={() => setDraft((prev) => ({ ...prev, minCharacterLevel: '', maxCharacterLevel: '' }))}
+            >
+              <Icon name="fa-solid fa-eraser" />
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="mission-toggle-row">
@@ -751,6 +784,7 @@ export function MissionsPage() {
       { key: 'session', label: 'Sessione', value: formatMissionDateTime(selectedMission.sessionAt) },
       { key: 'closing', label: 'Chiusura', value: formatMissionDateTime(selectedMission.closesAt) },
       { key: 'capacity', label: 'Partecipanti', value: formatMissionParticipants(selectedMission) },
+      { key: 'levelRange', label: 'Range livello', value: formatMissionLevelRange(selectedMission) || '-' },
       {
         key: 'flags',
         label: 'Opzioni',
@@ -928,6 +962,7 @@ export function MissionsPage() {
           columns={[
             { key: 'user', label: 'Giocatore', sortKey: 'user' },
             { key: 'character', label: 'Personaggio' },
+            { key: 'characterLevel', label: 'Liv PG' },
             { key: 'type', label: 'Ingresso', sortKey: 'type' },
             { key: 'joinedAt', label: 'Iscrizione', sortKey: 'joinedAt' },
           ]}
@@ -945,10 +980,16 @@ export function MissionsPage() {
                 </div>
               </td>
               <td className="data-table-muted">{missionParticipantCharacterLabelById[participant.characterId] || participant.characterId}</td>
+              <td className="data-table-muted">{participant.characterLevel ?? '-'}</td>
               <td>
-                <span className={`status ${participant.participationType === 'TITOLARE' ? 'status-success' : 'status-warning'}`}>
-                  {participationLabel(participant.participationType)}
-                </span>
+                <div className="mission-entry-cell">
+                  <span className={`status ${participant.participationType === 'TITOLARE' ? 'status-success' : 'status-warning'}`}>
+                    {participationLabel(participant.participationType)}
+                  </span>
+                  {participant.participationType === 'NON_TITOLARE' && participant.benchReasonMessage && (
+                    <span className="mission-bench-reason">{participant.benchReasonMessage}</span>
+                  )}
+                </div>
               </td>
               <td className="data-table-muted">{formatMissionJoinedAt(participant.joinedAt)}</td>
             </tr>
@@ -971,6 +1012,20 @@ export function MissionsPage() {
                     label: 'Personaggio',
                     value: missionParticipantCharacterLabelById[participant.characterId] || participant.characterId,
                   },
+                  {
+                    key: 'characterLevel',
+                    label: 'Liv PG',
+                    value: participant.characterLevel ?? '-',
+                  },
+                  ...(participant.participationType === 'NON_TITOLARE' && participant.benchReasonMessage
+                    ? [
+                        {
+                          key: 'benchReason',
+                          label: 'Motivo panchina',
+                          value: participant.benchReasonMessage,
+                        },
+                      ]
+                    : []),
                   {
                     key: 'joinedAt',
                     label: 'Iscrizione',
@@ -1187,6 +1242,12 @@ export function MissionsPage() {
                         <Icon name="fa-solid fa-people-group" />
                         <span>{formatMissionParticipants(mission)}</span>
                       </span>
+                      {formatMissionLevelRange(mission) && (
+                        <span className="mission-participants-pill mission-level-pill">
+                          <Icon name="fa-solid fa-arrow-up-1-9" />
+                          <span>{formatMissionLevelRange(mission)}</span>
+                        </span>
+                      )}
                       <span>{mission.title}</span>
                     </p>
                   </div>
@@ -1268,6 +1329,12 @@ export function MissionsPage() {
                           <Icon name="fa-solid fa-people-group" />
                           <span>{formatMissionParticipants(mission)}</span>
                         </span>
+                        {formatMissionLevelRange(mission) && (
+                          <span className="mission-participants-pill mission-level-pill">
+                            <Icon name="fa-solid fa-arrow-up-1-9" />
+                            <span>{formatMissionLevelRange(mission)}</span>
+                          </span>
+                        )}
                         <span
                           className={missionStatusClassName(mission.status)}
                           title={missionStatusReasonLabel(mission.statusReason) || undefined}
@@ -1381,8 +1448,14 @@ export function MissionsPage() {
 function missionDraftToPayload(draft: MissionDraft, setError: (value: string) => void) {
   const sessionAt = toIsoTimestamp(draft.sessionDate, draft.sessionTime)
   const closesAt = toIsoTimestamp(draft.closesDate, draft.closesTime)
+  const minCharacterLevel = parseOptionalInt(draft.minCharacterLevel)
+  const maxCharacterLevel = parseOptionalInt(draft.maxCharacterLevel)
   if (sessionAt && closesAt && new Date(closesAt).getTime() >= new Date(sessionAt).getTime()) {
     setError('La chiusura iscrizioni deve precedere la data della sessione.')
+    return null
+  }
+  if (minCharacterLevel != null && maxCharacterLevel != null && minCharacterLevel > maxCharacterLevel) {
+    setError('Il livello minimo non puo superare il livello massimo.')
     return null
   }
 
@@ -1395,6 +1468,8 @@ function missionDraftToPayload(draft: MissionDraft, setError: (value: string) =>
     closesAt: closesAt || '',
     quorum: parseOptionalInt(draft.quorum),
     maxParticipants: parseOptionalInt(draft.maxParticipants),
+    minCharacterLevel,
+    maxCharacterLevel,
     autoReopenOnDrop: draft.autoReopenOnDrop,
   }
 }
@@ -1440,12 +1515,14 @@ function MissionCountStepper({
   minValue,
   maxValue,
   onChange,
+  emptyLabel,
 }: {
   label: string
   value: string
   minValue: number
   maxValue: number
   onChange: (value: string) => void
+  emptyLabel?: string
 }) {
   return (
     <div className="mission-count-stepper mission-count-stepper--compact" aria-label={label}>
@@ -1453,7 +1530,7 @@ function MissionCountStepper({
       <button type="button" className="secondary-btn mission-time-step-btn" onClick={() => onChange(shiftCount(value, -1, minValue, maxValue))}>
         <Icon name="fa-solid fa-minus" />
       </button>
-      <span className="mission-time-step-value">{value || String(minValue)}</span>
+      <span className="mission-time-step-value">{value || emptyLabel || String(minValue)}</span>
       <button type="button" className="secondary-btn mission-time-step-btn" onClick={() => onChange(shiftCount(value, 1, minValue, maxValue))}>
         <Icon name="fa-solid fa-plus" />
       </button>

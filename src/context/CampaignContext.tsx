@@ -14,6 +14,7 @@ import type {
   CreateInviteTokenRequest,
   InviteTokenResponse,
   RoomResponse,
+  UpdateCampaignMissionRuleRequest,
   UserProfile,
 } from '../types/domain'
 
@@ -81,6 +82,7 @@ export type CampaignContextValue = {
     isSearchable: boolean
     autoJoinEnabled?: boolean
     allowedModules: string[]
+    missionRules?: UpdateCampaignMissionRuleRequest[]
   }) => void
   refreshPermissionChecklist: () => void
   transferCampaignOwnership: (newOwnerId: string) => void

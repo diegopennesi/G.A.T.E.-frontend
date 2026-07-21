@@ -12,8 +12,10 @@ import {
 } from '../../../shared/utils'
 import type {
   CampaignCatalogEntry,
+  CampaignMissionRuleResponse,
   CreateInviteTokenRequest,
   InviteTokenResponse,
+  UpdateCampaignMissionRuleRequest,
 } from '../../../types/domain'
 
 type CampaignToggleRow = {
@@ -24,6 +26,29 @@ type CampaignToggleRow = {
   activeLabel: string
   inactiveLabel: string
   onToggle: () => void
+}
+
+type MissionRuleDraft = {
+  enabled: boolean
+  configJson: Record<string, unknown>
+}
+
+function missionRuleStatusLabel(rule: CampaignMissionRuleResponse) {
+  if (!rule.globallyActive) return 'Globale off'
+  return rule.effectiveEnabled ? 'Attiva' : 'Disattiva'
+}
+
+function missionRuleConfigString(value: unknown, fallback = '') {
+  return typeof value === 'string' ? value : fallback
+}
+
+function missionRuleConfigNumber(value: unknown, fallback: number) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string') {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return fallback
 }
 
 function CampaignToggleSettingsTable({
@@ -245,6 +270,7 @@ export function CampaignManagementPage() {
   const [isSearchable, setIsSearchable] = useState(campaign?.isSearchable ?? true)
   const [autoJoinEnabled, setAutoJoinEnabled] = useState(campaign?.autoJoinEnabled ?? false)
   const [selectedModules, setSelectedModules] = useState<string[]>(campaign?.allowedModules || [])
+  const [missionRuleDrafts, setMissionRuleDrafts] = useState<Record<string, MissionRuleDraft>>({})
 
   const availableModuleCodes = useMemo(
     () =>
@@ -308,6 +334,17 @@ export function CampaignManagementPage() {
     setIsSearchable(campaign.isSearchable ?? true)
     setAutoJoinEnabled(campaign.autoJoinEnabled ?? false)
     setSelectedModules(campaign.allowedModules || [])
+    setMissionRuleDrafts(
+      Object.fromEntries(
+        (campaign.missionRules || []).map((rule) => [
+          rule.code,
+          {
+            enabled: rule.campaignEnabled,
+            configJson: { ...(rule.configJson || {}) },
+          },
+        ]),
+      ),
+    )
     if (permissions.length === 0) {
       onRefreshPermissions()
     }
@@ -320,6 +357,26 @@ export function CampaignManagementPage() {
         : [...prev.filter((item) => availableModuleCodes.includes(item)), moduleCode],
     )
   }
+
+  const updateMissionRuleDraft = (ruleCode: string, updater: (draft: MissionRuleDraft) => MissionRuleDraft) => {
+    const baseRule = campaign?.missionRules?.find((rule) => rule.code === ruleCode)
+    setMissionRuleDrafts((prev) => {
+      const current = prev[ruleCode] || {
+        enabled: baseRule?.campaignEnabled || false,
+        configJson: { ...(baseRule?.configJson || {}) },
+      }
+      return { ...prev, [ruleCode]: updater(current) }
+    })
+  }
+
+  const missionRuleUpdates: UpdateCampaignMissionRuleRequest[] = (campaign?.missionRules || []).map((rule) => {
+    const draft = missionRuleDrafts[rule.code] || { enabled: rule.campaignEnabled, configJson: rule.configJson || {} }
+    return {
+      code: rule.code,
+      enabled: draft.enabled,
+      configJson: draft.configJson,
+    }
+  })
 
   const copyInviteCode = async () => {
     const value = campaign?.inviteCode?.trim()
@@ -527,6 +584,81 @@ export function CampaignManagementPage() {
             selectedModules={selectedAvailableModules}
             onToggle={toggleModule}
           />
+          {(campaign.missionRules || []).length > 0 && (
+            <div className="campaign-toggle-table-block">
+              <div className="row-between">
+                <div>
+                  <h3 className="section-title">Regole missione</h3>
+                  <p className="muted">Regole effettive per iscrizioni titolare e panchina nella campagna.</p>
+                </div>
+                <span className="readonly-chip">
+                  {(campaign.missionRules || []).filter((rule) => missionRuleDrafts[rule.code]?.enabled ?? rule.campaignEnabled).length}/{campaign.missionRules?.length || 0} attive
+                </span>
+              </div>
+              <div className="mission-rule-settings-list">
+                {(campaign.missionRules || []).map((rule) => {
+                  const draft = missionRuleDrafts[rule.code] || { enabled: rule.campaignEnabled, configJson: rule.configJson || {} }
+                  const disabled = !rule.globallyActive || !rule.availableForGameSystem
+                  const windowMode = missionRuleConfigString(draft.configJson.windowMode, 'CALENDAR_WEEK')
+                  const rollingDays = missionRuleConfigNumber(draft.configJson.rollingDays, 7)
+                  return (
+                    <div key={rule.code} className="mission-rule-setting-row">
+                      <div className="data-table-primary">
+                        <p className="data-table-title">{rule.label || rule.code}</p>
+                        <p className="data-table-meta">{rule.description || rule.defaultMessage}</p>
+                      </div>
+                      <span className={`status ${draft.enabled && !disabled ? 'status-success' : 'status-neutral'}`}>
+                        {disabled ? missionRuleStatusLabel(rule) : draft.enabled ? 'Attiva' : 'Disattiva'}
+                      </span>
+                      <label className={`switch ${disabled ? 'is-disabled' : ''}`} aria-label={`${rule.label} ${draft.enabled ? 'attiva' : 'disattiva'}`}>
+                        <input
+                          type="checkbox"
+                          checked={draft.enabled && !disabled}
+                          disabled={disabled}
+                          onChange={(event) => updateMissionRuleDraft(rule.code, (current) => ({ ...current, enabled: event.target.checked }))}
+                        />
+                        <span className="switch-track" aria-hidden="true">
+                          <span className="switch-thumb" />
+                        </span>
+                      </label>
+                      {rule.code === 'WEEKLY_TITULAR_LIMIT' && (
+                        <div className="mission-rule-config-row">
+                          <select
+                            value={windowMode}
+                            disabled={disabled}
+                            onChange={(event) =>
+                              updateMissionRuleDraft(rule.code, (current) => ({
+                                ...current,
+                                configJson: { ...current.configJson, windowMode: event.target.value },
+                              }))
+                            }
+                          >
+                            <option value="CALENDAR_WEEK">Settimana lun-dom</option>
+                            <option value="ROLLING_DAYS">Finestra mobile</option>
+                          </select>
+                          {windowMode === 'ROLLING_DAYS' && (
+                            <input
+                              type="number"
+                              min={1}
+                              max={30}
+                              value={rollingDays}
+                              disabled={disabled}
+                              onChange={(event) =>
+                                updateMissionRuleDraft(rule.code, (current) => ({
+                                  ...current,
+                                  configJson: { ...current.configJson, rollingDays: Number(event.target.value) || 7 },
+                                }))
+                              }
+                            />
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
           <button
             type="button"
             className="primary-btn"
@@ -544,6 +676,7 @@ export function CampaignManagementPage() {
                 isSearchable,
                 autoJoinEnabled,
                 allowedModules: selectedAvailableModules,
+                missionRules: missionRuleUpdates,
               })
             }
           >

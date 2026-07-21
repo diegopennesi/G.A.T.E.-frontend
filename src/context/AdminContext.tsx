@@ -3,6 +3,10 @@ import { createContext, useContext } from 'react'
 import type { ReactNode } from 'react'
 import type {
   AdminGameSystemUpsertRequest,
+  AdminGameSystemRuleResponse,
+  AdminGameSystemRuleUpsertRequest,
+  AdminMissionRuleResponse,
+  AdminMissionRuleUpsertRequest,
   AdminSheetTypeUpsertRequest,
   CampaignCatalogEntry,
   SheetTypeCatalogEntry,
@@ -12,11 +16,16 @@ export type AdminContextValue = {
   busy: boolean
   gameSystems: CampaignCatalogEntry[]
   sheetTypes: SheetTypeCatalogEntry[]
+  missionRules: AdminMissionRuleResponse[]
+  gameSystemRules: AdminGameSystemRuleResponse[]
   refreshSystemCatalogs: () => void
   createGameSystem: (payload: AdminGameSystemUpsertRequest) => Promise<void>
   saveGameSystem: (code: string, payload: AdminGameSystemUpsertRequest) => Promise<void>
   createSheetType: (payload: AdminSheetTypeUpsertRequest) => Promise<void>
   saveSheetType: (code: string, payload: AdminSheetTypeUpsertRequest) => Promise<void>
+  createMissionRule: (payload: AdminMissionRuleUpsertRequest) => Promise<void>
+  saveMissionRule: (code: string, payload: AdminMissionRuleUpsertRequest) => Promise<void>
+  saveGameSystemRule: (payload: AdminGameSystemRuleUpsertRequest) => Promise<void>
 }
 
 const AdminContext = createContext<AdminContextValue | null>(null)
