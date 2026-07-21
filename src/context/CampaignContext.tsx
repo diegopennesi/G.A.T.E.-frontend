@@ -29,6 +29,7 @@ export type CampaignContextValue = {
   previewInviteAccess: (inviteValue: string) => Promise<InviteAccessPreview>
   openCreateCampaign: () => void
   canCreateCampaign: boolean
+  activeCampaignId: string
   activeCampaignName: string
   campaign: CampaignResponse | null
   currentUserId: string

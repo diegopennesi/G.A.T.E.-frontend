@@ -1519,8 +1519,9 @@ function App() {
     })
   }
 
-  const detachActiveCampaign = () => {
-    clearActiveCampaignContext()
+  const openCampaignList = () => {
+    setScreen('Lista Campagne')
+    setIsSidebarOpen(false)
   }
 
   useEffect(() => {
@@ -2799,6 +2800,7 @@ function App() {
     previewInviteAccess,
     openCreateCampaign: () => setScreen('Crea Campagna'),
     canCreateCampaign: canCreateCampaignInRealm,
+    activeCampaignId: campaignId.trim(),
     activeCampaignName: campaign?.name || activeCampaignMembership?.campaignName || campaignId || '',
     campaign,
     currentUserId: profile?.id || '',
@@ -4573,7 +4575,7 @@ function App() {
           <p className="sidebar-user-kicker">Campagna attiva</p>
           <p className="sidebar-context-title">{hasActiveCampaign ? activeCampaignLabel : 'Nessuna campagna attiva'}</p>
           {hasActiveCampaign && (
-            <button type="button" className="danger-btn sidebar-context-action" onClick={detachActiveCampaign}>
+            <button type="button" className="danger-btn sidebar-context-action" onClick={openCampaignList}>
               <Icon name="fa-right-left" />
               <span>Cambia campagna</span>
             </button>

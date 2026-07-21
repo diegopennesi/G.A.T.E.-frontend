@@ -19,6 +19,7 @@ export function CampaignListPage() {
     applyCampaign: onApplyCampaign,
     applyInviteAccess: onApplyInviteAccess,
     previewInviteAccess: onPreviewInviteAccess,
+    activeCampaignId,
     activeCampaignName,
   } = useCampaignContext()
   const [membershipFilter, setMembershipFilter] = useState<'all' | 'inside' | 'outside' | 'pending' | 'blocked'>('all')
@@ -32,6 +33,7 @@ export function CampaignListPage() {
 
   const renderCampaignAction = (item: (typeof campaigns)[number], className = '') => {
     const isDisabled = !item.isActive
+    const isCurrentActiveCampaign = activeCampaignId.trim() === item.id
 
     if (item.membershipStatus === 'APPROVED') {
       return (
@@ -39,10 +41,16 @@ export function CampaignListPage() {
           type="button"
           className={`secondary-btn ${className}`.trim()}
           onClick={() => onOpenCampaign(item.id)}
-          disabled={isDisabled}
-          title={isDisabled ? 'Campagna disattivata: selezione non disponibile' : undefined}
+          disabled={isDisabled || isCurrentActiveCampaign}
+          title={
+            isCurrentActiveCampaign
+              ? 'Questa campagna e gia attiva'
+              : isDisabled
+                ? 'Campagna disattivata: selezione non disponibile'
+                : undefined
+          }
         >
-          Seleziona campagna
+          {isCurrentActiveCampaign ? 'Campagna attiva' : 'Seleziona campagna'}
         </button>
       )
     }
