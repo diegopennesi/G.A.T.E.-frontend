@@ -79,12 +79,15 @@ export function AuthScreen() {
         throw new Error('La nuova password e la conferma non coincidono')
       }
 
-      await handleAuth(
-        await confirmPasswordReset({
-          resetSeed,
-          newPassword,
-        }),
-      )
+      const response = await confirmPasswordReset({
+        resetSeed,
+        newPassword,
+      })
+      setPassword('')
+      resetRecoveryState()
+      setInfo(`${response.message}. Ora puoi accedere con la nuova password.`)
+      setMode('login')
+      onModeChange?.('login')
     } catch (err) {
       setError(toMessage(err))
     } finally {

@@ -101,6 +101,10 @@ export type PasswordResetRequestResponse = {
   expiresAt: string
 }
 
+export type PasswordResetConfirmResponse = {
+  message: string
+}
+
 export async function requestPasswordReset(username: string): Promise<PasswordResetRequestResponse> {
   return apiRequest<PasswordResetRequestResponse>('/auth/password/reset/request', {
     method: 'POST',
@@ -112,8 +116,8 @@ export async function requestPasswordReset(username: string): Promise<PasswordRe
 export async function confirmPasswordReset(params: {
   resetSeed: string
   newPassword: string
-}): Promise<AuthSession> {
-  const data = await apiRequest<AuthResponse>('/auth/password/reset/confirm', {
+}): Promise<PasswordResetConfirmResponse> {
+  return apiRequest<PasswordResetConfirmResponse>('/auth/password/reset/confirm', {
     method: 'POST',
     auth: false,
     body: {
@@ -121,8 +125,6 @@ export async function confirmPasswordReset(params: {
       newPassword: params.newPassword,
     },
   })
-  setTokens(data.accessToken, data.refreshToken)
-  return data
 }
 
 export function logout() {
