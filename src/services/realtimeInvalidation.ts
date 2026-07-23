@@ -60,6 +60,7 @@ export function applyRealtimeInvalidation(
   const missionChatKeyMatch = payload.keys.some((key) => /^campaigns:[^:]+:missions:[^:]+:chat$/.test(key))
   const missionParticipantsKeyMatch = payload.keys.some((key) => /^campaigns:[^:]+:missions:[^:]+:participants$/.test(key))
   const characterKeyMatch = payload.keys.some((key) => /^campaigns:[^:]+:characters(?:$|:)/.test(key))
+  const sheetReviewKeyMatch = payload.keys.some((key) => /^campaigns:[^:]+:sheet-reviews:pending$/.test(key))
   const pendingApplicationsCampaignIds = payload.keys
     .filter((key) => key.startsWith('campaigns:') && key.endsWith(':pending-applications'))
     .map((key) => key.split(':')[1])
@@ -123,7 +124,7 @@ export function applyRealtimeInvalidation(
 
   if (!campaignKeyMatch) return
 
-  if (state.screen === 'Scheda PG' && characterKeyMatch) {
+  if (state.screen === 'Scheda PG' && (characterKeyMatch || sheetReviewKeyMatch)) {
     void actions.refreshCharacterBlock()
     return
   }

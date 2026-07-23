@@ -1,7 +1,14 @@
 import { useMutation } from '@tanstack/react-query'
 import { queryClient } from '../services/queryClient'
 import { queryKeys } from '../services/queryKeys'
-import { applyToCampaign, createCharacter, updateCharacterSheet, updateCharacterStatus } from '../services/gateApi'
+import {
+  applyToCampaign,
+  approveCharacterSheetReview,
+  createCharacter,
+  rejectCharacterSheetReview,
+  updateCharacterSheet,
+  updateCharacterStatus,
+} from '../services/gateApi'
 import type { Character, CharacterSheetResponse, CharacterStatus } from '../types/domain'
 import type { Screen } from '../types/ui'
 
@@ -21,6 +28,8 @@ export function useCharacterMutations(deps: CharacterMutationsDeps) {
       queryClient.invalidateQueries({ queryKey: queryKeys.campaignCharacters(campaignId), exact: false }),
       queryClient.invalidateQueries({ queryKey: queryKeys.campaignCharacterDetail(campaignId, characterId), exact: false }),
       queryClient.invalidateQueries({ queryKey: queryKeys.campaignCharacterSheet(campaignId, characterId), exact: false }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.campaignCharacterSheetHistory(campaignId, characterId), exact: false }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.campaignPendingSheetReviews(campaignId), exact: false }),
     ])
 
   const createCharacterMutation = useMutation({
@@ -61,6 +70,40 @@ export function useCharacterMutations(deps: CharacterMutationsDeps) {
     },
   })
 
+  const approveCharacterSheetReviewMutation = useMutation({
+    mutationFn: ({
+      campaignId,
+      characterId,
+      reviewId,
+      note,
+    }: {
+      campaignId: string
+      characterId: string
+      reviewId: string
+      note?: string
+    }) => approveCharacterSheetReview(campaignId, characterId, reviewId, { note: note?.trim() || null }),
+    onSuccess: async (_review, variables) => {
+      await invalidateCharacterBlock(variables.campaignId, variables.characterId)
+    },
+  })
+
+  const rejectCharacterSheetReviewMutation = useMutation({
+    mutationFn: ({
+      campaignId,
+      characterId,
+      reviewId,
+      note,
+    }: {
+      campaignId: string
+      characterId: string
+      reviewId: string
+      note?: string
+    }) => rejectCharacterSheetReview(campaignId, characterId, reviewId, { note: note?.trim() || null }),
+    onSuccess: async (_review, variables) => {
+      await invalidateCharacterBlock(variables.campaignId, variables.characterId)
+    },
+  })
+
   return {
     createCharacter: (payload: { name: string; nickname?: string; portraitUrl?: string; isNpc?: boolean }) =>
       createCharacterMutation.mutateAsync(payload),
@@ -75,5 +118,9 @@ export function useCharacterMutations(deps: CharacterMutationsDeps) {
       updateCharacterStatusMutation.mutateAsync({ campaignId, characterId, status }),
     applyCharacterToCampaign: (campaignId: string, characterId: string) =>
       applyCharacterToCampaignMutation.mutateAsync({ campaignId, characterId }),
+    approveCharacterSheetReview: (campaignId: string, characterId: string, reviewId: string, note?: string) =>
+      approveCharacterSheetReviewMutation.mutateAsync({ campaignId, characterId, reviewId, note }),
+    rejectCharacterSheetReview: (campaignId: string, characterId: string, reviewId: string, note?: string) =>
+      rejectCharacterSheetReviewMutation.mutateAsync({ campaignId, characterId, reviewId, note }),
   }
 }

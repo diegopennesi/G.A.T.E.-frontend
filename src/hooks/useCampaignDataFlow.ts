@@ -26,6 +26,7 @@ type LoadCampaignBlockArgs = {
 type CampaignDataFlowDeps = {
   activeUserId: string | null
   profileId: string | null
+  allowInactiveCampaignAccess: boolean
   bootstrapScope: (userId: string) => BootstrapScope
   run: (label: string, task: () => Promise<void>) => Promise<void>
   setCampaign: (value: CampaignResponse | null) => void
@@ -96,6 +97,23 @@ export function useCampaignDataFlow(deps: CampaignDataFlowDeps) {
   const loadCampaignBlockFor = useCallback(
     async ({ campaignId, force = false }: LoadCampaignBlockArgs) => {
       const detailsQuery = campaignQueries.details(campaignId)
+      const campaignValue = await readOrFetchQuery(queryClient, detailsQuery, { force })
+      deps.setCampaign(campaignValue)
+      deps.setCampaignDetailsById((prev) => ({ ...prev, [campaignValue.id]: campaignValue }))
+      if (!deps.allowInactiveCampaignAccess && !campaignValue.isActive) {
+        deps.setMembers([])
+        deps.setCampaignMembersForManagement([])
+        deps.setCanManageCampaignMembers(false)
+        deps.setPendingApplications([])
+        deps.writePendingApplicationsForCampaign(deps.activeUserId, campaignId, [])
+        deps.setCharacters([])
+        deps.setMissions([])
+        deps.setRooms([])
+        deps.setSelectedCharacterId('')
+        deps.setSelectedMissionId('')
+        return
+      }
+
       const membersQuery = campaignQueries.members(campaignId)
       const charactersQuery = campaignQueries.characters(campaignId)
       const missionsQuery = campaignQueries.missions(campaignId, deps.missionWindowSince())
@@ -103,14 +121,12 @@ export function useCampaignDataFlow(deps: CampaignDataFlowDeps) {
       const permissionQuery = campaignQueries.permission(campaignId, 'PROMOTE_CO_MASTER_OR_MASTER')
 
       const [
-        campaignValue,
         memberValue,
         characterValue,
         missionValue,
         roomValue,
         permissionValue,
       ] = await Promise.all([
-        readOrFetchQuery(queryClient, detailsQuery, { force }),
         readOrFetchQuery(queryClient, membersQuery, { force }),
         readOrFetchQuery(queryClient, charactersQuery, { force }),
         readOrFetchQuery(queryClient, missionsQuery, { force }),
@@ -163,8 +179,6 @@ export function useCampaignDataFlow(deps: CampaignDataFlowDeps) {
         : null
       const preferredCharacterId = ownedActiveCharacter?.id || ownedCharacter?.id || ''
 
-      deps.setCampaign(campaignValue)
-      deps.setCampaignDetailsById((prev) => ({ ...prev, [campaignValue.id]: campaignValue }))
       deps.setMembers(memberValue)
       deps.setCampaignMembersForManagement(memberManagementValue)
       deps.setCanManageCampaignMembers(canManageMembersPermission)
@@ -211,6 +225,19 @@ export function useCampaignDataFlow(deps: CampaignDataFlowDeps) {
 
       const settled = await Promise.allSettled(
         approvedCampaignIds.map(async (targetCampaignId) => {
+          const details = await readOrFetchQuery(
+            queryClient,
+            campaignQueries.details(targetCampaignId),
+            options,
+          )
+          deps.setCampaignDetailsById((prev) => ({ ...prev, [details.id]: details }))
+          if (!deps.allowInactiveCampaignAccess && !details.isActive) {
+            return {
+              missions: [] as MissionResponse[],
+              characters: [] as import('../types/domain').Character[],
+            }
+          }
+
           const [missionRows, characterRows] = await Promise.all([
             readOrFetchQuery(
               queryClient,

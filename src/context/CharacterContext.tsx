@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext } from 'react'
 import type { ReactNode } from 'react'
-import type { Character, CharacterStatus, CharacterSheetResponse } from '../types/domain'
+import type { Character, CharacterStatus, CharacterSheetResponse, CharacterSheetReviewResponse } from '../types/domain'
 
 export type CharacterContextValue = {
   characters: Character[]
@@ -15,8 +15,13 @@ export type CharacterContextValue = {
   selectedCharacter: Character | null
   characterDetail: Character | null
   characterSheetDetail: CharacterSheetResponse | null
+  characterSheetHistory: CharacterSheetReviewResponse[]
   refreshCharacterDetail: () => void
   saveCharacterSheet: (dataJson: Record<string, unknown>) => Promise<void>
+  canViewSheetHistory: boolean
+  canReviewSheetChanges: boolean
+  approveCharacterSheetReview: (reviewId: string, note?: string) => Promise<void>
+  rejectCharacterSheetReview: (reviewId: string, note?: string) => Promise<void>
   canMarkCharacterDead: (character: Character | null) => boolean
   canReactivateCharacter: (character: Character | null) => boolean
   updateCharacterStatus: (status: CharacterStatus) => void

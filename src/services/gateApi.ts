@@ -29,6 +29,7 @@ import type {
   CampaignResponse,
   Character,
   CharacterSheetResponse,
+  CharacterSheetReviewResponse,
   CharacterStatus,
   MyCampaignMembershipResponse,
   PostLoginCampaignSummaryResponse,
@@ -43,6 +44,7 @@ import type {
   AdminSheetTypeUpsertRequest,
   UpdateCampaignMissionRuleRequest,
   UpdateCharacterSheetRequest,
+  ReviewCharacterSheetRequest,
   UserProfile,
   InviteTokenPreviewResponse,
   InviteTokenResponse,
@@ -687,6 +689,17 @@ export async function getCharacterSheet(campaignId: string, characterId: string)
   return apiRequest<CharacterSheetResponse>(`/campaigns/${campaignId}/characters/${characterId}/sheet`)
 }
 
+export async function listPendingCharacterSheetReviews(campaignId: string): Promise<CharacterSheetReviewResponse[]> {
+  return apiRequest<CharacterSheetReviewResponse[]>(`/campaigns/${campaignId}/characters/sheet-reviews/pending`)
+}
+
+export async function listCharacterSheetHistory(
+  campaignId: string,
+  characterId: string,
+): Promise<CharacterSheetReviewResponse[]> {
+  return apiRequest<CharacterSheetReviewResponse[]>(`/campaigns/${campaignId}/characters/${characterId}/sheet/history`)
+}
+
 export async function updateCharacterSheet(
   campaignId: string,
   characterId: string,
@@ -696,6 +709,36 @@ export async function updateCharacterSheet(
     method: 'PATCH',
     body: payload,
   })
+}
+
+export async function approveCharacterSheetReview(
+  campaignId: string,
+  characterId: string,
+  reviewId: string,
+  payload: ReviewCharacterSheetRequest = {},
+): Promise<CharacterSheetReviewResponse> {
+  return apiRequest<CharacterSheetReviewResponse>(
+    `/campaigns/${campaignId}/characters/${characterId}/sheet/reviews/${reviewId}/approve`,
+    {
+      method: 'POST',
+      body: payload,
+    },
+  )
+}
+
+export async function rejectCharacterSheetReview(
+  campaignId: string,
+  characterId: string,
+  reviewId: string,
+  payload: ReviewCharacterSheetRequest = {},
+): Promise<CharacterSheetReviewResponse> {
+  return apiRequest<CharacterSheetReviewResponse>(
+    `/campaigns/${campaignId}/characters/${characterId}/sheet/reviews/${reviewId}/reject`,
+    {
+      method: 'POST',
+      body: payload,
+    },
+  )
 }
 
 export async function createCharacter(

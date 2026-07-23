@@ -1,5 +1,5 @@
 import { queryOptions } from '@tanstack/react-query'
-import { getCharacter, getCharacterSheet } from '../gateApi'
+import { getCharacter, getCharacterSheet, listCharacterSheetHistory } from '../gateApi'
 import { queryKeys } from '../queryKeys'
 
 export const characterQueries = {
@@ -12,5 +12,10 @@ export const characterQueries = {
     queryOptions({
       queryKey: queryKeys.campaignCharacterSheet(campaignId, characterId),
       queryFn: () => getCharacterSheet(campaignId, characterId),
+    }),
+  sheetHistory: (campaignId: string, characterId: string) =>
+    queryOptions({
+      queryKey: queryKeys.campaignCharacterSheetHistory(campaignId, characterId),
+      queryFn: () => listCharacterSheetHistory(campaignId, characterId),
     }),
 } as const

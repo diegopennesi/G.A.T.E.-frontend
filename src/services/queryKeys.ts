@@ -17,6 +17,9 @@ export const queryKeys = {
     ['campaigns', campaignId, 'characters', characterId, 'detail'] as const,
   campaignCharacterSheet: (campaignId: string, characterId: string) =>
     ['campaigns', campaignId, 'characters', characterId, 'sheet'] as const,
+  campaignCharacterSheetHistory: (campaignId: string, characterId: string) =>
+    ['campaigns', campaignId, 'characters', characterId, 'sheet-history'] as const,
+  campaignPendingSheetReviews: (campaignId: string) => ['campaigns', campaignId, 'sheet-reviews', 'pending'] as const,
   campaignMissions: (campaignId: string, since?: string) =>
     ['campaigns', campaignId, 'missions', { since: since?.trim() || '' }] as const,
   campaignPendingApplications: (campaignId: string) => ['campaigns', campaignId, 'pending-applications'] as const,

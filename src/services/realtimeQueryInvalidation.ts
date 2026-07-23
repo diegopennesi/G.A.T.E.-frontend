@@ -102,6 +102,14 @@ function invalidateCampaignKey(queryClient: QueryClient, key: string) {
       if (parts[4] === 'sheet') {
         void queryClient.invalidateQueries({ queryKey: queryKeys.campaignCharacterSheet(campaignId, parts[3]), exact: true })
       }
+      if (parts[4] === 'sheet-history') {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.campaignCharacterSheetHistory(campaignId, parts[3]), exact: true })
+      }
+      break
+    case 'sheet-reviews':
+      if (parts[3] === 'pending') {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.campaignPendingSheetReviews(campaignId), exact: true })
+      }
       break
     case 'missions':
       if (!parts[3]) {

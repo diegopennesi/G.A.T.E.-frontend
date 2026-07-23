@@ -86,6 +86,7 @@ import type {
   CampaignRole,
   CampaignResponse,
   Character,
+  CharacterSheetReviewResponse,
   CharacterStatus,
   CreateInviteTokenRequest,
   MissionParticipationType,
@@ -307,6 +308,8 @@ function App() {
     setCharacterDetail,
     characterSheetDetail,
     setCharacterSheetDetail,
+    characterSheetHistory,
+    setCharacterSheetHistory,
   } = useCharacterState()
   const {
     missions,
@@ -567,6 +570,22 @@ function App() {
     MASTER: 3,
     SUPER_MASTER: 4,
   }
+  const canViewSheetHistoryForCampaign = useCallback(
+    (targetCampaignId: string) => {
+      if (isSystemRole) return true
+      const role = approvedRoleByCampaignId[targetCampaignId]
+      return role === 'CO_MASTER' || role === 'MASTER' || role === 'SUPER_MASTER'
+    },
+    [approvedRoleByCampaignId, isSystemRole],
+  )
+  const canReviewSheetChangesForCampaign = useCallback(
+    (targetCampaignId: string) => {
+      if (isSystemRole) return true
+      const role = approvedRoleByCampaignId[targetCampaignId]
+      return role === 'MASTER' || role === 'SUPER_MASTER'
+    },
+    [approvedRoleByCampaignId, isSystemRole],
+  )
   const activeCampaignHasMissionsModule = Boolean(campaign?.allowedModules?.includes('MISSIONI'))
   const canCreateMissions =
     activeCampaignHasMissionsModule &&
@@ -792,6 +811,7 @@ function App() {
     setSelectedCharacterId('')
     setCharacterDetail(null)
     setCharacterSheetDetail(null)
+    setCharacterSheetHistory([])
     setMissions([])
     setMissionParticipantsById({})
     setMyMissionParticipationById({})
@@ -811,6 +831,7 @@ function App() {
     setCanManageCampaignMembers,
     setCharacterDetail,
     setCharacterSheetDetail,
+    setCharacterSheetHistory,
     setCharacters,
     setCampaign,
     setCampaignMembersForManagement,
@@ -1275,6 +1296,7 @@ function App() {
     setPermissions([])
     setCharacterDetail(null)
     setCharacterSheetDetail(null)
+    setCharacterSheetHistory([])
     setSelectedCharacterId('')
     setSelectedMissionId('')
     setError('')
@@ -1336,13 +1358,18 @@ function App() {
   )
 
   const loadCharacterDetailBlock = useCallback(async (targetCampaignId: string, targetCharacterId: string) => {
-    const [detailValue, sheetValue] = await Promise.all([
+    const canLoadHistory = canViewSheetHistoryForCampaign(targetCampaignId)
+    const [detailValue, sheetValue, historyValue] = await Promise.all([
       readOrFetchQuery(queryClient, characterQueries.detail(targetCampaignId, targetCharacterId)),
       readOrFetchQuery(queryClient, characterQueries.sheet(targetCampaignId, targetCharacterId)),
+      canLoadHistory
+        ? readOrFetchQuery(queryClient, characterQueries.sheetHistory(targetCampaignId, targetCharacterId))
+        : Promise.resolve([] as CharacterSheetReviewResponse[]),
     ])
     setCharacterDetail(detailValue)
     setCharacterSheetDetail(sheetValue)
-  }, [])
+    setCharacterSheetHistory(historyValue)
+  }, [canViewSheetHistoryForCampaign, setCharacterSheetHistory])
 
   const refreshCharacterBlock = useCallback(async () => {
     const targetCampaignId = selectedCharacter?.campaignId || campaignId
@@ -1363,6 +1390,7 @@ function App() {
     setSelectedCharacterId('')
     setCharacterDetail(null)
     setCharacterSheetDetail(null)
+    setCharacterSheetHistory([])
     setMissions([])
     setMissionParticipantsById({})
     setMyMissionParticipationById({})
@@ -1416,6 +1444,7 @@ function App() {
     } = useCampaignDataFlow({
       activeUserId,
       profileId: profile?.id ?? null,
+      allowInactiveCampaignAccess: isSystemRole,
       bootstrapScope,
       run,
       setCampaign,
@@ -1574,6 +1603,7 @@ function App() {
       setSelectedCampaignMemberProfile(null)
       setCharacterDetail(null)
       setCharacterSheetDetail(null)
+      setCharacterSheetHistory([])
       setSelectedCharacterId('')
       setSelectedMissionId('')
       setScreen(targetScreen)
@@ -1646,18 +1676,25 @@ function App() {
     }
   }, [campaignId, canAccessCampaignManagement])
 
-    const loadCharactersForManagement = async (options: { force?: boolean } = {}) => {
+  const loadCharactersForManagement = async (options: { force?: boolean } = {}) => {
     const approvedCampaignIds = approvedCampaignMemberships.map((item) => item.campaignId)
     if (approvedCampaignIds.length === 0) {
       setCharacters([])
       setSelectedCharacterId('')
       setCharacterDetail(null)
       setCharacterSheetDetail(null)
+      setCharacterSheetHistory([])
       return
     }
 
     const settled = await Promise.allSettled(
       approvedCampaignIds.map(async (targetCampaignId) => {
+        const details = await readOrFetchQuery(queryClient, campaignQueries.details(targetCampaignId), options)
+        setCampaignDetailsById((prev) => ({ ...prev, [details.id]: details }))
+        if (!isSystemRole && !details.isActive) {
+          return { campaignId: targetCampaignId, members: [] as CampaignMembershipResponse[], characters: [] as Character[] }
+        }
+
         const [memberRows, characterRows] = await Promise.all([
           readOrFetchQuery(queryClient, campaignQueries.members(targetCampaignId), options),
           readOrFetchQuery(queryClient, campaignQueries.characters(targetCampaignId), options),
@@ -2221,6 +2258,11 @@ function App() {
     if (state.screen === 'Approvazione Accessi') {
       void actions.refreshCampaignBlock({ force: true })
       void actions.loadPendingForActiveCampaign({ force: true })
+      return
+    }
+
+    if (state.screen === 'Scheda PG') {
+      void actions.refreshCharacterBlock()
       return
     }
 
@@ -3033,6 +3075,7 @@ function App() {
       setSelectedCharacterId(character.id)
       setCharacterDetail(null)
       setCharacterSheetDetail(null)
+      setCharacterSheetHistory([])
       setScreen('Scheda PG')
     },
     canOpenCharacterSheet,
@@ -3046,6 +3089,7 @@ function App() {
     selectedCharacter,
     characterDetail,
     characterSheetDetail,
+    characterSheetHistory,
     refreshCharacterDetail: () => void refreshCharacterBlock(),
     saveCharacterSheet: (dataJson: Record<string, unknown>) =>
       run('Scheda personaggio salvata', async () => {
@@ -3053,6 +3097,29 @@ function App() {
         const detailCampaignId = selectedCharacter?.campaignId || campaignId
         if (!detailCampaignId) return
         await characterMutations.saveCharacterSheet(detailCampaignId, selectedCharacterId, dataJson)
+        await loadCharacterDetailBlock(detailCampaignId, selectedCharacterId)
+      }),
+    canViewSheetHistory: selectedCharacter
+      ? canViewSheetHistoryForCampaign(selectedCharacter.campaignId || campaignId)
+      : false,
+    canReviewSheetChanges: selectedCharacter
+      ? canReviewSheetChangesForCampaign(selectedCharacter.campaignId || campaignId)
+      : false,
+    approveCharacterSheetReview: (reviewId: string, note?: string) =>
+      run('Modifica scheda approvata', async () => {
+        if (!selectedCharacterId) return
+        const detailCampaignId = selectedCharacter?.campaignId || campaignId
+        if (!detailCampaignId) return
+        await characterMutations.approveCharacterSheetReview(detailCampaignId, selectedCharacterId, reviewId, note)
+        await loadCharacterDetailBlock(detailCampaignId, selectedCharacterId)
+      }),
+    rejectCharacterSheetReview: (reviewId: string, note?: string) =>
+      run('Modifica scheda rifiutata', async () => {
+        if (!selectedCharacterId) return
+        const detailCampaignId = selectedCharacter?.campaignId || campaignId
+        if (!detailCampaignId) return
+        await characterMutations.rejectCharacterSheetReview(detailCampaignId, selectedCharacterId, reviewId, note)
+        await loadCharacterDetailBlock(detailCampaignId, selectedCharacterId)
       }),
     canMarkCharacterDead,
     canReactivateCharacter,
@@ -4864,7 +4931,7 @@ function App() {
 
         {screen === 'Scheda PG' && (
           <CharacterProvider value={characterContextValue}>
-            <CharacterDetailPage key={`${selectedCharacterId || 'no-character'}-${characterSheetDetail?.updatedAt || characterSheetDetail?.schemaVersion || 'no-sheet'}`} />
+            <CharacterDetailPage key={`${selectedCharacterId || 'no-character'}-${characterSheetDetail?.updatedAt || characterSheetDetail?.schemaVersion || 'no-sheet'}-${characterSheetDetail?.pendingReview?.id || 'no-review'}`} />
           </CharacterProvider>
         )}
 

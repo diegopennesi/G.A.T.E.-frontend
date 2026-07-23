@@ -2505,6 +2505,34 @@ textarea {
   gap: 6px;
 }
 
+.sheet-abilities-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.sheet-ability-card {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--surface);
+}
+
+.sheet-ability-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sheet-ability-modifier {
+  min-width: 46px;
+  justify-content: center;
+  text-align: center;
+}
+
 .sheet-field-label {
   color: var(--text);
   font-weight: 600;
@@ -2543,6 +2571,100 @@ textarea {
 
 .sheet-actions .muted {
   margin: 0;
+}
+
+.sheet-review-panel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  margin: 14px 0;
+  background: var(--surface-soft);
+}
+
+.sheet-review-panel-pending {
+  border-color: rgba(201, 168, 76, 0.5);
+}
+
+.sheet-review-panel-head,
+.sheet-review-item-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sheet-review-panel-head h3 {
+  margin: 0 0 4px;
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.sheet-review-list {
+  display: grid;
+  gap: 10px;
+}
+
+.sheet-review-item {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--surface);
+}
+
+.sheet-review-item-head > div {
+  display: grid;
+  gap: 2px;
+}
+
+.sheet-review-change-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sheet-review-change-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.sheet-review-change-list li span {
+  color: var(--muted);
+}
+
+.sheet-review-change-list li strong {
+  color: var(--text);
+  text-align: right;
+}
+
+.sheet-review-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.sheet-review-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.button-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .status {

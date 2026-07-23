@@ -33,6 +33,11 @@ export interface SheetSchemaField {
   helpText?: string | null
   defaultValue?: unknown
   options?: Array<unknown>
+  readOnly?: boolean
+  min?: number
+  max?: number
+  step?: number
+  optionsSource?: string | null
 }
 
 export interface SheetSchemaBlock {
@@ -149,6 +154,9 @@ export interface CharacterSheetResponse {
   schemaVersion: number
   schemaJson: Record<string, unknown>
   dataJson: Record<string, unknown>
+  catalogOptions: Record<string, Array<{ value: string; label: string; description?: string | null }>>
+  derivedJson: Record<string, unknown>
+  pendingReview?: CharacterSheetReviewSummaryResponse | null
   hasTemplate: boolean
   editable: boolean
   updatedAt: string | null
@@ -156,6 +164,45 @@ export interface CharacterSheetResponse {
 
 export interface UpdateCharacterSheetRequest {
   dataJson: Record<string, unknown>
+}
+
+export type CharacterSheetReviewStatus = 'PENDING' | 'APPROVED' | 'REJECTED'
+
+export interface CharacterSheetChangeResponse {
+  path: string
+  label: string
+  oldValue: unknown
+  newValue: unknown
+}
+
+export interface CharacterSheetReviewSummaryResponse {
+  id: string
+  status: CharacterSheetReviewStatus
+  submittedByUserId: string
+  changes: CharacterSheetChangeResponse[]
+  submittedAt: string
+}
+
+export interface CharacterSheetReviewResponse {
+  id: string
+  campaignId: string
+  characterId: string
+  sheetTypeCode: string
+  gameSystemCode: string
+  schemaVersion: number
+  status: CharacterSheetReviewStatus
+  submittedByUserId: string
+  reviewedByUserId: string | null
+  changes: CharacterSheetChangeResponse[]
+  baseDataJson: Record<string, unknown>
+  proposedDataJson: Record<string, unknown>
+  reviewNote: string | null
+  submittedAt: string
+  reviewedAt: string | null
+}
+
+export interface ReviewCharacterSheetRequest {
+  note?: string | null
 }
 
 export interface UserProfile {

@@ -13,6 +13,7 @@ import {
   listMissionParticipants,
   listMissions,
   listPendingApplications,
+  listPendingCharacterSheetReviews,
   listRooms,
 } from '../gateApi'
 import { queryKeys } from '../queryKeys'
@@ -77,6 +78,11 @@ export const campaignQueries = {
     queryOptions({
       queryKey: queryKeys.campaignPendingApplications(campaignId),
       queryFn: () => listPendingApplications(campaignId),
+    }),
+  pendingSheetReviews: (campaignId: string) =>
+    queryOptions({
+      queryKey: queryKeys.campaignPendingSheetReviews(campaignId),
+      queryFn: () => listPendingCharacterSheetReviews(campaignId),
     }),
   missionParticipants: (campaignId: string, missionId: string) =>
     queryOptions({
