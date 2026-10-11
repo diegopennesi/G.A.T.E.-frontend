@@ -100,13 +100,6 @@ function combineDateAndTime(dateValue: string, timeValue: string): string | null
   return date.toISOString()
 }
 
-function shiftCount(value: string, direction: 1 | -1, minValue = 1, maxValue = 999) {
-  const parsed = Number.parseInt(value, 10)
-  if (!Number.isFinite(parsed)) return String(minValue)
-  const current = parsed
-  return String(Math.min(Math.max(current + direction, minValue), maxValue))
-}
-
 function parseOptionalInt(value: string): number | null {
   const trimmed = value.trim()
   if (!trimmed) return null
@@ -1009,8 +1002,8 @@ export function MissionsPage() {
     <section className="panel mission-shell">
       <div className="panel-header mission-page-header">
         <div>
-          <h2>Missioni</h2>
-          <p className="muted">Cerca, filtra e joina le missioni aperte delle campagne a cui sei approvato.</p>
+          <h2>{visibleMode === 'create' ? 'Crea missione' : 'Missioni'}</h2>
+          <p className="muted">{visibleMode === 'create' ? 'Prepara l’avventura, scegli quando giocare e apri le iscrizioni al gruppo.' : 'Scegli la prossima avventura e partecipa con il tuo personaggio.'}</p>
         </div>
         <div className="inline-actions">
           {hasActiveCampaign && visibleMode !== 'create' && canCreateMissions && (
@@ -1018,7 +1011,6 @@ export function MissionsPage() {
               type="button"
               className="primary-btn"
               onClick={() => {
-                setCreateDraft(defaultDraft())
                 setCreateError('')
                 setMode('create')
               }}
@@ -1036,6 +1028,7 @@ export function MissionsPage() {
         </div>
       )}
 
+      {visibleMode !== 'create' && <>
       <div className="mission-toolbar">
         <label className="mission-search">
           <FieldLabel icon="fa-solid fa-magnifying-glass" label="Cerca" />
@@ -1305,6 +1298,7 @@ export function MissionsPage() {
         )}
         {isDetailVisible && renderMissionDetail()}
       </div>
+      </>}
       <ConfirmActionDialog
         open={confirmAction === 'leave'}
         title="Uscire dalla missione"
@@ -1358,9 +1352,19 @@ function missionDraftToPayload(draft: MissionDraft, setError: (value: string) =>
     return null
   }
 
+  if (!draft.title.trim()) {
+    setError('Inserisci un titolo per la missione.')
+    return null
+  }
+  const quorum = parseOptionalInt(draft.quorum)
+  const capacity = parseOptionalInt(draft.maxParticipants)
+  if (quorum != null && capacity != null && quorum > capacity) {
+    setError('I partecipanti minimi non possono superare i posti disponibili.')
+    return null
+  }
   setError('')
   return {
-    title: draft.title,
+    title: draft.title.trim(),
     description: draft.description,
     isMultiSession: draft.isMultiSession,
     sessionAt: sessionAt || '',
@@ -1411,35 +1415,6 @@ function MissionEditForm({
   )
 }
 
-function MissionCountStepper({
-  label,
-  value,
-  minValue,
-  maxValue,
-  onChange,
-  emptyLabel,
-}: {
-  label: string
-  value: string
-  minValue: number
-  maxValue: number
-  onChange: (value: string) => void
-  emptyLabel?: string
-}) {
-  return (
-    <div className="mission-count-stepper mission-count-stepper--compact" aria-label={label}>
-      <span className="mission-time-step-label">{label}</span>
-      <button type="button" className="secondary-btn mission-time-step-btn" aria-label={`Diminuisci ${label}`} onClick={() => onChange(shiftCount(value, -1, minValue, maxValue))}>
-        <Icon name="fa-solid fa-minus" />
-      </button>
-      <span className="mission-time-step-value">{value || emptyLabel || String(minValue)}</span>
-      <button type="button" className="secondary-btn mission-time-step-btn" aria-label={`Aumenta ${label}`} onClick={() => onChange(shiftCount(value, 1, minValue, maxValue))}>
-        <Icon name="fa-solid fa-plus" />
-      </button>
-    </div>
-  )
-}
-
 function MissionForm({ draft, setDraft, error, setError, submitLabel, onSubmit, onCancel, saving }: {
   draft: MissionDraft
   setDraft: Dispatch<SetStateAction<MissionDraft>>
@@ -1451,110 +1426,63 @@ function MissionForm({ draft, setDraft, error, setError, submitLabel, onSubmit, 
   saving: boolean
 }) {
   return (
-    <fieldset className="mission-form-card mission-form-card--compact" disabled={saving} aria-busy={saving}>
-      <div className="mission-form-grid">
-        <label>
-          <FieldLabel icon="fa-solid fa-pen-to-square" label="Titolo" />
-          <input
-            value={draft.title}
-            placeholder="Titolo missione"
-            onChange={(event) => setDraft((prev) => ({ ...prev, title: event.target.value }))}
-          />
-        </label>
-        <label>
-          <FieldLabel icon="fa-solid fa-align-left" label="Missione" />
-          <textarea
-            rows={4}
-            placeholder="Obiettivo, contesto e dettagli utili. Usa **testo** per il grassetto."
-            value={draft.description}
-            onChange={(event) => setDraft((prev) => ({ ...prev, description: event.target.value }))}
-          />
-        </label>
-      </div>
-
-      <div className="mission-inline-table">
-        <div className="mission-inline-table-row">
-          <span className="mission-inline-table-label">Sessione</span>
-          <input
-            type="datetime-local"
-            step={900}
-            value={`${draft.sessionDate}T${draft.sessionTime}`}
-            onChange={(event) => {
+    <form className="mission-composer" onSubmit={event => {
+      event.preventDefault()
+      if (draft.minCharacterLevel && draft.maxCharacterLevel && Number(draft.minCharacterLevel) > Number(draft.maxCharacterLevel)) {
+        const options = event.currentTarget.querySelector<HTMLDetailsElement>('.mission-compose-options')
+        if (options) options.open = true
+      }
+      onSubmit()
+    }} onInvalidCapture={event => {
+      const details = (event.target as HTMLElement).closest('details')
+      if (details) details.open = true
+    }} aria-busy={saving}>
+      <fieldset disabled={saving}>
+        <section className="mission-compose-section" aria-labelledby="mission-objective-heading">
+          <h3 id="mission-objective-heading">L’avventura</h3>
+          <p className="muted">Dai un titolo alla missione e racconta al gruppo cosa lo aspetta.</p>
+          <label>Titolo della missione<input required maxLength={200} value={draft.title} placeholder="Titolo missione" onChange={event => setDraft(previous => ({ ...previous, title: event.target.value }))} /></label>
+          <label>Obiettivo e dettagli<textarea rows={4} value={draft.description} placeholder="Obiettivo, contesto e dettagli utili. Usa **testo** per il grassetto." onChange={event => setDraft(previous => ({ ...previous, description: event.target.value }))} /></label>
+        </section>
+        <section className="mission-compose-section" aria-labelledby="mission-dates-heading">
+          <h3 id="mission-dates-heading">Quando si gioca</h3>
+          <p className="muted">Le date sono facoltative. La chiusura delle iscrizioni deve precedere la sessione.</p>
+          <div className="mission-compose-grid">
+            <label>Data e ora della sessione<input type="datetime-local" step={900} value={draft.sessionDate ? draft.sessionDate + 'T' + draft.sessionTime : ''} onChange={event => {
               const [sessionDate, sessionTime = missionTimeConfig.defaultTime] = event.target.value.split('T')
-              setDraft((prev) => ({ ...prev, sessionDate, sessionTime }))
-            }}
-          />
-        </div>
-        <div className="mission-inline-table-row">
-          <span className="mission-inline-table-label">Chiusura</span>
-          <input
-            type="datetime-local"
-            step={900}
-            value={`${draft.closesDate}T${draft.closesTime}`}
-            onChange={(event) => {
+              setDraft(previous => ({ ...previous, sessionDate, sessionTime }))
+            }} /></label>
+            <label>Chiusura delle iscrizioni<input type="datetime-local" step={900} value={draft.closesDate ? draft.closesDate + 'T' + draft.closesTime : ''} onChange={event => {
               const [closesDate, closesTime = missionTimeConfig.defaultTime] = event.target.value.split('T')
-              setDraft((prev) => ({ ...prev, closesDate, closesTime }))
-            }}
-          />
-        </div>
-        <div className="mission-inline-table-row">
-          <span className="mission-inline-table-label">Capienza</span>
-          <MissionCountStepper label="Max" value={draft.maxParticipants} minValue={1} maxValue={999} onChange={(value) => setDraft((prev) => ({ ...prev, maxParticipants: value }))} />
-        </div>
-        <div className="mission-inline-table-row">
-          <span className="mission-inline-table-label">Livello PG</span>
-          <div className="mission-level-range-controls">
-            <MissionCountStepper label="Min" value={draft.minCharacterLevel} minValue={1} maxValue={999} emptyLabel="-" onChange={(value) => setDraft((prev) => ({ ...prev, minCharacterLevel: value }))} />
-            <MissionCountStepper label="Max" value={draft.maxCharacterLevel} minValue={1} maxValue={999} emptyLabel="-" onChange={(value) => setDraft((prev) => ({ ...prev, maxCharacterLevel: value }))} />
-            <button
-              type="button"
-              className="secondary-btn mission-time-step-btn"
-              title="Rimuovi range livello"
-              onClick={() => setDraft((prev) => ({ ...prev, minCharacterLevel: '', maxCharacterLevel: '' }))}
-            >
-              <Icon name="fa-solid fa-eraser" />
-            </button>
+              setDraft(previous => ({ ...previous, closesDate, closesTime }))
+            }} /></label>
           </div>
-        </div>
-      </div>
-
-      <div className="mission-toggle-row">
-        <label className="mission-checkbox">
-          <input
-            type="checkbox"
-            checked={draft.isMultiSession}
-            onChange={(event) => setDraft((prev) => ({ ...prev, isMultiSession: event.target.checked }))}
-          />
-          <span>Sessione multipla</span>
-        </label>
-        <label className="mission-checkbox">
-          <input
-            type="checkbox"
-            checked={draft.autoReopenOnDrop}
-            onChange={(event) => setDraft((prev) => ({ ...prev, autoReopenOnDrop: event.target.checked }))}
-          />
-          <span>Riapri automaticamente</span>
-        </label>
-      </div>
-
-      {error && <p className="form-error" role="alert">{error}</p>}
-      <div className="inline-actions mission-actions">
-        <button type="button" className="primary-btn" onClick={onSubmit}>
-          <Icon name="fa-solid fa-floppy-disk" />
-          {saving ? 'Salvataggio...' : submitLabel}
-        </button>
-        <button
-          type="button"
-          className="secondary-btn"
-          onClick={() => {
-            setError('')
-            onCancel()
-          }}
-        >
-          <Icon name="fa-solid fa-xmark" />
-          Annulla
-        </button>
-      </div>
-    </fieldset>
+        </section>
+        <section className="mission-compose-section" aria-labelledby="mission-group-heading">
+          <h3 id="mission-group-heading">Il gruppo</h3>
+          <div className="mission-compose-grid">
+            <label>Partecipanti massimi<input type="number" min={1} max={999} value={draft.maxParticipants} onChange={event => setDraft(previous => ({ ...previous, maxParticipants: event.target.value }))} placeholder="Senza limite" /><span className="muted">Lascia vuoto per non limitare i posti.</span></label>
+            <label>Titolari minimi (quorum)<input type="number" min={1} max={999} value={draft.quorum} onChange={event => setDraft(previous => ({ ...previous, quorum: event.target.value }))} placeholder="Non impostato" /><span className="muted">Il numero di titolari necessario per confermare la missione.</span></label>
+          </div>
+        </section>
+        <details className="mission-compose-options">
+          <summary>Opzioni della missione</summary>
+          <div className="mission-compose-section">
+            <p className="muted">Limita il livello dei personaggi o personalizza la gestione delle sessioni.</p>
+            <div className="mission-compose-grid">
+              <label>Livello minimo del personaggio<input type="number" min={1} max={999} value={draft.minCharacterLevel} placeholder="Qualsiasi livello" onChange={event => setDraft(previous => ({ ...previous, minCharacterLevel: event.target.value }))} /></label>
+              <label>Livello massimo del personaggio<input type="number" min={1} max={999} value={draft.maxCharacterLevel} placeholder="Senza limite" onChange={event => setDraft(previous => ({ ...previous, maxCharacterLevel: event.target.value }))} /></label>
+            </div>
+            <label className="mission-compose-choice"><input type="checkbox" checked={draft.isMultiSession} onChange={event => setDraft(previous => ({ ...previous, isMultiSession: event.target.checked }))} /><span>Missione su più sessioni</span></label>
+            <label className="mission-compose-choice"><input type="checkbox" checked={draft.autoReopenOnDrop} onChange={event => setDraft(previous => ({ ...previous, autoReopenOnDrop: event.target.checked }))} /><span>Riapri automaticamente se diminuiscono gli iscritti</span></label>
+          </div>
+        </details>
+        {error && <p className="form-error" role="alert">{error}</p>}
+        <footer className="mission-compose-footer">
+          <button type="button" className="secondary-btn" onClick={() => { setError(''); onCancel() }}>{submitLabel === 'Crea missione' ? 'Torna alle missioni' : 'Annulla modifica'}</button>
+          <button type="submit" className="primary-btn"><Icon name="fa-solid fa-floppy-disk" />{saving ? 'Salvataggio...' : submitLabel}</button>
+        </footer>
+      </fieldset>
+    </form>
   )
 }

@@ -12,6 +12,8 @@ npm run test:ui
 
 La suite copre anche la creazione campagna: campi facoltativi espandibili da tastiera, bozza mantenuta dopo uscita e reload, selezione vuota dei moduli opzionali, validazione nome/URL, errore API e retry. Verifica che la creazione riuscita non richieda un secondo invio se fallisce solo il caricamento degli elenchi. Le novità si aprono su richiesta e restituiscono il focus alla chiusura.
 
+Per le missioni verifica titolo obbligatorio, ordine delle date, quorum rispetto alla capienza, range dei livelli, payload e ritorno alla bozza. Per la navigazione verifica Altre azioni da tastiera, indicazione della schermata corrente e assenza delle voci riservate ai master quando il membro è un giocatore.
+
 Per verificare manualmente con il backend reale, avvia PostgreSQL e Redis della configurazione locale del backend, poi dalla sua repository:
 
 ```powershell

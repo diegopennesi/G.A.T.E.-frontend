@@ -1,0 +1,92 @@
+import { expect, test } from '@playwright/test'
+import { installApi, openMissions } from './apiFixture'
+import { mkdir } from 'node:fs/promises'
+import path from 'node:path'
+
+test('mission creation hides browsing, validates group and dates, and preserves draft on return', async ({ page }) => {
+  const state = await installApi(page)
+  await openMissions(page)
+  await page.getByRole('button', { name: 'Crea missione', exact: true }).click()
+  await expect(page.getByPlaceholder('Titolo, descrizione o campagna')).toHaveCount(0)
+  const submit = page.getByRole('button', { name: 'Crea missione', exact: true })
+  await submit.click()
+  await expect(page.getByPlaceholder('Titolo missione')).toBeFocused()
+  expect(state.creates).toBe(0)
+  await page.getByPlaceholder('Titolo missione').fill('La cripta del giovedì')
+  await page.getByRole('textbox', { name: 'Obiettivo e dettagli', exact: true }).fill('Una storia da ritrovare')
+  await page.getByRole('spinbutton', { name: /^Partecipanti massimi/ }).fill('2')
+  await submit.click()
+  await expect(page.getByRole('alert')).toContainText('I partecipanti minimi non possono superare')
+  expect(state.creates).toBe(0)
+  await page.getByRole('spinbutton', { name: /^Partecipanti massimi/ }).fill('6')
+  await page.getByLabel('Data e ora della sessione').fill('2099-10-15T18:00')
+  await page.getByLabel('Chiusura delle iscrizioni').fill('2099-10-16T18:00')
+  await submit.click()
+  await expect(page.getByRole('alert')).toContainText('La chiusura iscrizioni deve precedere')
+  expect(state.creates).toBe(0)
+  await page.getByLabel('Chiusura delle iscrizioni').fill('2099-10-14T18:00')
+  await page.locator('summary').filter({ hasText: 'Opzioni della missione' }).click()
+  await page.getByRole('spinbutton', { name: 'Livello minimo del personaggio', exact: true }).fill('7')
+  await page.getByRole('spinbutton', { name: 'Livello massimo del personaggio', exact: true }).fill('3')
+  await page.locator('summary').filter({ hasText: 'Opzioni della missione' }).click()
+  await submit.click()
+  await expect(page.getByRole('alert')).toContainText('Il livello minimo')
+  await expect(page.getByRole('spinbutton', { name: 'Livello massimo del personaggio', exact: true })).toBeVisible()
+  await page.getByRole('spinbutton', { name: 'Livello massimo del personaggio', exact: true }).fill('9')
+  await page.getByRole('button', { name: 'Torna alle missioni' }).click()
+  await expect(page.getByPlaceholder('Titolo, descrizione o campagna')).toBeVisible()
+  await submit.click()
+  await expect(page.getByPlaceholder('Titolo missione')).toHaveValue('La cripta del giovedì')
+  await expect(page.getByRole('textbox', { name: 'Obiettivo e dettagli', exact: true })).toHaveValue('Una storia da ritrovare')
+  await submit.click()
+  await expect(page.getByPlaceholder('Titolo missione')).toHaveCount(0)
+  expect(state.creates).toBe(1)
+  expect(state.lastMissionPayload).toMatchObject({ title: 'La cripta del giovedì', quorum: 3, maxParticipants: 6, minCharacterLevel: 7, maxCharacterLevel: 9 })
+})
+
+test('navigation separates tasks and expands actions with keyboard; current route opens its group', async ({ page }) => {
+  await installApi(page)
+  await openMissions(page)
+  const navigation = page.getByRole('navigation', { name: 'Navigazione principale' })
+  await expect(navigation.getByText('Il tavolo', { exact: true })).toBeVisible()
+  await expect(navigation.getByRole('button', { name: 'Missioni', exact: true })).toHaveAttribute('aria-current', 'page')
+  await expect(navigation.getByRole('button', { name: 'Crea campagna', exact: true })).toBeHidden()
+  const summary = navigation.locator('summary').filter({ hasText: 'Altre azioni' })
+  await summary.focus()
+  await page.keyboard.press('Enter')
+  await expect(navigation.getByRole('button', { name: 'Crea campagna', exact: true })).toBeVisible()
+  await navigation.getByRole('button', { name: 'Crea campagna', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Crea il tuo tavolo' })).toBeVisible()
+  await page.reload()
+  await expect(navigation.getByRole('button', { name: 'Crea campagna', exact: true })).toHaveAttribute('aria-current', 'page')
+  await expect(navigation.locator('details')).toHaveAttribute('open', '')
+})
+
+test('player navigation omits master-only management', async ({ page }) => {
+  const state = await installApi(page)
+  state.membershipRole = 'PLAYER'
+  await openMissions(page)
+  const navigation = page.getByRole('navigation', { name: 'Navigazione principale' })
+  await expect(navigation.getByRole('button', { name: 'Missioni', exact: true })).toBeVisible()
+  await expect(navigation.getByRole('button', { name: 'Accessi', exact: true })).toHaveCount(0)
+  await expect(navigation.getByRole('button', { name: 'Gestione campagna', exact: true })).toHaveCount(0)
+})
+
+test('mission form and navigation fit both themes and small screens', async ({ page }) => {
+  await installApi(page)
+  await openMissions(page)
+  const directory = path.resolve('ui-test-results/screenshots')
+  await mkdir(directory, { recursive: true })
+  for (const theme of ['light', 'dark']) {
+    await page.evaluate(theme => localStorage.setItem('gate_theme', theme), theme)
+    await page.reload()
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
+    await page.getByRole('button', { name: 'Crea missione', exact: true }).click()
+    for (const width of [320, 390, 1280]) {
+      await page.setViewportSize({ width, height: 844 })
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+      if (width !== 320) await page.screenshot({ path: path.join(directory, `mission-form-${width}-${theme}.png`), fullPage: true })
+    }
+    await page.getByRole('button', { name: 'Torna alle missioni' }).click()
+  }
+})

@@ -2605,7 +2605,7 @@ function App() {
       enabled: true,
       title:
         value === 'Approvazione Accessi' && pendingApplications.length > 0
-          ? `${pendingApplications.length} richieste pending`
+          ? `${pendingApplications.length} richieste da approvare`
           : SCREEN_LABELS[value],
       showOverlayX: false,
     }
@@ -4757,10 +4757,9 @@ function App() {
         </div>
 
         <div className="sidebar-context">
-          <p className="sidebar-user-kicker">Campagna attiva</p>
           <p className="sidebar-context-title">{hasActiveCampaign ? activeCampaignLabel : 'Nessuna campagna attiva'}</p>
           {hasActiveCampaign && (
-            <button type="button" className="danger-btn sidebar-context-action" onClick={openCampaignList}>
+            <button type="button" className="secondary-btn sidebar-context-action" onClick={openCampaignList}>
               <Icon name="fa-right-left" />
               <span>Cambia campagna</span>
             </button>
@@ -4774,16 +4773,17 @@ function App() {
               .filter(({ state }) => state.enabled)
 
             if (visibleItems.length === 0) return null
+            const MenuSection = section.collapsible ? 'details' : 'section'
 
             return (
-              <section key={section.label} className="menu-section">
-                <div className="menu-section-head">
+              <MenuSection key={section.label} className={`menu-section ${section.collapsible ? 'menu-extra-actions' : ''}`} {...(section.collapsible ? { open: section.items.includes(screen) } : {})}>
+                {section.collapsible ? <summary className="menu-group-label">{section.label}</summary> : <div className="menu-section-head">
                   <div>
                     <p className="menu-group-label">{section.label}</p>
                     <p className="menu-section-description">{section.description}</p>
                   </div>
-                </div>
-                <div className={`menu-section-grid ${section.label === 'Strumenti' ? 'is-compact' : ''}`}>
+                </div>}
+                <div className="menu-section-grid">
                   {visibleItems
                     .filter(({ item }) => !(hasActiveCampaign && item === 'Lista Campagne'))
                     .map(({ item, state: itemState }) => (
@@ -4814,7 +4814,7 @@ function App() {
                     </button>
                   ))}
                 </div>
-              </section>
+              </MenuSection>
             )
           })}
         </nav>
