@@ -1,0 +1,103 @@
+import type { Page } from '@playwright/test'
+import type { CampaignResponse, MissionResponse, UserProfile } from '../../src/types/domain'
+
+const now = '2026-07-23T10:00:00Z'
+export const profile: UserProfile = {
+  id: 'ui-user', username: 'giocatore', platformRole: 'USER', profileName: 'Giocatore demo',
+  bio: null, avatarUrl: null, whatsapp: null, socialLinks: {}, createdAt: now,
+}
+export const campaign: CampaignResponse = {
+  id: 'ui-campaign', name: 'Le cronache di Waterdeep e delle terre oltre il mare',
+  description: 'Campagna dimostrativa per test locali', summary: 'Sessioni settimanali',
+  setting: null, tone: null, rules: null, requirements: null, coverImageUrl: null,
+  founderId: profile.id, isOpen: true, isActive: true, isSearchable: true, autoJoinEnabled: false,
+  inviteCode: 'ui-invite', gameSystem: 'DND5E', allowedModules: ['MISSIONI'], missionRules: [], createdAt: now,
+}
+export const initialMission: MissionResponse = {
+  id: 'ui-mission', campaignId: campaign.id, title: 'La torre perduta', description: 'Esplora la torre',
+  createdBy: profile.id, status: 'OPEN', statusReason: null, isMultiSession: false,
+  sessionAt: '2099-10-15T18:00:00Z', closesAt: '2099-10-14T18:00:00Z',
+  quorum: null, maxParticipants: null, minCharacterLevel: null, maxCharacterLevel: null,
+  participantCount: 0, autoReopenOnDrop: false, createdAt: now,
+}
+
+/** Local deterministic API responses: no accounts or data are written to a backend. */
+export async function installApi(page: Page, authenticated = true) {
+  const state = {
+    failCreate: false, failUpdate: false, failSend: false, failChatRefresh: false,
+    creates: 0, updates: 0, sends: 0,
+    delayMutation: 0,
+    missions: [initialMission],
+    messages: [] as Array<Record<string, unknown>>,
+    unknown: [] as string[],
+  }
+  await page.addInitScript(({ authenticated, userId, campaignId }) => {
+    if (!localStorage.getItem('gate_theme')) localStorage.setItem('gate_theme', 'light')
+    if (authenticated) {
+      localStorage.setItem('gate_access_token', 'ui-test-token')
+      localStorage.setItem('gate_refresh_token', 'ui-test-refresh')
+      localStorage.setItem(`gate_campaign_id:${userId}`, campaignId)
+      localStorage.setItem(`gate_known_campaign_ids:${userId}`, JSON.stringify([campaignId]))
+    }
+  }, { authenticated, userId: profile.id, campaignId: campaign.id })
+  await page.route('**/api/v1/**', async (route) => {
+    const request = route.request()
+    const path = new URL(request.url()).pathname.replace('/api/v1', '')
+    const method = request.method()
+    const reply = (body: unknown, status = 200) => route.fulfill({ status, json: body })
+    const error = () => reply({ status: 500, error: 'Test failure', message: 'Connessione interrotta' }, 500)
+    const mutation = async () => {
+      if (state.delayMutation) await new Promise((resolve) => setTimeout(resolve, state.delayMutation))
+    }
+    if (path.startsWith('/public/realms/')) return reply({ code: 'gate', name: 'Taverna del Codice', type: 'GATE_OPEN', logoUrl: null, allowUserCampaignCreation: true })
+    if (path === '/users/me' || path === `/users/${profile.id}`) return reply(profile)
+    if (path === '/realms/me/permissions') return reply({ realmId: 'ui-realm', realmCode: 'gate', platformRole: 'USER', realmRole: 'USER', explicitRealmAccess: true, permissions: { createCampaign: true, manageRealm: false, manageRealmUsers: false, viewRealmAdmin: false } })
+    if (path === '/campaigns/me/memberships') return reply([{ campaignId: campaign.id, campaignName: campaign.name, role: 'SUPER_MASTER', memberStatus: 'APPROVED', characterStatus: null, moderationReason: null, isFounder: true }])
+    if (path === '/campaigns/discover') return reply([{ ...campaign, membershipStatus: 'APPROVED', membershipRole: 'SUPER_MASTER', moderationReason: null }])
+    if (path === '/campaigns/post-login-summary') return reply({ canCreateCampaign: true, campaigns: [{ ...campaign, isVisible: true, membershipStatus: 'APPROVED', membershipRole: 'SUPER_MASTER', moderationReason: null }] })
+    if (path === '/campaigns/modules') return reply([{ code: 'MISSIONI', label: 'Missioni', description: null, active: true, sortOrder: 1 }])
+    if (path === '/campaigns/game-systems') return reply([{ code: 'DND5E', label: 'Dungeons & Dragons 5e', description: null, active: true, sortOrder: 1 }])
+    if (path === `/campaigns/${campaign.id}`) return reply(campaign)
+    if (/\/members(\/all)?$/.test(path)) return reply([{ userId: profile.id, campaignId: campaign.id, characterId: null, joinedAt: now, role: 'SUPER_MASTER', memberStatus: 'APPROVED', characterStatus: null, moderationReason: null, moderationByUserId: null, moderationAt: null }])
+    if (path.includes('/permissions/')) return reply({ campaignId: campaign.id, action: path.split('/').at(-1), allowed: true })
+    if (/\/missions$/.test(path)) {
+      if (method === 'POST') {
+        state.creates++
+        await mutation()
+        if (state.failCreate) return error()
+        const created = { ...initialMission, ...request.postDataJSON(), id: `created-${state.creates}` }
+        state.missions.push(created)
+        return reply(created)
+      }
+      return reply(state.missions)
+    }
+    if (path === `/campaigns/${campaign.id}/missions/${initialMission.id}` && method === 'PATCH') {
+      state.updates++
+      await mutation()
+      if (state.failUpdate) return error()
+      state.missions[0] = { ...state.missions[0], ...request.postDataJSON() }
+      return reply(state.missions[0])
+    }
+    if (/\/mission-chat\/[^/]+\/messages$/.test(path) && method === 'POST') {
+      state.sends++
+      await mutation()
+      if (state.failSend) return error()
+      const message = { id: `message-${state.sends}`, roomId: 'ui-chat', authorUserId: profile.id, authorName: 'giocatore', authorProfileName: profile.profileName, authorCharacterName: null, authorBadge: 'SUPER_MASTER', body: request.postDataJSON().body, createdAt: now }
+      state.messages.push(message)
+      return reply(message)
+    }
+    if (/\/mission-chat\/[^/]+$/.test(path)) {
+      if (state.failChatRefresh && state.messages.length) return error()
+      return reply({ room: { id: 'ui-chat', campaignId: campaign.id, roomType: 'MISSION', missionId: initialMission.id, title: 'Chat della torre', slowmodeSeconds: 0, maxPersistedMessages: 100, pruneAfterHours: null, isActive: true, createdAt: now }, messages: state.messages })
+    }
+    if (/\/(characters|rooms|participants|pending|mission-rules)$/.test(path)) return reply([])
+    if (request.headers().accept?.includes('text/event-stream')) return route.fulfill({ status: 200, contentType: 'text/event-stream', body: ': fixture\n\n' })
+    state.unknown.push(`${method} ${path}`)
+    return reply({ message: `Unhandled test endpoint: ${method} ${path}` }, 404)
+  })
+  return state
+}
+
+export async function openMissions(page: Page) {
+  await page.goto(`/homepage/gate/app/missioni?campaignId=${campaign.id}`)
+}

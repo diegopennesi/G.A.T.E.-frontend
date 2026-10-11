@@ -29,6 +29,7 @@ type MutationDeps = {
   refreshMissionChat: () => Promise<void>
   setSelectedMissionId: (value: string) => void
   setSelectedMissionChatContext: (value: { campaignId: string; missionId: string } | null) => void
+  setMissionChatError: (value: string) => void
 }
 
 export function useCampaignMutations(deps: MutationDeps) {
@@ -166,7 +167,12 @@ export function useCampaignMutations(deps: MutationDeps) {
     onSuccess: async (_message, variables) => {
       deps.setSelectedMissionChatContext({ campaignId: variables.campaignId, missionId: variables.missionId })
       await queryClient.invalidateQueries({ queryKey: queryKeys.campaignChat(variables.campaignId, variables.missionId), exact: false })
-      await deps.refreshMissionChat()
+      try {
+        await deps.refreshMissionChat()
+      } catch {
+        // The POST succeeded: do not offer a resend if only the subsequent GET failed.
+        deps.setMissionChatError('Messaggio inviato. Non è stato possibile aggiornare la chat: riaprila per vedere i nuovi messaggi.')
+      }
     },
   })
 

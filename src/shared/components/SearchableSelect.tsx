@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Icon } from './Icon'
 
 export type SearchableSelectOption = {
@@ -15,6 +15,7 @@ type SearchableSelectProps = {
   minQueryLength?: number
   disabled?: boolean
   className?: string
+  ariaLabel?: string
 }
 
 function getMatchScore(option: SearchableSelectOption, query: string) {
@@ -34,10 +35,13 @@ export function SearchableSelect({
   minQueryLength = 3,
   disabled = false,
   className = '',
+  ariaLabel = placeholder,
 }: SearchableSelectProps) {
   const rootRef = useRef<HTMLDivElement | null>(null)
   const [query, setQuery] = useState(() => options.find((option) => option.value === value)?.label || '')
   const [open, setOpen] = useState(false)
+  const [activeIndex, setActiveIndex] = useState(0)
+  const listId = useId()
 
   useEffect(() => {
     const onPointerDown = (event: MouseEvent) => {
@@ -65,6 +69,8 @@ export function SearchableSelect({
       })
       .slice(0, 12)
   }, [minQueryLength, normalizedQuery, options])
+  const expanded = open && !disabled && normalizedQuery.length >= minQueryLength
+  const highlightedIndex = Math.min(activeIndex, matches.length - 1)
 
   const handleSelect = (option: SearchableSelectOption) => {
     onChange(option.value)
@@ -73,41 +79,69 @@ export function SearchableSelect({
   }
 
   return (
-    <div ref={rootRef} className={`searchable-select ${className}`.trim()}>
+    <div ref={rootRef} className={`searchable-select ${className}`.trim()} onBlur={(event) => {
+      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false)
+    }}>
       <div className="searchable-select-control">
         <input
           className="system-inline-select searchable-select-input"
           value={query}
           disabled={disabled}
           placeholder={placeholder}
-          onFocus={() => setOpen(true)}
+          role="combobox"
+          aria-label={ariaLabel}
+          aria-autocomplete="list"
+          aria-expanded={expanded}
+          aria-controls={expanded ? listId : undefined}
+          aria-activedescendant={expanded && highlightedIndex >= 0 ? `${listId}-${highlightedIndex}` : undefined}
+          onFocus={() => { setOpen(true); setActiveIndex(0) }}
           onChange={(event) => {
             setQuery(event.target.value)
             setOpen(true)
+            setActiveIndex(0)
           }}
           onKeyDown={(event) => {
             if (event.key === 'Escape') {
+              event.preventDefault()
               setOpen(false)
+              return
+            }
+            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+              event.preventDefault()
+              setOpen(true)
+              if (matches.length) {
+                setActiveIndex(!expanded ? (event.key === 'ArrowDown' ? 0 : matches.length - 1) :
+                  (highlightedIndex + (event.key === 'ArrowDown' ? 1 : -1) + matches.length) % matches.length)
+              }
+              return
+            }
+            if (expanded && (event.key === 'Home' || event.key === 'End')) {
+              event.preventDefault()
+              setActiveIndex(event.key === 'Home' ? 0 : Math.max(0, matches.length - 1))
               return
             }
             if (event.key === 'Enter') {
               event.preventDefault()
-              if (matches[0]) handleSelect(matches[0])
+              if (expanded && matches[highlightedIndex]) handleSelect(matches[highlightedIndex])
             }
           }}
         />
         <Icon name="fa-solid fa-magnifying-glass" className="searchable-select-icon" />
       </div>
-      {open && normalizedQuery.length >= minQueryLength && (
-        <div className="searchable-select-panel" role="listbox">
+      {expanded && (
+        <div id={listId} className="searchable-select-panel" role="listbox" aria-label={ariaLabel}>
           {matches.length === 0 ? (
             <div className="searchable-select-empty">Nessuna corrispondenza.</div>
           ) : (
-            matches.map((option) => (
+            matches.map((option, index) => (
               <button
                 key={option.value}
                 type="button"
-                className="searchable-select-option"
+                id={`${listId}-${index}`}
+                role="option"
+                aria-selected={option.value === value}
+                tabIndex={-1}
+                className={`searchable-select-option ${index === highlightedIndex ? 'is-highlighted' : ''}`}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => handleSelect(option)}
               >

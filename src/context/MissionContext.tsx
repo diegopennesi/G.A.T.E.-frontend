@@ -41,7 +41,7 @@ export type MissionContextValue = {
     minCharacterLevel?: number | null
     maxCharacterLevel?: number | null
     autoReopenOnDrop?: boolean
-  }) => void
+  }) => Promise<void>
   selectMission: (missionId: string) => void
   openMissionChat: (campaignId: string, missionId: string) => void
   closeMissionChat: () => void
@@ -62,7 +62,7 @@ export type MissionContextValue = {
     minCharacterLevel?: number | null
     maxCharacterLevel?: number | null
     autoReopenOnDrop?: boolean
-  }) => void
+  }) => Promise<void>
   completeMission: (missionId: string) => void
   cancelMission: (missionId: string) => void
 }

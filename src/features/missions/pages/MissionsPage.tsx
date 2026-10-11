@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
 import { Skeleton } from 'primereact/skeleton'
 import { useMissionContext } from '../../../context'
 import { MissionChatPanel } from '../../chat'
 import { BadgeGroup, ConfirmActionDialog, FieldLabel, Icon, KeyValueGrid, MobileDataCard, ResponsiveDataList } from '../../../shared/components'
-import { gameSystemIconName } from '../../../shared/utils'
+import { gameSystemIconName, toMessage } from '../../../shared/utils'
 import { shareMissionOnWhatsApp } from '../utils/whatsappShare'
 import type {
   MissionParticipationType,
@@ -376,6 +376,8 @@ export function MissionsPage() {
   const [mode, setMode] = useState<'browse' | 'create'>('browse')
   const [createDraft, setCreateDraft] = useState<MissionDraft>(defaultDraft)
   const [createError, setCreateError] = useState('')
+  const [creating, setCreating] = useState(false)
+  const createLock = useRef(false)
   const [searchText, setSearchText] = useState('')
   const [campaignFilters, setCampaignFilters] = useState<Record<string, string>>({})
   const [missionViewFilter, setMissionViewFilter] = useState<MissionViewFilter>('active')
@@ -573,128 +575,26 @@ export function MissionsPage() {
     onOpenMissionChat(mission.campaignId, mission.id)
   }
 
-  const submitCreate = () => {
+  const submitCreate = async () => {
+    if (createLock.current) return
     const payload = missionDraftToPayload(createDraft, setCreateError)
     if (!payload) return
-    onCreate(payload)
-    setMode('browse')
+    createLock.current = true
+    setCreating(true)
+    setCreateError('')
+    try {
+      await onCreate(payload)
+      setCreateDraft(defaultDraft())
+      setMode('browse')
+    } catch (err) {
+      setCreateError(`${toMessage(err)} La bozza è stata conservata: puoi riprovare.`)
+    } finally {
+      createLock.current = false
+      setCreating(false)
+    }
   }
 
-  const renderMissionForm = (
-    draft: MissionDraft,
-    setDraft: Dispatch<SetStateAction<MissionDraft>>,
-    error: string,
-    setError: (value: string) => void,
-    submitLabel: string,
-    onSubmit: () => void,
-    onCancel: () => void,
-  ) => (
-    <div className="mission-form-card mission-form-card--compact">
-      <div className="mission-form-grid">
-        <label>
-          <FieldLabel icon="fa-solid fa-pen-to-square" label="Titolo" />
-          <input
-            value={draft.title}
-            placeholder="Titolo missione"
-            onChange={(event) => setDraft((prev) => ({ ...prev, title: event.target.value }))}
-          />
-        </label>
-        <label>
-          <FieldLabel icon="fa-solid fa-align-left" label="Missione" />
-          <textarea
-            rows={4}
-            placeholder="Obiettivo, contesto e dettagli utili. Usa **testo** per il grassetto."
-            value={draft.description}
-            onChange={(event) => setDraft((prev) => ({ ...prev, description: event.target.value }))}
-          />
-        </label>
-      </div>
 
-      <div className="mission-inline-table">
-        <div className="mission-inline-table-row">
-          <span className="mission-inline-table-label">Sessione</span>
-          <input
-            type="datetime-local"
-            step={900}
-            value={`${draft.sessionDate}T${draft.sessionTime}`}
-            onChange={(event) => {
-              const [sessionDate, sessionTime = missionTimeConfig.defaultTime] = event.target.value.split('T')
-              setDraft((prev) => ({ ...prev, sessionDate, sessionTime }))
-            }}
-          />
-        </div>
-        <div className="mission-inline-table-row">
-          <span className="mission-inline-table-label">Chiusura</span>
-          <input
-            type="datetime-local"
-            step={900}
-            value={`${draft.closesDate}T${draft.closesTime}`}
-            onChange={(event) => {
-              const [closesDate, closesTime = missionTimeConfig.defaultTime] = event.target.value.split('T')
-              setDraft((prev) => ({ ...prev, closesDate, closesTime }))
-            }}
-          />
-        </div>
-        <div className="mission-inline-table-row">
-          <span className="mission-inline-table-label">Capienza</span>
-          <MissionCountStepper label="Max" value={draft.maxParticipants} minValue={1} maxValue={999} onChange={(value) => setDraft((prev) => ({ ...prev, maxParticipants: value }))} />
-        </div>
-        <div className="mission-inline-table-row">
-          <span className="mission-inline-table-label">Livello PG</span>
-          <div className="mission-level-range-controls">
-            <MissionCountStepper label="Min" value={draft.minCharacterLevel} minValue={1} maxValue={999} emptyLabel="-" onChange={(value) => setDraft((prev) => ({ ...prev, minCharacterLevel: value }))} />
-            <MissionCountStepper label="Max" value={draft.maxCharacterLevel} minValue={1} maxValue={999} emptyLabel="-" onChange={(value) => setDraft((prev) => ({ ...prev, maxCharacterLevel: value }))} />
-            <button
-              type="button"
-              className="secondary-btn mission-time-step-btn"
-              title="Rimuovi range livello"
-              onClick={() => setDraft((prev) => ({ ...prev, minCharacterLevel: '', maxCharacterLevel: '' }))}
-            >
-              <Icon name="fa-solid fa-eraser" />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="mission-toggle-row">
-        <label className="mission-checkbox">
-          <input
-            type="checkbox"
-            checked={draft.isMultiSession}
-            onChange={(event) => setDraft((prev) => ({ ...prev, isMultiSession: event.target.checked }))}
-          />
-          <span>Sessione multipla</span>
-        </label>
-        <label className="mission-checkbox">
-          <input
-            type="checkbox"
-            checked={draft.autoReopenOnDrop}
-            onChange={(event) => setDraft((prev) => ({ ...prev, autoReopenOnDrop: event.target.checked }))}
-          />
-          <span>Riapri automaticamente</span>
-        </label>
-      </div>
-
-      {error && <p className="form-error">{error}</p>}
-      <div className="inline-actions mission-actions">
-        <button type="button" className="primary-btn" onClick={onSubmit}>
-          <Icon name="fa-solid fa-floppy-disk" />
-          {submitLabel}
-        </button>
-        <button
-          type="button"
-          className="secondary-btn"
-          onClick={() => {
-            setError('')
-            onCancel()
-          }}
-        >
-          <Icon name="fa-solid fa-xmark" />
-          Annulla
-        </button>
-      </div>
-    </div>
-  )
 
   const renderMissionDetail = () => {
     if (!selectedMission) {
@@ -1075,11 +975,10 @@ export function MissionsPage() {
             key={selectedMission.id}
             mission={selectedMission}
             onCancel={() => setEditingMissionId(null)}
-            onSave={(payload) => {
-              onUpdateMission(selectedMission.id, payload)
+            onSave={async (payload) => {
+              await onUpdateMission(selectedMission.id, payload)
               setEditingMissionId(null)
             }}
-            renderForm={renderMissionForm}
           />
         )}
         </>
@@ -1133,7 +1032,7 @@ export function MissionsPage() {
 
       {canUseCreateMode && visibleMode === 'create' && (
         <div className="subpanel mission-form-panel">
-          {renderMissionForm(createDraft, setCreateDraft, createError, setCreateError, 'Crea missione', submitCreate, () => setMode('browse'))}
+          <MissionForm draft={createDraft} setDraft={setCreateDraft} error={createError} setError={setCreateError} submitLabel="Crea missione" onSubmit={() => void submitCreate()} onCancel={() => setMode('browse')} saving={creating} />
         </div>
       )}
 
@@ -1478,33 +1377,36 @@ function MissionEditForm({
   mission,
   onSave,
   onCancel,
-  renderForm,
 }: {
   mission: MissionResponse
-  onSave: (payload: MissionPayload) => void
+  onSave: (payload: MissionPayload) => Promise<void>
   onCancel: () => void
-  renderForm: (
-    draft: MissionDraft,
-    setDraft: Dispatch<SetStateAction<MissionDraft>>,
-    error: string,
-    setError: (value: string) => void,
-    submitLabel: string,
-    onSubmit: () => void,
-    onCancel: () => void,
-  ) => ReactNode
 }) {
   const [draft, setDraft] = useState<MissionDraft>(draftFromMission(mission))
   const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const saveLock = useRef(false)
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    if (saveLock.current) return
     const payload = missionDraftToPayload(draft, setError)
     if (!payload) return
-    onSave(payload)
+    saveLock.current = true
+    setSaving(true)
+    setError('')
+    try {
+      await onSave(payload)
+    } catch (err) {
+      setError(`${toMessage(err)} Le modifiche sono state conservate: puoi riprovare.`)
+    } finally {
+      saveLock.current = false
+      setSaving(false)
+    }
   }
 
   return (
     <div className="subpanel mission-form-panel">
-      {renderForm(draft, setDraft, error, setError, 'Salva modifica', handleSubmit, onCancel)}
+      <MissionForm draft={draft} setDraft={setDraft} error={error} setError={setError} submitLabel="Salva modifica" onSubmit={() => void handleSubmit()} onCancel={onCancel} saving={saving} />
     </div>
   )
 }
@@ -1527,13 +1429,132 @@ function MissionCountStepper({
   return (
     <div className="mission-count-stepper mission-count-stepper--compact" aria-label={label}>
       <span className="mission-time-step-label">{label}</span>
-      <button type="button" className="secondary-btn mission-time-step-btn" onClick={() => onChange(shiftCount(value, -1, minValue, maxValue))}>
+      <button type="button" className="secondary-btn mission-time-step-btn" aria-label={`Diminuisci ${label}`} onClick={() => onChange(shiftCount(value, -1, minValue, maxValue))}>
         <Icon name="fa-solid fa-minus" />
       </button>
       <span className="mission-time-step-value">{value || emptyLabel || String(minValue)}</span>
-      <button type="button" className="secondary-btn mission-time-step-btn" onClick={() => onChange(shiftCount(value, 1, minValue, maxValue))}>
+      <button type="button" className="secondary-btn mission-time-step-btn" aria-label={`Aumenta ${label}`} onClick={() => onChange(shiftCount(value, 1, minValue, maxValue))}>
         <Icon name="fa-solid fa-plus" />
       </button>
     </div>
+  )
+}
+
+function MissionForm({ draft, setDraft, error, setError, submitLabel, onSubmit, onCancel, saving }: {
+  draft: MissionDraft
+  setDraft: Dispatch<SetStateAction<MissionDraft>>
+  error: string
+  setError: (value: string) => void
+  submitLabel: string
+  onSubmit: () => void
+  onCancel: () => void
+  saving: boolean
+}) {
+  return (
+    <fieldset className="mission-form-card mission-form-card--compact" disabled={saving} aria-busy={saving}>
+      <div className="mission-form-grid">
+        <label>
+          <FieldLabel icon="fa-solid fa-pen-to-square" label="Titolo" />
+          <input
+            value={draft.title}
+            placeholder="Titolo missione"
+            onChange={(event) => setDraft((prev) => ({ ...prev, title: event.target.value }))}
+          />
+        </label>
+        <label>
+          <FieldLabel icon="fa-solid fa-align-left" label="Missione" />
+          <textarea
+            rows={4}
+            placeholder="Obiettivo, contesto e dettagli utili. Usa **testo** per il grassetto."
+            value={draft.description}
+            onChange={(event) => setDraft((prev) => ({ ...prev, description: event.target.value }))}
+          />
+        </label>
+      </div>
+
+      <div className="mission-inline-table">
+        <div className="mission-inline-table-row">
+          <span className="mission-inline-table-label">Sessione</span>
+          <input
+            type="datetime-local"
+            step={900}
+            value={`${draft.sessionDate}T${draft.sessionTime}`}
+            onChange={(event) => {
+              const [sessionDate, sessionTime = missionTimeConfig.defaultTime] = event.target.value.split('T')
+              setDraft((prev) => ({ ...prev, sessionDate, sessionTime }))
+            }}
+          />
+        </div>
+        <div className="mission-inline-table-row">
+          <span className="mission-inline-table-label">Chiusura</span>
+          <input
+            type="datetime-local"
+            step={900}
+            value={`${draft.closesDate}T${draft.closesTime}`}
+            onChange={(event) => {
+              const [closesDate, closesTime = missionTimeConfig.defaultTime] = event.target.value.split('T')
+              setDraft((prev) => ({ ...prev, closesDate, closesTime }))
+            }}
+          />
+        </div>
+        <div className="mission-inline-table-row">
+          <span className="mission-inline-table-label">Capienza</span>
+          <MissionCountStepper label="Max" value={draft.maxParticipants} minValue={1} maxValue={999} onChange={(value) => setDraft((prev) => ({ ...prev, maxParticipants: value }))} />
+        </div>
+        <div className="mission-inline-table-row">
+          <span className="mission-inline-table-label">Livello PG</span>
+          <div className="mission-level-range-controls">
+            <MissionCountStepper label="Min" value={draft.minCharacterLevel} minValue={1} maxValue={999} emptyLabel="-" onChange={(value) => setDraft((prev) => ({ ...prev, minCharacterLevel: value }))} />
+            <MissionCountStepper label="Max" value={draft.maxCharacterLevel} minValue={1} maxValue={999} emptyLabel="-" onChange={(value) => setDraft((prev) => ({ ...prev, maxCharacterLevel: value }))} />
+            <button
+              type="button"
+              className="secondary-btn mission-time-step-btn"
+              title="Rimuovi range livello"
+              onClick={() => setDraft((prev) => ({ ...prev, minCharacterLevel: '', maxCharacterLevel: '' }))}
+            >
+              <Icon name="fa-solid fa-eraser" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="mission-toggle-row">
+        <label className="mission-checkbox">
+          <input
+            type="checkbox"
+            checked={draft.isMultiSession}
+            onChange={(event) => setDraft((prev) => ({ ...prev, isMultiSession: event.target.checked }))}
+          />
+          <span>Sessione multipla</span>
+        </label>
+        <label className="mission-checkbox">
+          <input
+            type="checkbox"
+            checked={draft.autoReopenOnDrop}
+            onChange={(event) => setDraft((prev) => ({ ...prev, autoReopenOnDrop: event.target.checked }))}
+          />
+          <span>Riapri automaticamente</span>
+        </label>
+      </div>
+
+      {error && <p className="form-error" role="alert">{error}</p>}
+      <div className="inline-actions mission-actions">
+        <button type="button" className="primary-btn" onClick={onSubmit}>
+          <Icon name="fa-solid fa-floppy-disk" />
+          {saving ? 'Salvataggio...' : submitLabel}
+        </button>
+        <button
+          type="button"
+          className="secondary-btn"
+          onClick={() => {
+            setError('')
+            onCancel()
+          }}
+        >
+          <Icon name="fa-solid fa-xmark" />
+          Annulla
+        </button>
+      </div>
+    </fieldset>
   )
 }
