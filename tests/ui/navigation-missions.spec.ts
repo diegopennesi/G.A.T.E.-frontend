@@ -64,7 +64,7 @@ test('navigation separates tasks and expands actions with keyboard; current rout
 
 test('player navigation omits master-only management', async ({ page }) => {
   const state = await installApi(page)
-  state.membershipRole = 'PLAYER'
+  state.membershipRole = 'GIOCATORE'
   await openMissions(page)
   const navigation = page.getByRole('navigation', { name: 'Navigazione principale' })
   await expect(navigation.getByRole('button', { name: 'Missioni', exact: true })).toBeVisible()

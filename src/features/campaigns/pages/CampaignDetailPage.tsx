@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react'
+import { Dialog } from 'primereact/dialog'
+import { CampaignUpcomingMissions } from '../components/CampaignUpcomingMissions'
 import { MultiSelect } from 'primereact/multiselect'
 import { useCampaignContext } from '../../../context'
 import { BadgeGroup, FieldLabel, Icon, InfoBlock, MobileDataCard, ResponsiveDataList } from '../../../shared/components'
@@ -29,10 +31,13 @@ const ROLE_FILTER_OPTIONS: Array<FilterOption<CampaignRole>> = [
   { value: 'GIOCATORE', label: 'Giocatore', icon: 'fa-solid fa-user' },
 ]
 
-const STATUS_FILTER_OPTIONS: Array<FilterOption<CampaignCharacterStatus>> = [
-  { value: 'ACTIVE', label: 'Active', icon: 'fa-solid fa-circle-check' },
-  { value: 'RETIRED', label: 'Retired', icon: 'fa-solid fa-hourglass-half' },
-  { value: 'DEAD', label: 'Dead', icon: 'fa-solid fa-circle-xmark' },
+type MemberCharacterFilter = CampaignCharacterStatus | 'NO_CHARACTER'
+
+const STATUS_FILTER_OPTIONS: Array<FilterOption<MemberCharacterFilter>> = [
+  { value: 'ACTIVE', label: 'Attivo', icon: 'fa-solid fa-circle-check' },
+  { value: 'RETIRED', label: 'Ritirato', icon: 'fa-solid fa-hourglass-half' },
+  { value: 'DEAD', label: 'Deceduto', icon: 'fa-solid fa-circle-xmark' },
+  { value: 'NO_CHARACTER', label: 'Senza personaggio', icon: 'fa-solid fa-circle-info' },
 ]
 
 function roleRank(role: CampaignRole) {
@@ -66,13 +71,13 @@ function roleBadgeMeta(role: CampaignRole) {
 function characterStateMeta(status: CampaignCharacterStatus | null) {
   switch (status) {
     case 'ACTIVE':
-      return { label: 'Active', icon: 'fa-solid fa-circle-check', className: 'is-active' }
+      return { label: 'Attivo', icon: 'fa-solid fa-circle-check', className: 'is-active' }
     case 'RETIRED':
-      return { label: 'Retired', icon: 'fa-solid fa-hourglass-half', className: 'is-retired' }
+      return { label: 'Ritirato', icon: 'fa-solid fa-hourglass-half', className: 'is-retired' }
     case 'DEAD':
-      return { label: 'Dead', icon: 'fa-solid fa-circle-xmark', className: 'is-dead' }
+      return { label: 'Deceduto', icon: 'fa-solid fa-circle-xmark', className: 'is-dead' }
     default:
-      return { label: 'N/A', icon: 'fa-solid fa-circle-info', className: 'is-neutral' }
+      return { label: 'Senza personaggio', icon: 'fa-solid fa-circle-info', className: 'is-neutral' }
   }
 }
 
@@ -89,6 +94,7 @@ export function CampaignDetailPage() {
     openMember: onOpenMember,
     openManagement: onOpenManagement,
     openCharacters: onOpenCharacters,
+    openMissions: onOpenMissions,
     canManageMembers,
     applyCurrentCampaign: onApply,
     activateCurrentCampaign: onActivate,
@@ -98,11 +104,13 @@ export function CampaignDetailPage() {
     membershipRole,
   } = useCampaignContext()
   const [memberQuery, setMemberQuery] = useState('')
-  const [statusFilters, setStatusFilters] = useState<CampaignCharacterStatus[]>(['ACTIVE', 'RETIRED', 'DEAD'])
+  const [statusFilters, setStatusFilters] = useState<MemberCharacterFilter[]>(['ACTIVE', 'RETIRED', 'DEAD', 'NO_CHARACTER'])
   const [roleFilters, setRoleFilters] = useState<CampaignRole[]>(['SUPER_MASTER', 'MASTER', 'CO_MASTER', 'GIOCATORE'])
   const [deactivateModalOpen, setDeactivateModalOpen] = useState(false)
   const [deactivateConfirmName, setDeactivateConfirmName] = useState('')
   const [deactivationSubmitting, setDeactivationSubmitting] = useState(false)
+
+  const [deactivationError, setDeactivationError] = useState('')
 
   const normalizedQuery = memberQuery.trim().toLowerCase()
   const approvedMembers = useMemo(() => members.filter((member) => member.memberStatus === 'APPROVED'), [members])
@@ -113,7 +121,7 @@ export function CampaignDetailPage() {
         return (
           (normalizedQuery.length === 0 || displayName.toLowerCase().includes(normalizedQuery)) &&
           roleFilters.includes(member.role) &&
-          Boolean(member.characterStatus && statusFilters.includes(member.characterStatus))
+          statusFilters.includes(member.characterStatus ?? 'NO_CHARACTER')
         )
       })
       .sort((left, right) => {
@@ -151,36 +159,32 @@ export function CampaignDetailPage() {
     if (deactivationSubmitting) return
     setDeactivateModalOpen(false)
     setDeactivateConfirmName('')
+    setDeactivationError('')
   }
 
   const confirmDeactivateCampaign = async () => {
     if (!campaign || !deactivateConfirmationMatches) return
     setDeactivationSubmitting(true)
+    setDeactivationError('')
     try {
       await onDeactivateCampaign()
       setDeactivateModalOpen(false)
       setDeactivateConfirmName('')
+    } catch {
+      setDeactivationError('La campagna non è stata disattivata. Il nome inserito resta disponibile: puoi riprovare.')
     } finally {
       setDeactivationSubmitting(false)
     }
   }
 
   return (
-    <section className="panel">
-      <div className="row-between">
-        <h2>Scheda Campagna</h2>
-        <button type="button" className="secondary-btn" onClick={onReload}>
-          <Icon name="fa-solid fa-rotate" />
-          Reload
-        </button>
-      </div>
+    <section className="panel campaign-overview">
       {!campaign && <p className="muted">Carica prima una campagna.</p>}
       {campaign && (
         <>
           {campaign.coverImageUrl && <img className="campaign-cover" src={campaign.coverImageUrl} alt="" />}
           <div className="campaign-hero-head">
             <div className="campaign-hero-title-block">
-              <p className="campaign-hero-kicker">Scheda Campagna</p>
               <div className="campaign-hero-title-row">
                 <h2 className="campaign-hero-title">{campaign.name}</h2>
                 <span className="campaign-system-inline" title={catalogEntryDescription(availableGameSystems, campaign.gameSystem) || undefined}>
@@ -193,6 +197,14 @@ export function CampaignDetailPage() {
               <CampaignStatusBadge isActive={campaign.isActive} />
             </div>
           </div>
+          <div className="campaign-section-heading campaign-overview-actions">
+            <div className="inline-actions">
+              {canOpenCharacters && campaign.isActive && <button type="button" className="primary-btn" onClick={onOpenCharacters}><Icon name="fa-solid fa-user" />Personaggi</button>}
+              {canOpenManagement && campaign.isActive && <button type="button" className="secondary-btn" onClick={onOpenManagement}><Icon name="fa-solid fa-book-open" />Gestisci campagna</button>}
+            </div>
+            <button type="button" className="secondary-btn" onClick={onReload}><Icon name="fa-solid fa-rotate" />Aggiorna scheda</button>
+          </div>
+          {campaign.summary && <p className="campaign-summary">{campaign.summary}</p>}
           <div className="campaign-hero-toolbar">
             <div className="campaign-hero-meta" aria-label="Stato visibilità campagna">
               {campaignVisibilityMeta.map((item) => (
@@ -223,128 +235,39 @@ export function CampaignDetailPage() {
                   Richiesta inviata
                 </button>
               )}
-              {(canOpenManagement || canOpenCharacters) && (
-                <div className="grid w-full grid-cols-2 gap-2 md:!hidden">
-                  {canOpenManagement && (
-                    <button
-                      type="button"
-                      className="surface-control campaign-outline-action campaign-outline-action--gold min-w-0 w-full px-[clamp(0.38rem,1.8vw,0.72rem)] text-[clamp(0.56rem,2.35vw,0.78rem)] leading-tight gap-[clamp(0.16rem,1vw,0.34rem)]"
-                      onClick={onOpenManagement}
-                    >
-                      <Icon name="fa-solid fa-book-open" />
-                      <span className="min-w-0 whitespace-normal break-words text-center leading-tight">Gestione Campagna</span>
-                    </button>
-                  )}
-                  {canOpenCharacters && (
-                    <button
-                      type="button"
-                      className="surface-control campaign-outline-action campaign-outline-action--violet min-w-0 w-full px-[clamp(0.38rem,1.8vw,0.72rem)] text-[clamp(0.56rem,2.35vw,0.78rem)] leading-tight gap-[clamp(0.16rem,1vw,0.34rem)]"
-                      onClick={onOpenCharacters}
-                    >
-                      <Icon name="fa-solid fa-user" />
-                      <span className="min-w-0 whitespace-normal break-words text-center leading-tight">Gestione Personaggi</span>
-                    </button>
-                  )}
-                </div>
-              )}
-              {canOpenManagement && (
-                <button
-                  type="button"
-                  className="surface-control campaign-outline-action campaign-outline-action--gold !hidden min-w-0 px-[clamp(0.55rem,2.5vw,1.05rem)] text-[clamp(0.72rem,3vw,0.94rem)] gap-[clamp(0.25rem,1.5vw,0.6rem)] md:!inline-flex"
-                  onClick={onOpenManagement}
-                >
-                  <Icon name="fa-solid fa-book-open" />
-                  <span className="truncate">Gestione Campagna</span>
-                </button>
-              )}
-              {canOpenCharacters && (
-                <button
-                  type="button"
-                  className="surface-control campaign-outline-action campaign-outline-action--violet !hidden min-w-0 px-[clamp(0.55rem,2.5vw,1.05rem)] text-[clamp(0.72rem,3vw,0.94rem)] gap-[clamp(0.25rem,1.5vw,0.6rem)] md:!inline-flex"
-                  onClick={onOpenCharacters}
-                >
-                  <Icon name="fa-solid fa-user" />
-                  <span className="truncate">Gestione Personaggi</span>
-                </button>
-              )}
-              {canLeaveCampaign && (
-                <button type="button" className="danger-btn campaign-leave-btn !ml-0 w-full md:!ml-2 md:w-auto" onClick={onLeaveCampaign}>
-                  Esci dalla campagna
-                </button>
-              )}
             </div>
           </div>
-          {campaign.summary && <p className="campaign-summary">{campaign.summary}</p>}
-          <p className="campaign-description-muted">{campaign.description || 'Nessuna descrizione'}</p>
-          <div className="campaign-profile-grid">
-            <InfoBlock title="Ambientazione" value={campaign.setting} />
-            <InfoBlock title="Tono" value={campaignToneLabel(campaign.tone)} />
-            <InfoBlock title="Regole" value={campaign.rules} />
-            <InfoBlock title="Requisiti d'ingresso" value={campaign.requirements} />
-          </div>
-          <div className="campaign-addon-section">
-            <div className="campaign-addon-head">
-              <h3 className="section-title">Addon campagna</h3>
-              <p className="muted">Moduli disponibili per questa campagna.</p>
-            </div>
-            {availableModules.filter((module) => !CAMPAIGN_MODULE_HIDDEN_CODES.has(module.code) && !campaignModuleUnavailable(module)).length > 0 ? (
-              <div className="campaign-addon-icons" role="list" aria-label="Addon campagna">
-                {availableModules
-                  .filter((module) => !CAMPAIGN_MODULE_HIDDEN_CODES.has(module.code) && !campaignModuleUnavailable(module))
-                  .map((module) => {
-                  const active = campaign.allowedModules.includes(module.code)
-                  const label = campaignModuleTitle(module)
-                  const description = module.description || 'Addon campagna'
-                  return (
-                    <span
-                      key={module.code}
-                      role="listitem"
-                      className={`campaign-addon-icon ${active ? '' : 'is-inactive'}`}
-                      title={`${label} - ${description}`}
-                      aria-label={`${label} ${active ? 'attivo' : 'inattivo'}: ${description}`}
-                    >
-                      <Icon name={campaignModuleIconName(module)} />
-                      <span className="campaign-addon-icon-label">{label}</span>
-                    </span>
-                  )
-                  })}
-              </div>
-            ) : (
-              <p className="muted">Lista addon non ancora disponibile.</p>
-            )}
-          </div>
-          {canDeactivateCampaign && (
-            <div className="campaign-detail-danger-action">
-              <button type="button" className="danger-btn" onClick={() => setDeactivateModalOpen(true)}>
-                <Icon name="fa-solid fa-ban" />
-                Disattiva campagna
-              </button>
-            </div>
+          {membershipStatus === 'APPROVED' && campaign.isActive && campaign.allowedModules.includes('MISSIONI') && (
+            <CampaignUpcomingMissions campaignId={campaign.id} since={campaign.createdAt} onOpen={onOpenMissions} />
           )}
-          {canManageMembers && (
+          {membershipStatus === 'APPROVED' && (
             <>
-              <div className="divider" />
-              <h3 className="section-title">Membri Campagna</h3>
-              <div className="member-filters-panel">
+              <div className="campaign-section-heading campaign-group-heading">
+                <h3 className="section-title">Il gruppo <span className="muted">({approvedMembers.length})</span></h3>
+              </div>
+              <details className="campaign-group-filters">
+                <summary>Cerca e filtra il gruppo</summary>
+                <div className="member-filters-panel">
                 <div className="member-filter-toolbar">
                   <label className="member-filter-field">
                     <span className="muted">Cerca membro per nome</span>
                     <input value={memberQuery} onChange={(event) => setMemberQuery(event.target.value)} placeholder="es. Sandro" />
                   </label>
                   <label className="member-filter-field">
-                    <span className="muted">Stato</span>
+                    <span id="member-status-label" className="muted">Personaggio</span>
                     <MultiSelect
                       className="surface-field member-filter-select"
                       panelClassName="surface-field-panel member-filter-select-panel"
+                      ariaLabelledBy="member-status-label"
                       value={statusFilters}
                       options={STATUS_FILTER_OPTIONS}
                       optionLabel="label"
                       optionValue="value"
-                      onChange={(event) => setStatusFilters(event.value as CampaignCharacterStatus[])}
+                      onChange={(event) => setStatusFilters(event.value as MemberCharacterFilter[])}
                       placeholder="Tutti gli stati"
                       maxSelectedLabels={2}
                       selectedItemsLabel="{0} selezionati"
-                      itemTemplate={(option: FilterOption<CampaignCharacterStatus>) => (
+                      itemTemplate={(option: FilterOption<MemberCharacterFilter>) => (
                         <span className="member-filter-option-copy">
                           <Icon name={option.icon} />
                           <span>{option.label}</span>
@@ -353,10 +276,11 @@ export function CampaignDetailPage() {
                     />
                   </label>
                   <label className="member-filter-field">
-                    <span className="muted">Grado</span>
+                    <span id="member-role-label" className="muted">Ruolo</span>
                     <MultiSelect
                       className="surface-field member-filter-select"
                       panelClassName="surface-field-panel member-filter-select-panel"
+                      ariaLabelledBy="member-role-label"
                       value={roleFilters}
                       options={ROLE_FILTER_OPTIONS}
                       optionLabel="label"
@@ -375,6 +299,7 @@ export function CampaignDetailPage() {
                   </label>
                 </div>
               </div>
+              </details>
               {approvedMembers.length === 0 && <p className="muted">Nessun membro</p>}
               {approvedMembers.length > 0 && filteredMembers.length > 0 && (
                 <ResponsiveDataList
@@ -394,9 +319,7 @@ export function CampaignDetailPage() {
                     return (
                       <tr>
                         <td>
-                          <button type="button" className="member-table-link" onClick={() => onOpenMember(member)}>
-                            {memberNames[member.userId] || member.userId}
-                          </button>
+                          {canManageMembers ? <button type="button" className="member-table-link" onClick={() => onOpenMember(member)}>{memberNames[member.userId] || member.userId}</button> : <span>{memberNames[member.userId] || member.userId}</span>}
                         </td>
                         <td>
                           <span className={`campaign-role-badge ${roleMeta.className}`}>
@@ -419,13 +342,12 @@ export function CampaignDetailPage() {
                     const stateMeta = characterStateMeta(member.characterStatus)
                     return (
                       <MobileDataCard
+                        className="campaign-member-row"
                         title={
-                          <div className="flex items-start justify-between gap-3">
-                            <button type="button" className="member-table-link min-w-0 truncate" onClick={() => onOpenMember(member)}>
-                              {memberNames[member.userId] || member.userId}
-                            </button>
+                          <span className="flex items-start justify-between gap-3">
+                            {canManageMembers ? <button type="button" className="member-table-link" onClick={() => onOpenMember(member)}>{memberNames[member.userId] || member.userId}</button> : <span>{memberNames[member.userId] || member.userId}</span>}
                             <span className="shrink-0 text-xs text-[var(--muted)]">{formatShortDate(member.joinedAt)}</span>
-                          </div>
+                          </span>
                         }
                         badges={
                           <BadgeGroup>
@@ -449,19 +371,57 @@ export function CampaignDetailPage() {
               )}
             </>
           )}
-          {deactivateModalOpen && (
-            <div className="modal-backdrop">
-              <div className="modal-panel campaign-deactivate-panel">
-                <div className="modal-panel-head">
-                  <div>
-                    <h3>Disattiva campagna</h3>
-                    <p className="muted">attenzione vuoi disattivare la campagna?</p>
-                  </div>
-                  <button type="button" className="drawer-close-btn" onClick={closeDeactivateModal} disabled={deactivationSubmitting}>
-                    <Icon name="fa-solid fa-xmark" />
-                  </button>
+          <details className="campaign-about">
+            <summary>Storia, regole e strumenti della campagna</summary>
+            <p className="campaign-description-muted">{campaign.description || 'Nessuna descrizione'}</p>
+            <div className="campaign-profile-grid">
+              <InfoBlock title="Ambientazione" value={campaign.setting} />
+              <InfoBlock title="Tono" value={campaignToneLabel(campaign.tone)} />
+              <InfoBlock title="Regole" value={campaign.rules} />
+              <InfoBlock title="Requisiti d'ingresso" value={campaign.requirements} />
+            </div>
+            <div className="campaign-addon-section">
+              <div className="campaign-addon-head">
+                <h3 className="section-title">Addon campagna</h3>
+                <p className="muted">Moduli disponibili per questa campagna.</p>
+              </div>
+              {availableModules.filter((module) => !CAMPAIGN_MODULE_HIDDEN_CODES.has(module.code) && !campaignModuleUnavailable(module)).length > 0 ? (
+                <div className="campaign-addon-icons" role="list" aria-label="Addon campagna">
+                  {availableModules
+                    .filter((module) => !CAMPAIGN_MODULE_HIDDEN_CODES.has(module.code) && !campaignModuleUnavailable(module))
+                    .map((module) => {
+                    const active = campaign.allowedModules.includes(module.code)
+                    const label = campaignModuleTitle(module)
+                    const description = module.description || 'Addon campagna'
+                    return (
+                      <span
+                        key={module.code}
+                        role="listitem"
+                        className={`campaign-addon-icon ${active ? '' : 'is-inactive'}`}
+                        title={`${label} - ${description}`}
+                        aria-label={`${label} ${active ? 'attivo' : 'inattivo'}: ${description}`}
+                      >
+                        <Icon name={campaignModuleIconName(module)} />
+                        <span className="campaign-addon-icon-label">{label}</span>
+                      </span>
+                    )
+                    })}
                 </div>
-
+              ) : (
+                <p className="muted">Lista addon non ancora disponibile.</p>
+              )}
+            </div>
+          </details>
+          {(canLeaveCampaign || canDeactivateCampaign) && (
+            <details className="campaign-about campaign-membership-actions">
+              <summary>Adesione e chiusura della campagna</summary>
+              <div className="inline-actions">
+                {canLeaveCampaign && <button type="button" className="danger-btn" onClick={onLeaveCampaign}>Esci dalla campagna</button>}
+                {canDeactivateCampaign && campaign.isActive && <button type="button" className="danger-btn" onClick={() => setDeactivateModalOpen(true)}><Icon name="fa-solid fa-ban" />Disattiva campagna</button>}
+              </div>
+            </details>
+          )}
+          <Dialog visible={deactivateModalOpen} header="Disattiva campagna" modal draggable={false} resizable={false} className="confirm-action-dialog campaign-deactivate-dialog" onHide={closeDeactivateModal} closable={!deactivationSubmitting} closeOnEscape={!deactivationSubmitting} dismissableMask={false}>
                 <div className="leave-warning-box">
                   <p className="leave-warning-title">Operazione irreversibile dal flusso utente</p>
                   <p className="muted">
@@ -479,6 +439,7 @@ export function CampaignDetailPage() {
                   />
                 </label>
 
+                {deactivationError && <p role="alert">{deactivationError}</p>}
                 <div className="inline-actions">
                   <button type="button" className="secondary-btn" onClick={closeDeactivateModal} disabled={deactivationSubmitting}>
                     Annulla
@@ -490,12 +451,10 @@ export function CampaignDetailPage() {
                     disabled={deactivationSubmitting || !deactivateConfirmationMatches}
                   >
                     <Icon name="fa-solid fa-ban" />
-                    Disattiva campagna
+                    {deactivationSubmitting ? 'Disattivazione…' : 'Disattiva campagna'}
                   </button>
                 </div>
-              </div>
-            </div>
-          )}
+          </Dialog>
         </>
       )}
     </section>

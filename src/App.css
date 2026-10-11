@@ -7983,3 +7983,48 @@ html[data-theme='light'] .sidebar-drawer .menu-item { border-color: transparent;
   .mission-compose-footer { flex-direction: column-reverse; }
   .mission-shell .mission-page-header h2 { font-size: 1.5rem; }
 }
+/* Campaign overview: the group's next actions precede campaign configuration. */
+.panel.campaign-overview { gap: 0; box-shadow: none; }
+.campaign-overview .campaign-hero-title { font-size: clamp(1.5rem, 3vw, 2rem); line-height: 1.2; letter-spacing: -0.025em; overflow-wrap: anywhere; text-wrap: balance; }
+.campaign-overview .campaign-system-inline { white-space: normal; color: var(--text); background: var(--surface-soft); }
+.campaign-section-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; }
+.campaign-section-heading h3 { margin: 0; font-size: 1.25rem; }
+.campaign-overview-actions { margin-top: 1.5rem; }
+.campaign-overview-actions .inline-actions { margin: 0; flex-wrap: wrap; }
+.campaign-overview-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; }
+.campaign-overview .campaign-hero-toolbar { margin-top: 1rem; }
+.campaign-overview-section, .campaign-group-heading { margin-top: 2rem; border-top: 1px solid var(--border); padding-top: 1.5rem; }
+.campaign-upcoming-list { padding: 0; margin: 1rem 0 0; list-style: none; }
+.campaign-upcoming-list li { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 1rem 0; border-bottom: 1px solid var(--border); }
+.campaign-upcoming-list li > div { min-width: 0; }
+.campaign-upcoming-list h4 { margin: 0; font-size: 1rem; overflow-wrap: anywhere; }
+.campaign-upcoming-list p { margin: 0.4rem 0 0; }
+.campaign-upcoming-list time { flex-shrink: 0; font-size: 0.9rem; color: var(--text-soft); font-variant-numeric: tabular-nums; }
+.campaign-overview-error { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; }
+.campaign-group-heading { margin-bottom: 1rem; }
+.campaign-overview .member-filters-panel { background: transparent; border: 0; padding: 0; }
+.campaign-overview .member-table-link { white-space: normal; overflow-wrap: anywhere; text-align: left; }
+.campaign-about { border-top: 1px solid var(--border); margin-top: 2rem; padding-top: 1rem; }
+.campaign-about > summary { cursor: pointer; font-weight: 600; color: var(--text); padding-block: 0.5rem; }
+.campaign-about > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
+.campaign-membership-actions .inline-actions { flex-wrap: wrap; margin-top: 1rem; }
+.campaign-deactivate-dialog { width: min(36rem, calc(100vw - 2rem)); }
+.campaign-deactivate-dialog label { display: grid; gap: 0.5rem; margin-block: 1rem; }
+.campaign-deactivate-dialog input { width: 100%; }
+.campaign-deactivate-dialog .inline-actions { flex-wrap: wrap; justify-content: flex-end; }
+@media (max-width: 600px) {
+  .campaign-overview .campaign-hero-head { flex-direction: column; gap: 0.75rem; }
+  .campaign-overview .campaign-hero-status { padding: 0; }
+  .campaign-overview-actions { align-items: stretch; gap: 0.75rem; }
+  .campaign-overview-actions .inline-actions { width: 100%; }
+  .campaign-overview-actions .inline-actions button { flex: 1 1 auto; }
+  .campaign-upcoming-list li { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
+  .campaign-overview-section, .campaign-group-heading { margin-top: 1.5rem; padding-top: 1.25rem; }
+}
+.campaign-overview .campaign-summary, .campaign-overview .member-table-muted { color: var(--text-soft); }
+.campaign-overview input::placeholder { color: var(--text-soft); opacity: 1; }
+.campaign-group-filters { margin-bottom: 1rem; }
+.campaign-group-filters > summary { cursor: pointer; color: var(--text-soft); padding-block: 0.5rem; }
+.campaign-group-filters > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.campaign-group-filters .member-filters-panel { margin-top: 0.75rem; }
+.campaign-overview .campaign-member-row { background: transparent; border: 0; border-bottom: 1px solid var(--border); box-shadow: none; border-radius: 0; padding: 1rem 0; }

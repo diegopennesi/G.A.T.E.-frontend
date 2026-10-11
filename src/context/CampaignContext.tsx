@@ -45,6 +45,7 @@ export type CampaignContextValue = {
   openMember: (member: CampaignMembershipResponse) => void
   openManagement: () => void
   openCharacters: () => void
+  openMissions: () => void
   canManageMembers: boolean
   applyCurrentCampaign: () => void
   activateCurrentCampaign: () => void
