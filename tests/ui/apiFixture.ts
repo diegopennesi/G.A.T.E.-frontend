@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import type { CampaignResponse, MissionResponse, UserProfile } from '../../src/types/domain'
+import type { CampaignResponse, CampaignMembershipResponse, CampaignRole, MissionResponse, UserProfile } from '../../src/types/domain'
 
 const now = '2026-07-23T10:00:00Z'
 export const profile: UserProfile = {
@@ -29,7 +29,10 @@ export async function installApi(page: Page, authenticated = true) {
     delayMutation: 0,
     failCampaignCreate: false, failCampaignRefresh: false, campaignCreates: 0,
     lastCampaignPayload: null as Record<string, unknown> | null,
-    membershipRole: 'SUPER_MASTER' as 'SUPER_MASTER' | 'PLAYER',
+    membershipRole: 'SUPER_MASTER' as CampaignRole,
+    campaign: { ...campaign },
+    failMissionRead: false, missionReads: 0, delayMissionRead: 0,
+    members: [{ userId: profile.id, campaignId: campaign.id, characterId: null, joinedAt: now, role: 'SUPER_MASTER', memberStatus: 'APPROVED', characterStatus: null, moderationReason: null, moderationByUserId: null, moderationAt: null }] as CampaignMembershipResponse[],
     lastMissionPayload: null as Record<string, unknown> | null,
     missions: [initialMission],
     messages: [] as Array<Record<string, unknown>>,
@@ -57,8 +60,8 @@ export async function installApi(page: Page, authenticated = true) {
     if (path === '/users/me' || path === `/users/${profile.id}`) return reply(profile)
     if (path === '/realms/me/permissions') return reply({ realmId: 'ui-realm', realmCode: 'gate', platformRole: 'USER', realmRole: 'USER', explicitRealmAccess: true, permissions: { createCampaign: true, manageRealm: false, manageRealmUsers: false, viewRealmAdmin: false } })
     if (path === '/campaigns/me/memberships') return reply([{ campaignId: campaign.id, campaignName: campaign.name, role: state.membershipRole, memberStatus: 'APPROVED', characterStatus: null, moderationReason: null, isFounder: state.membershipRole === 'SUPER_MASTER' }])
-    if (path === '/campaigns/discover') return state.failCampaignRefresh ? error() : reply([{ ...campaign, membershipStatus: 'APPROVED', membershipRole: 'SUPER_MASTER', moderationReason: null }])
-    if (path === '/campaigns/post-login-summary') return state.failCampaignRefresh ? error() : reply({ canCreateCampaign: true, campaigns: [{ ...campaign, isVisible: true, membershipStatus: 'APPROVED', membershipRole: 'SUPER_MASTER', moderationReason: null }] })
+    if (path === '/campaigns/discover') return state.failCampaignRefresh ? error() : reply([{ ...state.campaign, membershipStatus: 'APPROVED', membershipRole: state.membershipRole, moderationReason: null }])
+    if (path === '/campaigns/post-login-summary') return state.failCampaignRefresh ? error() : reply({ canCreateCampaign: true, campaigns: [{ ...state.campaign, isVisible: true, membershipStatus: 'APPROVED', membershipRole: state.membershipRole, moderationReason: null }] })
     if (path === '/campaigns/modules') return reply([{ code: 'MISSIONI', label: 'Missioni', description: null, active: true, sortOrder: 1 }])
     if (path === '/campaigns/game-systems') return reply([{ code: 'DND5E', label: 'Dungeons & Dragons 5e', description: null, active: true, sortOrder: 1 }])
     if (path === '/campaigns' && method === 'POST') {
@@ -68,9 +71,9 @@ export async function installApi(page: Page, authenticated = true) {
       if (state.failCampaignCreate) return error()
       return reply({ ...campaign, ...state.lastCampaignPayload })
     }
-    if (path === `/campaigns/${campaign.id}`) return reply(campaign)
-    if (/\/members(\/all)?$/.test(path)) return reply([{ userId: profile.id, campaignId: campaign.id, characterId: null, joinedAt: now, role: 'SUPER_MASTER', memberStatus: 'APPROVED', characterStatus: null, moderationReason: null, moderationByUserId: null, moderationAt: null }])
-    if (path.includes('/permissions/')) return reply({ campaignId: campaign.id, action: path.split('/').at(-1), allowed: true })
+    if (path === `/campaigns/${campaign.id}`) return reply(state.campaign)
+    if (/\/members(\/all)?$/.test(path)) return reply(state.members)
+    if (path.includes('/permissions/')) return reply({ campaignId: campaign.id, action: path.split('/').at(-1), allowed: state.membershipRole !== 'GIOCATORE' })
     if (/\/missions$/.test(path)) {
       if (method === 'POST') {
         state.creates++
@@ -81,6 +84,9 @@ export async function installApi(page: Page, authenticated = true) {
         state.missions.push(created)
         return reply(created)
       }
+      state.missionReads++
+      if (state.delayMissionRead) await new Promise(resolve => setTimeout(resolve, state.delayMissionRead))
+      if (state.failMissionRead) return error()
       return reply(state.missions)
     }
     if (path === `/campaigns/${campaign.id}/missions/${initialMission.id}` && method === 'PATCH') {

@@ -2930,7 +2930,10 @@ function App() {
     memberNames,
     availableModules: campaignModules,
     availableGameSystems: campaignGameSystems,
-    reloadCampaign: () => void refreshCampaignBlock({ force: true }),
+    reloadCampaign: () => {
+      void refreshCampaignBlock({ force: true })
+      if (campaign?.id) void queryClient.invalidateQueries({ queryKey: ['campaigns', campaign.id, 'missions'] })
+    },
     openMember: (member: CampaignMembershipResponse) =>
       void run('Profilo membro caricato', async () => {
         if (!campaignId.trim()) return
@@ -2956,6 +2959,9 @@ function App() {
     },
     openCharacters: () => {
       if (campaign?.id) void activateCampaignAndNavigate(campaign.id, 'Gestione Personaggi')
+    },
+    openMissions: () => {
+      if (campaign?.id) void activateCampaignAndNavigate(campaign.id, 'Missioni')
     },
     canManageMembers: canManageCampaignMembers,
     applyCurrentCampaign: () => {

@@ -17,3 +17,11 @@ Il menu distingue tavolo, gestione e account. Creazione campagna, creazione pers
 Il form missione separa avventura, date e gruppo. Capienza e quorum hanno controlli numerici con valore vuoto consentito; livelli e automatismi restano nelle opzioni espandibili. Titolo obbligatorio, limiti numerici, ordine delle date e coerenza di livelli/quorum vengono verificati prima dell'invio. Ricerca e risultati sono nascosti durante la creazione. Tornare all'elenco e riaprire il form conserva la bozza finché si rimane nella schermata Missioni; non è una persistenza dopo reload o cambio schermata.
 
 Verifica: suite UI locale con risposte API controllate, test cache, compilazione TypeScript e build Vite. Il collaudo completo con PostgreSQL, Redis e backend reali resta distinto dai test UI.
+
+## Scheda campagna: orientamento del tavolo
+
+La scheda porta in primo piano personaggi, gestione, fino a tre prossime missioni ordinate per data e gruppo. Esclude missioni annullate, completate e sessioni passate; le missioni senza data arrivano dopo quelle programmate. Le date includono l'ora locale del browser. Il modulo Missioni deve essere attivo e l'utente approvato nella campagna attiva per vedere il riepilogo. La lettura usa le API esistenti e la cache condivisa, con aggiornamento e riprova locali; un errore di refresh conserva le righe già disponibili.
+
+Il gruppo è consultabile dai membri approvati; le azioni sui singoli membri restano vincolate al permesso di gestione. Sono inclusi anche master e giocatori senza personaggio, prima esclusi dal filtro. Ricerca e filtri sono espandibili da tastiera. Storia, regole e strumenti restano sotto, in una sezione espandibile. Adesione e chiusura sono separate dalle azioni quotidiane: la disattivazione conserva la conferma del nome e usa un dialogo con focus protetto, stato di invio e recupero dall'errore.
+
+Verifica aggiuntiva: missioni ordinate e filtrate, gruppo senza personaggi, ricerca, link a missioni/personaggi, permessi giocatore, modulo disabilitato, refresh fallito e riprova, conferma di disattivazione e tastiera. Layout controllato a 320, 390 e 1280 px nei temi chiaro e scuro. I test usano API simulate su localhost; nessuna modifica backend in questo step.
