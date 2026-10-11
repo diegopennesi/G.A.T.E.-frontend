@@ -45,7 +45,7 @@ export function useCampaignCommandMutations(deps: CampaignCommandDeps) {
       deps.setCampaignDetailsById((prev) => ({ ...prev, [created.id]: created }))
       deps.setCanManageCampaignMembers(true)
       await invalidateBootstrap()
-      await Promise.all([
+      await Promise.allSettled([
         deps.loadDiscoverableCampaigns({ force: true }),
         deps.loadPostLoginCampaignSummary({ force: true }),
         invalidateCampaign(created.id),

@@ -71,7 +71,7 @@ export function AuthScreen() {
         setResetSeed(response.resetSeed)
         setResetExpiresAt(response.expiresAt)
         setRecoveryStep('confirm')
-        setInfo('Seed di reset generato. Usa il seed ricevuto per confermare il reset.')
+        setInfo('Codice di recupero generato. Scegli la nuova password per completare il recupero.')
         return
       }
 
@@ -103,8 +103,8 @@ export function AuthScreen() {
         ) : (
           <h1>{realmName}</h1>
         )}
-        <p>Accesso realm-aware su API backend.</p>
-        <p className="auth-note">Realm attivo: {realmCode}</p>
+        <p>Il tuo gruppo, le tue campagne, le prossime avventure.</p>
+        <p className="auth-note">Reame: {realmCode}</p>
       </section>
       <section className="auth-panel">
         <form className="auth-card" onSubmit={submit} aria-busy={busy}>
@@ -114,9 +114,9 @@ export function AuthScreen() {
           </div>
           <div className="auth-mode-picker" role="group" aria-label="Accesso e password">
             {[
-              { key: 'login' as const, label: 'Login', hint: 'Entra con username e password.' },
-              { key: 'register' as const, label: 'Registrazione', hint: 'Crea un nuovo account con profilo base.' },
-              { key: 'recover' as const, label: 'Recupero password', hint: 'Richiedi un seed e conferma il reset in due passi.' },
+              { key: 'login' as const, label: 'Accedi', hint: 'Entra con username e password.' },
+              { key: 'register' as const, label: 'Registrati', hint: 'Crea il tuo account.' },
+              { key: 'recover' as const, label: 'Recupera', hint: 'Imposta una nuova password.' },
             ].map((item) => (
               <button
                 key={item.key}
@@ -129,16 +129,14 @@ export function AuthScreen() {
                 aria-label={`${item.label}. ${item.hint}`}
               >
                 <span>{item.label}</span>
-                <span className="auth-mode-hint" aria-hidden="true">
-                  {item.hint}
-                </span>
               </button>
             ))}
           </div>
-          <h2>{mode === 'login' ? 'Login' : mode === 'register' ? 'Registrazione' : 'Recupero password'}</h2>
+          <h2>{mode === 'login' ? 'Bentornato al tavolo' : mode === 'register' ? 'Crea il tuo account' : 'Recupera la password'}</h2>
+          {mode === 'login' && <p className="auth-note">Accedi per ritrovare le tue campagne e il gruppo.</p>}
           {mode === 'recover' && (
             <p className="auth-note">
-              Il reset è pubblico e avviene in due passaggi. Prima richiedi un seed, poi confermi il reset con il seed e la nuova password.
+              {recoveryStep === 'request' ? 'Inserisci il tuo username per generare un codice di recupero.' : 'Il codice è già inserito. Scegli e conferma la nuova password.'}
             </p>
           )}
           {mode !== 'recover' && (
@@ -169,7 +167,7 @@ export function AuthScreen() {
                 <input required type="password" autoComplete="new-password" placeholder="Password" value={password} onChange={(event) => setPassword(event.target.value)} />
               </label>
               <label>
-                Profile Name
+                Nome del profilo
                 <input value={profileName} placeholder="Nome profilo" onChange={(event) => setProfileName(event.target.value)} />
               </label>
               <label>
@@ -197,13 +195,13 @@ export function AuthScreen() {
               ) : (
                 <>
                   <div className="auth-result-box">
-                    <p className="auth-result-label">Seed di reset</p>
+                    <p className="auth-result-label">Codice di recupero</p>
                     <p className="auth-result-value">{resetSeed}</p>
                     <p className="auth-result-meta">Scadenza: {resetExpiresAt || 'n/d'}</p>
                   </div>
                   <label>
-                    Reset seed
-                    <input required value={resetSeed} placeholder="Seed ricevuto dal request" onChange={(event) => setResetSeed(event.target.value)} />
+                    Codice di recupero
+                    <input required value={resetSeed} placeholder="Codice generato" onChange={(event) => setResetSeed(event.target.value)} />
                   </label>
                   <label>
                     Nuova password
@@ -221,7 +219,7 @@ export function AuthScreen() {
           {info && <p className="auth-note" role="status">{info}</p>}
           {mode === 'recover' ? (
             <button className="primary-btn" disabled={busy} type="submit">
-              {busy ? 'Attendere...' : recoveryStep === 'request' ? 'Richiedi seed' : 'Conferma reset'}
+              {busy ? 'Attendere...' : recoveryStep === 'request' ? 'Genera codice di recupero' : 'Salva nuova password'}
             </button>
           ) : (
             <button className="primary-btn" disabled={busy} type="submit">

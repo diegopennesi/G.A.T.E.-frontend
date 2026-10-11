@@ -1,367 +1,126 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import type { FormEvent } from 'react'
 import { useCampaignContext } from '../../../context'
-import { ActionStack, BadgeGroup, FieldLabel, Icon, KeyValueGrid, MobileDataCard, ResponsiveDataList } from '../../../shared/components'
-import type { CampaignCatalogEntry } from '../../../types/domain'
-import {
-  CAMPAIGN_MODULE_HIDDEN_CODES,
-  CAMPAIGN_MODULE_UNAVAILABLE_CODES,
-  CAMPAIGN_TONE_OPTIONS,
-  campaignModuleIconName,
-  catalogEntryDescription,
-} from '../../../shared/utils'
+import { Icon } from '../../../shared/components'
+import { CAMPAIGN_MODULE_HIDDEN_CODES, CAMPAIGN_MODULE_UNAVAILABLE_CODES, CAMPAIGN_TONE_OPTIONS, catalogEntryDescription, toMessage } from '../../../shared/utils'
 
-function campaignModuleTitle(module: CampaignCatalogEntry): string {
-  return module.label || module.code
+type CampaignDraft = {
+  name: string; description: string; summary: string; setting: string; tone: string
+  rules: string; requirements: string; coverImageUrl: string; gameSystem: string
+  isOpen: boolean; isSearchable: boolean; autoJoinEnabled: boolean
+  allowedModules: string[] | null
 }
-
-type CampaignToggleRow = {
-  key: string
-  title: string
-  description: string
-  active: boolean
-  activeLabel: string
-  inactiveLabel: string
-  onToggle: () => void
+const emptyDraft: CampaignDraft = {
+  name: '', description: '', summary: '', setting: '', tone: '', rules: '', requirements: '',
+  coverImageUrl: '', gameSystem: '', isOpen: true, isSearchable: true, autoJoinEnabled: false, allowedModules: null,
 }
-
-type CreateCampaignToggleItem = CampaignToggleRow | CampaignCatalogEntry
-
-function CreateCampaignToggleSettingsTable({
-  title,
-  description,
-  rows,
-  availableModules,
-  selectedModules,
-  onToggle,
-}: {
-  title: string
-  description: string
-  rows?: CampaignToggleRow[]
-  availableModules?: CampaignCatalogEntry[]
-  selectedModules?: string[]
-  onToggle?: (moduleCode: string) => void
-}) {
-  const visibleModules = availableModules?.filter(
-    (module) => !CAMPAIGN_MODULE_HIDDEN_CODES.has(module.code) && !CAMPAIGN_MODULE_UNAVAILABLE_CODES.has(module.code),
-  ) || []
-
-  const renderRowForSetting = (setting: CampaignToggleRow) => (
-    <tr key={setting.key}>
-      <td>
-        <div className="data-table-primary">
-          <p className="data-table-title">{setting.title}</p>
-        </div>
-      </td>
-      <td className="data-table-secondary">{setting.description}</td>
-      <td>
-        <span className={`status ${setting.active ? 'status-success' : 'status-neutral'}`}>
-          {setting.active ? setting.activeLabel : setting.inactiveLabel}
-        </span>
-      </td>
-      <td>
-        <label className="switch" aria-label={`${setting.title} ${setting.active ? 'attivo' : 'disattivo'}`}>
-          <input type="checkbox" checked={setting.active} onChange={setting.onToggle} />
-          <span className="switch-track" aria-hidden="true">
-            <span className="switch-thumb" />
-          </span>
-        </label>
-      </td>
-    </tr>
-  )
-
-  const renderMobileCardForSetting = (setting: CampaignToggleRow) => (
-    <MobileDataCard
-      title={setting.title}
-      badges={
-        <BadgeGroup>
-          <span className={`status ${setting.active ? 'status-success' : 'status-neutral'}`}>
-            {setting.active ? setting.activeLabel : setting.inactiveLabel}
-          </span>
-        </BadgeGroup>
-      }
-      actions={
-        <ActionStack>
-          <label className="switch w-fit" aria-label={`${setting.title} ${setting.active ? 'attivo' : 'disattivo'}`}>
-            <input type="checkbox" checked={setting.active} onChange={setting.onToggle} />
-            <span className="switch-track" aria-hidden="true">
-              <span className="switch-thumb" />
-            </span>
-          </label>
-        </ActionStack>
-      }
-    >
-      <KeyValueGrid items={[{ key: setting.key, label: 'Descrizione', value: setting.description }]} />
-    </MobileDataCard>
-  )
-
-  const renderRowForModule = (module: CampaignCatalogEntry) => {
-    const enabled = selectedModules?.includes(module.code) || false
-    return (
-      <tr key={module.code}>
-        <td>
-          <div className="data-table-primary">
-            <p className="data-table-title">
-              <span className="field-label-with-icon">
-                <Icon name={campaignModuleIconName(module)} className="field-label-icon" />
-                <span>{campaignModuleTitle(module)}</span>
-              </span>
-            </p>
-          </div>
-        </td>
-        <td className="data-table-secondary">{module.description || 'Addon campagna'}</td>
-        <td>
-          <span className={`status ${enabled ? 'status-success' : 'status-neutral'}`}>
-            {enabled ? 'Attivo' : 'Disattivo'}
-          </span>
-        </td>
-        <td>
-          <label className="switch" aria-label={`${campaignModuleTitle(module)} ${enabled ? 'attivo' : 'disattivo'}`}>
-            <input type="checkbox" checked={enabled} onChange={() => onToggle?.(module.code)} />
-            <span className="switch-track" aria-hidden="true">
-              <span className="switch-thumb" />
-            </span>
-          </label>
-        </td>
-      </tr>
-    )
-  }
-
-  const renderMobileCardForModule = (module: CampaignCatalogEntry) => {
-    const enabled = selectedModules?.includes(module.code) || false
-    return (
-      <MobileDataCard
-        title={campaignModuleTitle(module)}
-        badges={
-          <BadgeGroup>
-            <span className={`status ${enabled ? 'status-success' : 'status-neutral'}`}>
-              {enabled ? 'Attivo' : 'Disattivo'}
-            </span>
-          </BadgeGroup>
-        }
-        actions={
-          <ActionStack>
-            <label className="switch w-fit" aria-label={`${campaignModuleTitle(module)} ${enabled ? 'attivo' : 'disattivo'}`}>
-              <input type="checkbox" checked={enabled} onChange={() => onToggle?.(module.code)} />
-              <span className="switch-track" aria-hidden="true">
-                <span className="switch-thumb" />
-              </span>
-            </label>
-          </ActionStack>
-        }
-      >
-        <KeyValueGrid items={[{ key: module.code, label: 'Descrizione', value: module.description || 'Addon campagna' }]} />
-      </MobileDataCard>
-    )
-  }
-
-  const dataRows: CreateCampaignToggleItem[] = rows || visibleModules || []
-  const isModuleTable = Boolean(availableModules)
-
-  return (
-    <div className="campaign-toggle-settings">
-      <div className="row-between">
-        <div>
-          <p className="section-title">{title}</p>
-          <p className="muted">{description}</p>
-        </div>
-        {isModuleTable && visibleModules.length > 0 ? (
-          <span className="readonly-chip">{selectedModules?.length || 0}/{visibleModules.length} attivi</span>
-        ) : null}
-      </div>
-      <ResponsiveDataList
-        desktopClassName="create-campaign-settings-table"
-        columns={[
-          { key: 'setting', label: 'Impostazione' },
-          { key: 'description', label: 'Descrizione' },
-          { key: 'status', label: 'Stato' },
-          { key: 'toggle', label: 'Toggle' },
-        ]}
-        rows={dataRows}
-        getRowKey={(item) => ('code' in item ? item.code : item.key)}
-        emptyMessage={isModuleTable ? 'Nessun addon disponibile.' : 'Nessuna impostazione disponibile.'}
-        renderDesktopRow={(item) => ('code' in item ? renderRowForModule(item) : renderRowForSetting(item))}
-        renderMobileCard={(item) => ('code' in item ? renderMobileCardForModule(item) : renderMobileCardForSetting(item))}
-      />
-    </div>
-  )
+function readDraft(key: string): CampaignDraft {
+  try {
+    const stored: unknown = JSON.parse(sessionStorage.getItem(key) || 'null')
+    if (!stored || typeof stored !== 'object') return { ...emptyDraft }
+    const candidate = stored as Record<string, unknown>
+    const draft = { ...emptyDraft }
+    for (const field of Object.keys(emptyDraft) as Array<keyof CampaignDraft>) {
+      const value = candidate[field]
+      if (field === 'allowedModules') {
+        if (Array.isArray(value) && value.every(item => typeof item === 'string')) draft.allowedModules = value
+      } else if (typeof value === typeof emptyDraft[field]) Object.assign(draft, { [field]: value })
+    }
+    return draft
+  } catch { return { ...emptyDraft } }
 }
 
 export function CreateCampaignPage() {
-  const { availableModules, availableGameSystems, createCampaign: onCreate } = useCampaignContext()
-  const [name, setName] = useState('Nuova Campagna')
-  const [description, setDescription] = useState('')
-  const [summary, setSummary] = useState('')
-  const [setting, setSetting] = useState('')
-  const [tone, setTone] = useState('')
-  const [rules, setRules] = useState('')
-  const [requirements, setRequirements] = useState('')
-  const [coverImageUrl, setCoverImageUrl] = useState('')
-  const [isOpen, setIsOpen] = useState(true)
-  const [isSearchable, setIsSearchable] = useState(true)
-  const [autoJoinEnabled, setAutoJoinEnabled] = useState(false)
-  const [selectedGameSystemChoice, setSelectedGameSystemChoice] = useState('')
-  const [selectedModulesDraft, setSelectedModulesDraft] = useState<string[]>([])
-  const availableModuleCodes = useMemo(
-    () =>
-      availableModules
-        .filter((module) => !CAMPAIGN_MODULE_HIDDEN_CODES.has(module.code) && !CAMPAIGN_MODULE_UNAVAILABLE_CODES.has(module.code))
-        .map((module) => module.code),
-    [availableModules],
-  )
-  const availableGameSystemCodes = useMemo(() => availableGameSystems.map((item) => item.code), [availableGameSystems])
-  const selectedGameSystem =
-    availableGameSystemCodes.length === 0
-      ? 'DND5E'
-      : availableGameSystemCodes.includes(selectedGameSystemChoice)
-        ? selectedGameSystemChoice
-        : availableGameSystemCodes[0]
-  const selectedModules =
-    availableModuleCodes.length === 0
-      ? []
-      : selectedModulesDraft.length === 0
-        ? availableModuleCodes
-        : selectedModulesDraft.filter((moduleCode) => availableModuleCodes.includes(moduleCode))
-
-  const toggleModule = (moduleCode: string) => {
-    setSelectedModulesDraft((prev) => {
-      const baseSelection = prev.length === 0 ? availableModuleCodes : prev
-      return baseSelection.includes(moduleCode)
-        ? baseSelection.filter((item) => item !== moduleCode)
-        : [...baseSelection, moduleCode]
-    })
+  const { availableModules, availableGameSystems, currentUserId, realmCode, closeCreateCampaign, createCampaign } = useCampaignContext()
+  const draftKey = `gate_campaign_draft:${realmCode}:${currentUserId}`
+  const [draft, setDraft] = useState(() => readDraft(draftKey))
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [storageError, setStorageError] = useState(false)
+  const saveLock = useRef(false)
+  const modules = availableModules.filter(module => !CAMPAIGN_MODULE_HIDDEN_CODES.has(module.code) && !CAMPAIGN_MODULE_UNAVAILABLE_CODES.has(module.code))
+  const selectedModules = draft.allowedModules === null ? modules.map(module => module.code) : draft.allowedModules.filter(code => modules.some(module => module.code === code))
+  const gameSystem = availableGameSystems.some(system => system.code === draft.gameSystem) ? draft.gameSystem : availableGameSystems[0]?.code || 'DND5E'
+  const update = <K extends keyof CampaignDraft>(field: K, value: CampaignDraft[K]) => setDraft(previous => ({ ...previous, [field]: value }))
+  useEffect(() => {
+    try { sessionStorage.setItem(draftKey, JSON.stringify(draft)) } catch { /* The editor still works without browser storage. */ }
+  }, [draft, draftKey])
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (saveLock.current) return
+    if (!draft.name.trim()) { setError('Dai un nome alla campagna prima di crearla.'); return }
+    saveLock.current = true
+    setSaving(true)
+    setError('')
+    try {
+      await createCampaign({ ...draft, name: draft.name.trim(), gameSystem, allowedModules: selectedModules })
+      try { sessionStorage.removeItem(draftKey) } catch { /* No stored draft to clear. */ }
+    } catch (err) { setError(`${toMessage(err)} La bozza resta disponibile: puoi riprovare.`) }
+    finally { saveLock.current = false; setSaving(false) }
   }
-  const campaignVisibilityRows = [
-    {
-      key: 'open',
-      title: 'Campagna aperta',
-      description: 'Permette richiesta di accesso dall’elenco campagne.',
-      active: isOpen,
-      activeLabel: 'Aperta',
-      inactiveLabel: 'Privata',
-      onToggle: () => setIsOpen((prev) => !prev),
-    },
-    {
-      key: 'searchable',
-      title: 'Visibile nella ricerca',
-      description: 'La campagna può essere trovata nella ricerca pubblica.',
-      active: isSearchable,
-      activeLabel: 'Ricercabile',
-      inactiveLabel: 'Nascosta',
-      onToggle: () => setIsSearchable((prev) => !prev),
-    },
-    {
-      key: 'auto-join',
-      title: 'Auto join',
-      description: "Approva automaticamente l'accesso da app quando la campagna e aperta e visibile.",
-      active: autoJoinEnabled,
-      activeLabel: 'Automatico',
-      inactiveLabel: 'Manuale',
-      onToggle: () => setAutoJoinEnabled((prev) => !prev),
-    },
-  ]
-
-  const selectedGameSystemDescription = catalogEntryDescription(availableGameSystems, selectedGameSystem)
-
+  const leave = () => {
+    try { sessionStorage.setItem(draftKey, JSON.stringify(draft)); closeCreateCampaign() }
+    catch { setStorageError(true) }
+  }
   return (
-    <section className="panel">
-      <h2>Crea Campagna</h2>
-      <label>
-        <FieldLabel icon="fa-solid fa-gamepad" label="Sistema di gioco" />
-        <select
-          required
-          value={selectedGameSystem}
-          onChange={(event) => setSelectedGameSystemChoice(event.target.value)}
-        >
-          {availableGameSystems.length > 0 ? (
-            availableGameSystems.map((gameSystem) => (
-              <option key={gameSystem.code} value={gameSystem.code}>
-                {gameSystem.label || gameSystem.code}
-              </option>
-            ))
-          ) : (
-            <option value="DND5E">D&D 5E</option>
-          )}
-        </select>
-        <p className="muted">{selectedGameSystemDescription}</p>
-        <p className="muted">Obbligatorio. Definisce il template della scheda e la logica base della campagna.</p>
-      </label>
-      <label>
-        <FieldLabel icon="fa-solid fa-signature" label="Nome" />
-        <input value={name} placeholder="Nome della campagna" onChange={(event) => setName(event.target.value)} />
-      </label>
-      <label>
-        <FieldLabel icon="fa-solid fa-align-left" label="Descrizione" />
-        <textarea rows={3} placeholder="Descrizione estesa della campagna" value={description} onChange={(event) => setDescription(event.target.value)} />
-      </label>
-      <label>
-        <FieldLabel icon="fa-solid fa-quote-right" label="Riassunto breve" />
-        <textarea rows={2} placeholder="Riassunto breve visibile in elenco" value={summary} onChange={(event) => setSummary(event.target.value)} maxLength={280} />
-      </label>
-      <div className="form-grid">
-        <label>
-          <FieldLabel icon="fa-solid fa-map-location-dot" label="Ambientazione" />
-          <textarea rows={3} placeholder="Ambientazione, mondo o contesto di gioco" value={setting} onChange={(event) => setSetting(event.target.value)} />
-        </label>
-        <label>
-          <FieldLabel icon="fa-solid fa-wand-magic-sparkles" label="Tono" />
-          <select value={tone} onChange={(event) => setTone(event.target.value)}>
-            <option value="">Seleziona tono</option>
-            {CAMPAIGN_TONE_OPTIONS.map((toneOption) => (
-              <option key={toneOption.value} value={toneOption.value}>
-                {toneOption.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <label>
-        <FieldLabel icon="fa-solid fa-gavel" label="Regole" />
-        <textarea rows={3} placeholder="Regole principali della campagna" value={rules} onChange={(event) => setRules(event.target.value)} />
-      </label>
-      <label>
-        <FieldLabel icon="fa-solid fa-door-open" label="Requisiti d'ingresso" />
-        <textarea rows={3} placeholder="Requisiti richiesti per entrare" value={requirements} onChange={(event) => setRequirements(event.target.value)} />
-      </label>
-      <label>
-        <FieldLabel icon="fa-solid fa-image" label="URL immagine copertina" />
-        <input value={coverImageUrl} placeholder="https://..." onChange={(event) => setCoverImageUrl(event.target.value)} />
-      </label>
-      <CreateCampaignToggleSettingsTable
-        title="Visibilità e accesso"
-        description="Impostazioni base di pubblicazione della campagna."
-        rows={campaignVisibilityRows}
-      />
-      <CreateCampaignToggleSettingsTable
-        title="Addon campagna"
-        description="I moduli disponibili possono essere attivati o disattivati senza passaggi aggiuntivi."
-        availableModules={availableModules}
-        selectedModules={selectedModules}
-        onToggle={toggleModule}
-      />
-      <button
-        type="button"
-        className="primary-btn campaign-submit-btn"
-        onClick={() =>
-          onCreate({
-            name,
-            description,
-            summary,
-            setting,
-            tone,
-            rules,
-            requirements,
-            coverImageUrl,
-            isOpen,
-            isSearchable,
-            autoJoinEnabled,
-            gameSystem: selectedGameSystem,
-            allowedModules: selectedModules,
-          })
-        }
-      >
-        <Icon name="fa-solid fa-plus" />
-        Crea
-      </button>
+    <section className="panel campaign-compose">
+      <header className="campaign-compose-header">
+        <button type="button" className="secondary-btn" disabled={saving} onClick={leave}><Icon name="pi pi-arrow-left" /> Torna alle campagne</button>
+        <h2>Crea il tuo tavolo</h2>
+        <p>Scegli un nome e il sistema di gioco. Puoi aggiungere la storia e personalizzare gli strumenti quando vuoi.</p>
+      </header>
+      <form onSubmit={event => void submit(event)} aria-busy={saving} onInvalidCapture={event => {
+        const details = (event.target as HTMLElement).closest('details')
+        if (details) details.open = true
+      }}>
+        <fieldset disabled={saving} className="campaign-compose-fields">
+          <section className="campaign-compose-section" aria-labelledby="campaign-basics-title">
+            <h3 id="campaign-basics-title">La tua campagna</h3>
+            <p className="muted">Nome e sistema di gioco sono obbligatori.</p>
+            <label>Nome della campagna<input required maxLength={200} value={draft.name} onChange={event => update('name', event.target.value)} placeholder="Es. Le cronache di Waterdeep" /></label>
+            <label>Sistema di gioco<select required value={gameSystem} onChange={event => update('gameSystem', event.target.value)}>
+              {availableGameSystems.length ? availableGameSystems.map(system => <option key={system.code} value={system.code}>{system.label || system.code}</option>) : <option value="DND5E">D&D 5E</option>}
+            </select><span className="muted">{catalogEntryDescription(availableGameSystems, gameSystem) || 'Determina la scheda personaggio e le regole di base.'}</span></label>
+          </section>
+          <section className="campaign-compose-section" aria-labelledby="campaign-access-title">
+            <h3 id="campaign-access-title">Come entra il gruppo</h3>
+            <p className="muted">Visibilità e accesso sono indipendenti: puoi rendere visibile anche una campagna chiusa.</p>
+            <label className="campaign-choice"><input type="checkbox" checked={draft.isSearchable} onChange={event => update('isSearchable', event.target.checked)} /><span><strong>Visibile nella ricerca</strong><span>Gli altri giocatori possono trovare la campagna.</span></span></label>
+            <label className="campaign-choice"><input type="checkbox" checked={draft.isOpen} onChange={event => update('isOpen', event.target.checked)} /><span><strong>Accetta richieste di accesso</strong><span>Chi trova la campagna può chiedere di entrare.</span></span></label>
+            <label className="campaign-choice"><input type="checkbox" checked={draft.autoJoinEnabled} onChange={event => update('autoJoinEnabled', event.target.checked)} /><span><strong>Approva automaticamente</strong><span>Le richieste vengono approvate automaticamente quando la campagna è aperta e visibile.</span></span></label>
+          </section>
+          <details className="campaign-compose-details">
+            <summary>Storia e presentazione <span>Facoltativi</span></summary>
+            <div className="campaign-compose-section">
+              <label>Riassunto breve<textarea rows={2} maxLength={280} value={draft.summary} onChange={event => update('summary', event.target.value)} placeholder="La premessa che i giocatori vedranno nell’elenco" /><span className="muted">{draft.summary.length}/280 caratteri</span></label>
+              <label>Descrizione<textarea rows={4} value={draft.description} onChange={event => update('description', event.target.value)} placeholder="Racconta l’avventura al gruppo" /></label>
+              <div className="form-grid">
+                <label>Ambientazione<textarea rows={3} value={draft.setting} onChange={event => update('setting', event.target.value)} placeholder="Mondo e contesto di gioco" /></label>
+                <label>Tono<select value={draft.tone} onChange={event => update('tone', event.target.value)}><option value="">Non specificato</option>{CAMPAIGN_TONE_OPTIONS.map(tone => <option key={tone.value} value={tone.value}>{tone.label}</option>)}</select></label>
+              </div>
+              <label>Regole<textarea rows={3} value={draft.rules} onChange={event => update('rules', event.target.value)} /></label>
+              <label>Requisiti d’ingresso<textarea rows={3} value={draft.requirements} onChange={event => update('requirements', event.target.value)} /></label>
+              <label>Indirizzo immagine di copertina<input type="url" value={draft.coverImageUrl} onChange={event => update('coverImageUrl', event.target.value)} placeholder="https://…" /></label>
+            </div>
+          </details>
+          <details className="campaign-compose-details">
+            <summary>Strumenti della campagna <span>{selectedModules.length} attivi</span></summary>
+            <div className="campaign-compose-section">
+              <p className="muted">Scegli i moduli opzionali da rendere disponibili al gruppo.</p>
+              {modules.length ? modules.map(module => <label className="campaign-choice" key={module.code}>
+                <input type="checkbox" checked={selectedModules.includes(module.code)} onChange={() => update('allowedModules', selectedModules.includes(module.code) ? selectedModules.filter(code => code !== module.code) : [...selectedModules, module.code])} />
+                <span><strong>{module.label || module.code}</strong>{module.description && <span>{module.description}</span>}</span>
+              </label>) : <p className="muted">Non ci sono moduli disponibili per questo reame.</p>}
+            </div>
+          </details>
+          {error && <p className="form-error" role="alert">{error}</p>}
+          {storageError && <p className="form-error" role="alert">Il browser non può conservare la bozza. Copia i testi prima di uscire. <button type="button" className="secondary-btn" onClick={closeCreateCampaign}>Esci comunque</button></p>}
+          <footer className="campaign-compose-footer">
+            <p className="muted">La bozza resta in questa sessione del browser quando torni alle campagne.</p>
+            <button type="submit" className="primary-btn">{saving ? 'Creazione in corso…' : 'Crea campagna'}<Icon name="pi pi-arrow-right" /></button>
+          </footer>
+        </fieldset>
+      </form>
     </section>
   )
 }

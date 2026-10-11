@@ -10,6 +10,8 @@ npm run test:ui
 
 `test:ui` avvia e arresta Vite su `http://127.0.0.1:5176`. Usa il frontend reale e risposte API controllate: non crea account, campagne o messaggi nel backend. Copre login desktop/mobile, landing a 320/390/768/1280 px in tema chiaro/scuro, focus del menu, selettore reami e conservazione delle bozze dopo errori di creazione/modifica missione e invio chat. Verifica anche il caso POST chat riuscito e successivo aggiornamento GET fallito, per evitare un invio duplicato. Trace degli errori e schermate in `ui-test-results/`.
 
+La suite copre anche la creazione campagna: campi facoltativi espandibili da tastiera, bozza mantenuta dopo uscita e reload, selezione vuota dei moduli opzionali, validazione nome/URL, errore API e retry. Verifica che la creazione riuscita non richieda un secondo invio se fallisce solo il caricamento degli elenchi. Le novità si aprono su richiesta e restituiscono il focus alla chiusura.
+
 Per verificare manualmente con il backend reale, avvia PostgreSQL e Redis della configurazione locale del backend, poi dalla sua repository:
 
 ```powershell

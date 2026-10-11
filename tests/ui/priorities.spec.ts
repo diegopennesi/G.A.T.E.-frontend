@@ -15,7 +15,7 @@ test('desktop login fits and exposes selected mode, mobile retains realm identit
   await page.goto('/')
   const submit = page.getByRole('button', { name: 'Accedi', exact: true })
   await expect(submit).toBeInViewport()
-  await expect(page.getByRole('button', { name: /^Login\./ })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('button', { name: /^Accedi\./ })).toHaveAttribute('aria-pressed', 'true')
   await capture(page, 'login-desktop-light.png')
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(page.getByRole('heading', { name: 'Taverna del Codice' })).toBeVisible()

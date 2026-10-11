@@ -2899,6 +2899,8 @@ function App() {
   }
 
   const campaignContextValue = {
+    realmCode,
+    closeCreateCampaign: () => setScreen('Lista Campagne'),
     campaigns: campaignsForList,
     founderNames: campaignFounderNames,
     missionAlertsByCampaign,
@@ -2982,7 +2984,7 @@ function App() {
         await campaignMutations.rejectPendingForActiveCampaign(userId)
       }),
     createCampaign: (payload: Parameters<typeof campaignCommandMutations.createCampaign>[0]) =>
-      void run('Campagna creata', async () => {
+      runResult('Campagna creata', async () => {
         await campaignCommandMutations.createCampaign(payload)
       }),
     permissions,

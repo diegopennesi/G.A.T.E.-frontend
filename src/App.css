@@ -1,3 +1,42 @@
+/* Campaign entry and creation: one primary task, optional detail on demand. */
+.panel.campaign-compose {
+  width: min(58rem, 100%);
+  margin-inline: auto;
+  padding: 2rem;
+}
+.campaign-compose-header {
+  display: grid;
+  justify-items: start;
+  gap: 0.75rem;
+  padding-bottom: 1.75rem;
+}
+.campaign-compose-header h2 { font-size: 2rem; letter-spacing: -0.025em; }
+.campaign-compose-header p { color: var(--text-soft); max-width: 65ch; }
+.campaign-compose-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.campaign-compose-section { display: grid; gap: 1rem; padding-block: 1.5rem; min-width: 0; }
+.campaign-compose-section h3 { font-size: 1.2rem; font-weight: 700; }
+.campaign-compose-section > label { display: grid; gap: 0.5rem; }
+.campaign-compose-section > p { margin-top: -0.5rem; }
+.campaign-compose-section + .campaign-compose-section,
+.campaign-compose-details { border-top: 1px solid var(--border); }
+.campaign-compose .campaign-choice { display: flex; align-items: flex-start; gap: 0.85rem; cursor: pointer; }
+.campaign-choice input[type='checkbox'] { width: 1.15rem; height: 1.15rem; margin-top: 0.2rem; flex: 0 0 auto; accent-color: var(--accent); }
+.campaign-choice > span { display: grid; gap: 0.2rem; min-width: 0; }
+.campaign-choice > span > span { color: var(--text-soft); font-size: 0.9rem; }
+.campaign-compose-details summary { cursor: pointer; padding-block: 1.25rem; font-weight: 700; }
+.campaign-compose-details summary > span { float: right; color: var(--text-soft); font-weight: 400; font-size: 0.875rem; margin-left: 1rem; }
+.campaign-compose-details summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
+.campaign-compose-details[open] > .campaign-compose-section { padding-top: 0.25rem; }
+.campaign-compose-footer { border-top: 1px solid var(--border); padding-top: 1.5rem; display: flex; align-items: center; justify-content: space-between; gap: 1.25rem; }
+.campaign-compose-footer p { max-width: 40ch; font-size: 0.875rem; }
+.campaign-compose-footer button { flex-shrink: 0; }
+@media (max-width: 600px) {
+  .panel.campaign-compose { padding: 1.25rem; }
+  .campaign-compose-header h2 { font-size: 1.5rem; }
+  .campaign-compose-footer { flex-direction: column; align-items: stretch; }
+  .campaign-compose-details summary > span { float: none; display: block; margin-left: 1rem; }
+}
+
 .auth-layout {
   min-height: 100dvh;
   display: grid;
@@ -7857,4 +7896,45 @@ html[data-theme='light'] .mission-participation.is-titolare .mission-status-icon
 
 html[data-theme='light'] .mission-participation.is-backup .mission-status-icon {
   color: #2347ab;
+}
+
+/* Hierarchy for the returning player; secondary actions stay available. */
+.post-login-landing-panel { gap: 2rem; background: var(--surface); box-shadow: none; border-radius: 16px; }
+.post-login-landing-head h2 { font-size: 2rem; letter-spacing: -0.025em; }
+.post-login-toolbar { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.post-login-grid { gap: 2rem; }
+.post-login-section, .post-login-side-card { background: transparent; border: 0; border-radius: 0; padding: 0; }
+.post-login-section { align-content: start; gap: 1.5rem; }
+.post-login-section-head h3, .post-login-side-card h3 { font-size: 1.25rem; font-weight: 700; }
+.post-login-side-card { border-top: 1px solid var(--border); padding-top: 1.25rem; align-content: start; gap: 1.25rem; }
+.post-login-side-card .secondary-btn { justify-self: start; }
+.post-login-grid.two-columns > section + section { border-top: 1px solid var(--border); padding-top: 1.25rem; }
+.auth-mode-picker { grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 0; border: 0; background: transparent; gap: 0.25rem; }
+.auth-mode-pill { text-align: center; padding: 0.75rem 0.4rem; border-radius: 8px; }
+.auth-card h2 { font-size: 1.5rem; letter-spacing: -0.02em; margin-top: 0.5rem; }
+.auth-card > .auth-note { margin-top: -0.5rem; }
+.release-notes-footer { justify-content: flex-end; }
+@media (max-width: 600px) {
+  .post-login-landing-head h2 { font-size: 1.5rem; }
+  .post-login-landing-panel { gap: 1.5rem; }
+  .post-login-grid { gap: 1.75rem; }
+  .post-login-toolbar { width: 100%; }
+  .post-login-toolbar button { flex: 1 1 auto; }
+}
+
+.panel.campaign-compose { gap: 0; box-shadow: none; }
+.panel.campaign-compose .campaign-compose-header h2 { font-size: 2rem; font-weight: 700; letter-spacing: -0.025em; }
+.campaign-compose label { color: var(--text-soft); }
+.campaign-compose .campaign-choice strong { color: var(--text); }
+.campaign-compose-header .secondary-btn, .campaign-compose-footer .primary-btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.6rem; }
+.post-login-option-inline--selected { flex-wrap: wrap; }
+.post-login-option .campaign-system-inline { flex-shrink: 0; }
+.post-login-option .campaign-system-inline { color: var(--text); background: var(--surface-soft); }
+html[data-theme='light'] .post-login-landing-panel .post-login-section,
+html[data-theme='light'] .post-login-landing-panel .post-login-side-card { background: transparent; box-shadow: none; }
+html[data-theme='light'] .panel.post-login-landing-panel { box-shadow: none; }
+.post-login-option-inline--selected .data-table-title { flex-basis: 100%; }
+.post-login-dropdown .p-dropdown-label .post-login-option { padding-block: 0.85rem; padding-right: 1rem; }
+@media (max-width: 600px) {
+  .panel.campaign-compose .campaign-compose-header h2 { font-size: 1.5rem; }
 }
