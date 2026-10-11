@@ -27,6 +27,8 @@ export async function installApi(page: Page, authenticated = true) {
     failCreate: false, failUpdate: false, failSend: false, failChatRefresh: false,
     creates: 0, updates: 0, sends: 0,
     delayMutation: 0,
+    failCampaignCreate: false, failCampaignRefresh: false, campaignCreates: 0,
+    lastCampaignPayload: null as Record<string, unknown> | null,
     missions: [initialMission],
     messages: [] as Array<Record<string, unknown>>,
     unknown: [] as string[],
@@ -53,10 +55,17 @@ export async function installApi(page: Page, authenticated = true) {
     if (path === '/users/me' || path === `/users/${profile.id}`) return reply(profile)
     if (path === '/realms/me/permissions') return reply({ realmId: 'ui-realm', realmCode: 'gate', platformRole: 'USER', realmRole: 'USER', explicitRealmAccess: true, permissions: { createCampaign: true, manageRealm: false, manageRealmUsers: false, viewRealmAdmin: false } })
     if (path === '/campaigns/me/memberships') return reply([{ campaignId: campaign.id, campaignName: campaign.name, role: 'SUPER_MASTER', memberStatus: 'APPROVED', characterStatus: null, moderationReason: null, isFounder: true }])
-    if (path === '/campaigns/discover') return reply([{ ...campaign, membershipStatus: 'APPROVED', membershipRole: 'SUPER_MASTER', moderationReason: null }])
-    if (path === '/campaigns/post-login-summary') return reply({ canCreateCampaign: true, campaigns: [{ ...campaign, isVisible: true, membershipStatus: 'APPROVED', membershipRole: 'SUPER_MASTER', moderationReason: null }] })
+    if (path === '/campaigns/discover') return state.failCampaignRefresh ? error() : reply([{ ...campaign, membershipStatus: 'APPROVED', membershipRole: 'SUPER_MASTER', moderationReason: null }])
+    if (path === '/campaigns/post-login-summary') return state.failCampaignRefresh ? error() : reply({ canCreateCampaign: true, campaigns: [{ ...campaign, isVisible: true, membershipStatus: 'APPROVED', membershipRole: 'SUPER_MASTER', moderationReason: null }] })
     if (path === '/campaigns/modules') return reply([{ code: 'MISSIONI', label: 'Missioni', description: null, active: true, sortOrder: 1 }])
     if (path === '/campaigns/game-systems') return reply([{ code: 'DND5E', label: 'Dungeons & Dragons 5e', description: null, active: true, sortOrder: 1 }])
+    if (path === '/campaigns' && method === 'POST') {
+      state.campaignCreates++
+      state.lastCampaignPayload = request.postDataJSON()
+      await mutation()
+      if (state.failCampaignCreate) return error()
+      return reply({ ...campaign, ...state.lastCampaignPayload })
+    }
     if (path === `/campaigns/${campaign.id}`) return reply(campaign)
     if (/\/members(\/all)?$/.test(path)) return reply([{ userId: profile.id, campaignId: campaign.id, characterId: null, joinedAt: now, role: 'SUPER_MASTER', memberStatus: 'APPROVED', characterStatus: null, moderationReason: null, moderationByUserId: null, moderationAt: null }])
     if (path.includes('/permissions/')) return reply({ campaignId: campaign.id, action: path.split('/').at(-1), allowed: true })

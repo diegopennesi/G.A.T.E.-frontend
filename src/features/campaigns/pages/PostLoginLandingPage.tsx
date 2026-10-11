@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Dialog } from 'primereact/dialog'
 import { Dropdown, type DropdownChangeEvent } from 'primereact/dropdown'
 import { Icon } from '../../../shared/components'
@@ -175,7 +175,6 @@ function getCampaignActionButtonConfig(option: LandingOption | null): CampaignAc
 export function PostLoginLandingPage({
   currentUserId,
   profileName,
-  realmCode,
   realmName,
   canCreateCampaign,
   campaigns,
@@ -189,9 +188,7 @@ export function PostLoginLandingPage({
   onCreateCampaign,
 }: PostLoginLandingPageProps) {
   const releaseNotesStorageKey = currentUserId.trim() ? buildReleaseNotesKey(currentUserId) : ''
-  const [isReleaseNotesOpen, setIsReleaseNotesOpen] = useState(
-    () => Boolean(releaseNotesStorageKey && localStorage.getItem(releaseNotesStorageKey) !== '1'),
-  )
+  const [isReleaseNotesOpen, setIsReleaseNotesOpen] = useState(false)
   const [hideReleaseNotes, setHideReleaseNotes] = useState(
     () => Boolean(releaseNotesStorageKey && localStorage.getItem(releaseNotesStorageKey) === '1'),
   )
@@ -199,15 +196,9 @@ export function PostLoginLandingPage({
   const [selectedMemberCampaignId, setSelectedMemberCampaignId] = useState<string>('')
   const [selectedRequestCampaignId, setSelectedRequestCampaignId] = useState<string>('')
 
-  useEffect(() => {
-    if (!currentUserId.trim()) return
-    const isHidden = releaseNotesStorageKey ? localStorage.getItem(releaseNotesStorageKey) === '1' : false
-    setHideReleaseNotes(isHidden)
-    setIsReleaseNotesOpen(!isHidden)
-  }, [currentUserId, releaseNotesStorageKey])
-
   const closeReleaseNotes = () => {
     setIsReleaseNotesOpen(false)
+    setReleaseNotesHidden(true)
   }
 
   const setReleaseNotesHidden = (hidden: boolean) => {
@@ -255,26 +246,9 @@ export function PostLoginLandingPage({
     [availableGameSystems, unifiedCampaigns],
   )
 
-  useEffect(() => {
-    if (!canCreateCampaign) return
-    if (!unifiedOptions.some((item) => item.id === selectedUnifiedCampaignId)) {
-      setSelectedUnifiedCampaignId(unifiedOptions[0]?.id || '')
-    }
-  }, [canCreateCampaign, selectedUnifiedCampaignId, unifiedOptions])
-
-  useEffect(() => {
-    if (canCreateCampaign) return
-    if (!accessibleOptions.some((item) => item.id === selectedMemberCampaignId)) {
-      setSelectedMemberCampaignId(accessibleOptions[0]?.id || '')
-    }
-    if (!requestableOptions.some((item) => item.id === selectedRequestCampaignId)) {
-      setSelectedRequestCampaignId(requestableOptions[0]?.id || '')
-    }
-  }, [accessibleOptions, canCreateCampaign, requestableOptions, selectedMemberCampaignId, selectedRequestCampaignId])
-
-  const selectedUnifiedOption = unifiedOptions.find((item) => item.id === selectedUnifiedCampaignId) || null
-  const selectedMemberOption = accessibleOptions.find((item) => item.id === selectedMemberCampaignId) || null
-  const selectedRequestOption = requestableOptions.find((item) => item.id === selectedRequestCampaignId) || null
+  const selectedUnifiedOption = unifiedOptions.find((item) => item.id === selectedUnifiedCampaignId) || unifiedOptions[0] || null
+  const selectedMemberOption = accessibleOptions.find((item) => item.id === selectedMemberCampaignId) || accessibleOptions[0] || null
+  const selectedRequestOption = requestableOptions.find((item) => item.id === selectedRequestCampaignId) || requestableOptions[0] || null
   const isConstructionState = !canCreateCampaign && accessibleOptions.length === 0 && requestableOptions.length === 0
   const unifiedActionButton = getCampaignActionButtonConfig(selectedUnifiedOption)
   const memberActionButton = getCampaignActionButtonConfig(selectedMemberOption)
@@ -283,26 +257,17 @@ export function PostLoginLandingPage({
   return (
     <section className="post-login-landing">
       <Dialog
-        header={null}
+        header="Novità di G.A.T.E."
         visible={isReleaseNotesOpen}
         modal
         className="release-notes-dialog"
-        closable={false}
+        closable
         draggable={false}
         resizable={false}
         dismissableMask={false}
         onHide={closeReleaseNotes}
         footer={(
           <div className="release-notes-footer">
-            <label className="release-notes-checkbox">
-              <input
-                id="release-notes-hide"
-                type="checkbox"
-                checked={hideReleaseNotes}
-                onChange={(event) => setReleaseNotesHidden(event.target.checked)}
-              />
-              <span>Non mostrare piu</span>
-            </label>
             <button type="button" className="primary-btn" onClick={closeReleaseNotes}>
               Chiudi
             </button>
@@ -345,20 +310,23 @@ export function PostLoginLandingPage({
       <div className="panel post-login-landing-panel">
         <div className="post-login-landing-head">
           <div>
-            <p className="menu-group-label">Reame di ingresso</p>
             <h2>{realmName}</h2>
             <p className="post-login-landing-copy">
-              Accesso eseguito come <strong>{profileName}</strong> nel realm <strong>{realmName}</strong>
-              {realmCode.trim() ? <span> ({realmCode})</span> : null}.
+              Bentornato, <strong>{profileName}</strong>. Scegli la campagna e ritrova il tuo gruppo.
             </p>
           </div>
+          <div className="post-login-toolbar">
+          <button type="button" className="secondary-btn" onClick={() => setIsReleaseNotesOpen(true)}>
+            <Icon name="lucide:BookOpen" />{hideReleaseNotes ? 'Novità' : 'Novità da leggere'}
+          </button>
           <button type="button" className="secondary-btn" disabled={busy || loading} onClick={onRefresh}>
             <Icon name="lucide:RotateCcw" />
             Aggiorna elenco
           </button>
+          </div>
         </div>
 
-        {error && <div className="system-inline-alert">{error}</div>}
+        {error && <div className="system-inline-alert" role="alert">{error}</div>}
 
         {loading ? (
           <div className="post-login-empty-state">
@@ -367,7 +335,6 @@ export function PostLoginLandingPage({
         ) : isConstructionState ? (
           <div className="post-login-construction-state">
             <div className="post-login-construction-copy">
-              <p className="menu-group-label"></p>
               <h3>Questo reame non ha ancora campagne disponibili</h3>
               <p>
                 Al momento non sei membro di nessuna campagna visibile o nascosta, non esistono campagne attive e non
@@ -387,8 +354,8 @@ export function PostLoginLandingPage({
             <section className="post-login-section">
               <div className="post-login-section-head">
                 <div>
-                  <h3>Campagne del realm</h3>
-                  <p>Trovi qui sia le campagne gia attive per il tuo profilo, sia quelle aperte a cui puoi chiedere accesso.</p>
+                  <h3>Riprendi l’avventura</h3>
+                  <p>Le tue campagne e quelle aperte a nuove richieste di accesso.</p>
                 </div>
               </div>
 
@@ -398,9 +365,10 @@ export function PostLoginLandingPage({
                 options={unifiedOptions}
                 optionLabel="title"
                 optionValue="id"
-                value={selectedUnifiedCampaignId}
+                value={selectedUnifiedOption?.id || ''}
                 onChange={(event: DropdownChangeEvent) => setSelectedUnifiedCampaignId(String(event.value || ''))}
                 filter
+                aria-label="Campagna da aprire"
                 filterBy="title,systemLabel,statusLabel"
                 itemTemplate={renderCampaignOption}
                 valueTemplate={(option) => renderSelectedCampaignValue(option as LandingOption | null, 'Seleziona campagna')}
@@ -430,14 +398,12 @@ export function PostLoginLandingPage({
 
             <aside className="post-login-side-card">
               <div>
-                <p className="menu-group-label">Nuova campagna</p>
-                <h3>Crea una nuova campagna</h3>
+                <h3>Un nuovo tavolo?</h3>
                 <p>
-                  Apri una nuova campagna, racconta la tua storia o crea un tavolo virtuale dove coordinare te
-                  ed il tuo gruppo!
+                  Scegli il sistema di gioco e prepara una campagna per il tuo gruppo.
                 </p>
               </div>
-              <button type="button" className="primary-btn" disabled={busy} onClick={onCreateCampaign}>
+              <button type="button" className={unifiedOptions.length ? 'secondary-btn' : 'primary-btn'} disabled={busy} onClick={onCreateCampaign}>
                 <Icon name="lucide:CirclePlus" />
                 Crea nuova campagna
               </button>
@@ -449,7 +415,7 @@ export function PostLoginLandingPage({
               <div className="post-login-section-head">
                 <div>
                   <h3>Le tue campagne attive</h3>
-                  <p>Fai nuovamente accesso ad una campagna dove sei giá membro.</p>
+                  <p>Ritrova il gruppo e riprendi a giocare.</p>
                 </div>
               </div>
 
@@ -459,7 +425,7 @@ export function PostLoginLandingPage({
                 options={accessibleOptions}
                 optionLabel="title"
                 optionValue="id"
-                value={selectedMemberCampaignId}
+                value={selectedMemberOption?.id || ''}
                 onChange={(event: DropdownChangeEvent) => setSelectedMemberCampaignId(String(event.value || ''))}
                 filter
                 filterBy="title,systemLabel,statusLabel"
@@ -485,9 +451,8 @@ export function PostLoginLandingPage({
             <section className="post-login-section">
               <div className="post-login-section-head">
                 <div>
-                  <h3>Campagne aperte del realm</h3>
-                  Richiedi accesso ad una campagna gia esistente, entra in uno dei vari mondi disponibili
-                  ed inizia subito la tua avventura!
+                  <h3>Trova un nuovo gruppo</h3>
+                  <p>Scegli una campagna aperta e chiedi di partecipare.</p>
                 </div>
               </div>
 
@@ -497,7 +462,7 @@ export function PostLoginLandingPage({
                 options={requestableOptions}
                 optionLabel="title"
                 optionValue="id"
-                value={selectedRequestCampaignId}
+                value={selectedRequestOption?.id || ''}
                 onChange={(event: DropdownChangeEvent) => setSelectedRequestCampaignId(String(event.value || ''))}
                 filter
                 filterBy="title,systemLabel,statusLabel"

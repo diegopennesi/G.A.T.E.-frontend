@@ -19,6 +19,8 @@ import type {
 } from '../types/domain'
 
 export type CampaignContextValue = {
+  realmCode: string
+  closeCreateCampaign: () => void
   campaigns: CampaignDiscoverResponse[]
   founderNames: Record<string, string>
   missionAlertsByCampaign: Record<string, number>
@@ -67,7 +69,7 @@ export type CampaignContextValue = {
     autoJoinEnabled?: boolean
     gameSystem: string
     allowedModules: string[]
-  }) => void
+  }) => Promise<void>
   permissions: CampaignPermissionResponse[]
   saveCampaign: (payload: {
     name: string
