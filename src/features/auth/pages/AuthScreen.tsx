@@ -107,8 +107,12 @@ export function AuthScreen() {
         <p className="auth-note">Realm attivo: {realmCode}</p>
       </section>
       <section className="auth-panel">
-        <form className="auth-card" onSubmit={submit}>
-          <div className="auth-mode-picker" role="tablist" aria-label="Accesso e password">
+        <form className="auth-card" onSubmit={submit} aria-busy={busy}>
+          <div className="auth-mobile-brand">
+            {logoUrl ? <img className="auth-brand-logo" src={logoUrl} alt={realmName} /> : <h1>{realmName}</h1>}
+            <p className="auth-note">Reame: {realmCode}</p>
+          </div>
+          <div className="auth-mode-picker" role="group" aria-label="Accesso e password">
             {[
               { key: 'login' as const, label: 'Login', hint: 'Entra con username e password.' },
               { key: 'register' as const, label: 'Registrazione', hint: 'Crea un nuovo account con profilo base.' },
@@ -117,6 +121,8 @@ export function AuthScreen() {
               <button
                 key={item.key}
                 type="button"
+                aria-pressed={mode === item.key}
+                disabled={busy}
                 className={`auth-mode-pill ${mode === item.key ? 'is-active' : ''}`}
                 onClick={() => switchMode(item.key)}
                 title={item.hint}
@@ -143,6 +149,7 @@ export function AuthScreen() {
                 minLength={3}
                 maxLength={50}
                 pattern={USERNAME_PATTERN}
+                autoComplete="username"
                 value={username}
                 placeholder="username"
                 onChange={(event) => setUsername(normalizeUsernameInput(event.target.value))}
@@ -152,14 +159,14 @@ export function AuthScreen() {
           {mode === 'login' && (
             <label>
               Password
-              <input required type="password" placeholder="Password" value={password} onChange={(event) => setPassword(event.target.value)} />
+              <input required type="password" autoComplete="current-password" placeholder="Password" value={password} onChange={(event) => setPassword(event.target.value)} />
             </label>
           )}
           {mode === 'register' && (
             <>
               <label>
                 Password
-                <input required type="password" placeholder="Password" value={password} onChange={(event) => setPassword(event.target.value)} />
+                <input required type="password" autoComplete="new-password" placeholder="Password" value={password} onChange={(event) => setPassword(event.target.value)} />
               </label>
               <label>
                 Profile Name
@@ -181,6 +188,7 @@ export function AuthScreen() {
                     minLength={3}
                     maxLength={50}
                     pattern={USERNAME_PATTERN}
+                    autoComplete="username"
                     value={username}
                     placeholder="username"
                     onChange={(event) => setUsername(normalizeUsernameInput(event.target.value))}
@@ -199,18 +207,18 @@ export function AuthScreen() {
                   </label>
                   <label>
                     Nuova password
-                    <input required type="password" placeholder="Nuova password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
+                    <input required type="password" autoComplete="new-password" placeholder="Nuova password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
                   </label>
                   <label>
                     Conferma nuova password
-                    <input required type="password" placeholder="Ripeti la nuova password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} />
+                    <input required type="password" autoComplete="new-password" placeholder="Ripeti la nuova password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} />
                   </label>
                 </>
               )}
             </>
           )}
-          {error && <p className="form-error">{error}</p>}
-          {info && <p className="auth-note">{info}</p>}
+          {error && <p className="form-error" role="alert">{error}</p>}
+          {info && <p className="auth-note" role="status">{info}</p>}
           {mode === 'recover' ? (
             <button className="primary-btn" disabled={busy} type="submit">
               {busy ? 'Attendere...' : recoveryStep === 'request' ? 'Richiedi seed' : 'Conferma reset'}

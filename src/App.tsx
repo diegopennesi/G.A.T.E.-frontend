@@ -36,6 +36,7 @@ import { useProfileMutations } from './hooks/useProfileMutations'
 import { useProfileState } from './hooks/useProfileState'
 import { useRealmState } from './hooks/useRealmState'
 import { useUiState } from './hooks/useUiState'
+import { useSidebarDrawer } from './hooks/useSidebarDrawer'
 import { ActionStack, BadgeGroup, Icon, KeyValueGrid, MobileDataCard, RealmStatusScreen, ResponsiveDataList, SearchableSelect } from './shared/components'
 import { resolveRealmContextFromPath, buildPathForState } from './shared/routing'
 import { ApiError, getAccessToken, setRealmCode } from './services/apiClient'
@@ -180,6 +181,8 @@ function App() {
     setTheme,
     addEvent,
   } = useUiState(initialRealmContext.screen || 'Profilo')
+  const closeSidebar = useCallback(() => setIsSidebarOpen(false), [setIsSidebarOpen])
+  const { isMobile, drawerRef, triggerRef } = useSidebarDrawer(isSidebarOpen, closeSidebar)
   const { profile, setProfile } = useProfileState()
   const {
     realmCode,
@@ -1521,6 +1524,7 @@ function App() {
       refreshMissionChat,
       setSelectedMissionId,
       setSelectedMissionChatContext,
+      setMissionChatError,
     })
 
     const profileMutations = useProfileMutations({
@@ -3169,7 +3173,7 @@ function App() {
     missionChatBusy,
     missionChatError,
     createMission: (payload: Parameters<typeof createMission>[1]) =>
-      void run('Missione creata', async () => {
+      runResult('Missione creata', async () => {
         await campaignMutations.createMission(payload)
       }),
     selectMission: setSelectedMissionId,
@@ -3183,8 +3187,8 @@ function App() {
       setMissionChatError('')
     },
     sendMissionChatMessage: (body: string) =>
-      run('Messaggio missione inviato', async () => {
-        if (!selectedMissionChatContext) return
+      runResult('Messaggio missione inviato', async () => {
+        if (!selectedMissionChatContext) throw new Error('Riapri la chat della missione e riprova.')
         await campaignMutations.sendMissionChatMessage(
           selectedMissionChatContext.campaignId,
           selectedMissionChatContext.missionId,
@@ -3203,7 +3207,7 @@ function App() {
     browseCampaigns: () => setScreen('Lista Campagne'),
     openCreateCharacter: () => setScreen('Crea Personaggio'),
     updateMission: (missionId: string, payload: Parameters<typeof updateMission>[2]) =>
-      void run('Missione aggiornata', async () => {
+      runResult('Missione aggiornata', async () => {
         await campaignMutations.updateMission(missionId, payload)
       }),
     completeMission: (missionId: string) =>
@@ -4434,6 +4438,7 @@ function App() {
                       className="system-panel-searchable-select"
                       value={selectedRealmAccessRealm?.id || ''}
                       placeholder="Cerca realm"
+                      ariaLabel="Reame operativo"
                       minQueryLength={3}
                       options={adminRealms.map((realm) => ({
                         value: realm.id,
@@ -4726,14 +4731,25 @@ function App() {
         <button
           type="button"
           className="sidebar-backdrop"
-          aria-label="Chiudi menu"
-          onClick={() => setIsSidebarOpen(false)}
+          aria-hidden="true"
+          tabIndex={-1}
+          onClick={closeSidebar}
         />
       )}
 
-      <aside className={`sidebar-drawer ${isSidebarOpen ? 'is-open' : ''}`}>
+      <aside
+        ref={drawerRef}
+        id="main-navigation-drawer"
+        className={`sidebar-drawer ${isSidebarOpen ? 'is-open' : ''}`}
+        role={isMobile ? 'dialog' : undefined}
+        aria-label="Menu di navigazione"
+        aria-modal={isMobile && isSidebarOpen ? true : undefined}
+        aria-hidden={isMobile && !isSidebarOpen ? true : undefined}
+        inert={isMobile && !isSidebarOpen}
+        tabIndex={-1}
+      >
         <div className="sidebar-top">
-          <button type="button" className="drawer-close-btn" onClick={() => setIsSidebarOpen(false)}>
+          <button type="button" className="drawer-close-btn" aria-label="Chiudi menu" onClick={closeSidebar}>
             <Icon name="fa-solid fa-xmark" />
           </button>
         </div>
@@ -4831,10 +4847,10 @@ function App() {
         </div>
       </aside>
 
-      <main className="main">
+      <main className="main" inert={isMobile && isSidebarOpen}>
         <header className="topbar">
           <div className="topbar-title-row">
-            <button type="button" className="menu-trigger" aria-label="Apri menu" onClick={() => setIsSidebarOpen(true)}>
+            <button ref={triggerRef} type="button" className="menu-trigger" aria-label="Apri menu" aria-controls="main-navigation-drawer" aria-expanded={isSidebarOpen} onClick={() => setIsSidebarOpen(true)}>
               <Icon name="fa-solid fa-bars" />
             </button>
             <div className="page-heading">

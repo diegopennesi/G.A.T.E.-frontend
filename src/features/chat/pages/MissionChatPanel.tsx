@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import { Icon } from '../../../shared/components'
+import { toMessage } from '../../../shared/utils'
 import type { MissionChatResponse } from '../../../types/domain'
 
 type MissionChatPanelProps = {
@@ -8,7 +9,7 @@ type MissionChatPanelProps = {
   error: string
   currentUserId: string
   onClose: () => void
-  onSend: (body: string) => void
+  onSend: (body: string) => Promise<void>
   showCloseAction?: boolean
 }
 
@@ -42,7 +43,28 @@ function formatAuthorBadge(value: string) {
 
 export function MissionChatPanel({ chat, busy, error, currentUserId, onClose, onSend, showCloseAction = true }: MissionChatPanelProps) {
   const [draft, setDraft] = useState('')
-  const canSend = draft.trim().length > 0 && !busy && Boolean(chat)
+  const [sending, setSending] = useState(false)
+  const [sendError, setSendError] = useState('')
+  const sendLock = useRef(false)
+  const composeId = useId()
+  const canSend = draft.trim().length > 0 && !busy && !sending && Boolean(chat)
+
+  const send = async () => {
+    const body = draft.trim()
+    if (!canSend || sendLock.current) return
+    sendLock.current = true
+    setSending(true)
+    setSendError('')
+    try {
+      await onSend(body)
+      setDraft('')
+    } catch (err) {
+      setSendError(`${toMessage(err)} Il testo è stato conservato: puoi riprovare.`)
+    } finally {
+      sendLock.current = false
+      setSending(false)
+    }
+  }
 
   return (
     <section className="subpanel mission-chat-panel" aria-label="Chat missione">
@@ -61,12 +83,12 @@ export function MissionChatPanel({ chat, busy, error, currentUserId, onClose, on
         )}
       </div>
 
-      {error && <p className="form-error">{error}</p>}
+      {(sendError || error) && <p className="form-error" role="alert">{sendError || error}</p>}
       {busy && !chat && <p className="muted">Caricamento chat...</p>}
 
       {chat && (
         <>
-          <div className="mission-chat-messages">
+          <div className="mission-chat-messages" role="log" aria-label="Messaggi della missione" aria-live="polite" aria-relevant="additions">
             {chat.messages.length === 0 && <p className="muted">Nessun messaggio in questa missione.</p>}
             {chat.messages.map((message) => {
               const mine = message.authorUserId === currentUserId
@@ -92,8 +114,11 @@ export function MissionChatPanel({ chat, busy, error, currentUserId, onClose, on
               )
             })}
           </div>
-          <div className="mission-chat-compose">
+          <div className="mission-chat-compose" aria-busy={sending}>
             <textarea
+              aria-label="Messaggio alla missione"
+              aria-describedby={composeId}
+              disabled={sending}
               rows={2}
               value={draft}
               maxLength={100}
@@ -104,17 +129,13 @@ export function MissionChatPanel({ chat, busy, error, currentUserId, onClose, on
               type="button"
               className="mission-chat-action-btn mission-chat-send-btn"
               disabled={!canSend}
-              onClick={() => {
-                const body = draft.trim()
-                if (!body) return
-                onSend(body)
-                setDraft('')
-              }}
+              onClick={() => void send()}
             >
               <Icon name="fa-solid fa-paper-plane" />
-              Invia
+              {sending ? 'Invio...' : 'Invia'}
             </button>
           </div>
+          <p id={composeId} className="muted">{draft.length}/100 caratteri</p>
         </>
       )}
     </section>
