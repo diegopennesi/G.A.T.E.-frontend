@@ -7938,3 +7938,48 @@ html[data-theme='light'] .panel.post-login-landing-panel { box-shadow: none; }
 @media (max-width: 600px) {
   .panel.campaign-compose .campaign-compose-header h2 { font-size: 1.5rem; }
 }
+
+/* Mission creation follows the same progressive form as campaigns. */
+.mission-shell .mission-form-panel { max-width: 58rem; width: 100%; margin-inline: auto; background: transparent; border: 0; box-shadow: none; padding: 0; }
+html[data-theme='light'] .mission-shell .mission-form-panel { background: transparent; border: 0; box-shadow: none; }
+.mission-composer input::placeholder, .mission-composer textarea::placeholder { color: var(--text-soft); opacity: 1; }
+.page-heading { min-width: 0; }
+.page-heading .breadcrumb-link { text-align: left; }
+@media (max-width: 600px) {
+  .page-heading .breadcrumb-link { max-width: 20ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .page-heading .breadcrumbs { justify-content: flex-start; }
+}
+.mission-composer fieldset { padding: 0; margin: 0; border: 0; min-width: 0; }
+.mission-compose-section { display: grid; gap: 1rem; padding-block: 1.5rem; min-width: 0; }
+.mission-compose-section h3 { font-size: 1.2rem; font-weight: 700; }
+.mission-compose-section > p { margin-top: -0.5rem; max-width: 65ch; }
+.mission-compose-section label { display: grid; gap: 0.5rem; color: var(--text-soft); min-width: 0; }
+.mission-compose-section label > .muted { font-size: 0.875rem; }
+.mission-compose-section + .mission-compose-section { border-top: 1px solid var(--border); }
+.mission-compose-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; }
+.mission-compose-grid input { min-width: 0; width: 100%; }
+.mission-compose-options { border-top: 1px solid var(--border); }
+.mission-compose-options summary { padding-block: 1.25rem; font-weight: 700; cursor: pointer; }
+.mission-compose-options summary:focus-visible, .menu-extra-actions > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
+.mission-compose-options[open] > div { padding-top: 0.25rem; }
+.mission-compose-section .mission-compose-choice { display: flex; align-items: flex-start; gap: 0.75rem; cursor: pointer; }
+.mission-compose-choice input[type='checkbox'] { flex: 0 0 auto; width: 1.15rem; height: 1.15rem; margin-top: 0.2rem; accent-color: var(--accent); }
+.mission-compose-footer { padding-top: 1.5rem; border-top: 1px solid var(--border); display: flex; justify-content: space-between; gap: 1rem; }
+.mission-compose-footer button { display: inline-flex; align-items: center; justify-content: center; gap: 0.6rem; }
+.mission-shell .mission-page-header h2 { font-size: 1.75rem; font-weight: 700; }
+.sidebar-drawer .menu-item { border-color: transparent; background: transparent; box-shadow: none; border-radius: 8px; }
+html[data-theme='light'] .sidebar-drawer .menu-item { border-color: transparent; background: transparent; box-shadow: none; }
+.sidebar-drawer .menu-item:hover, html[data-theme='light'] .sidebar-drawer .menu-item:hover { background: var(--surface-soft); color: var(--text); }
+.sidebar-drawer .menu-item.is-active, html[data-theme='light'] .sidebar-drawer .menu-item.is-active { background: var(--accent-soft); color: var(--text); border-color: var(--border-strong); }
+.sidebar-drawer .menu-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sidebar-drawer .menu { gap: 1.5rem; }
+.sidebar-drawer .menu-section-grid { gap: 0.25rem; }
+.sidebar-drawer .menu-group-label { color: var(--text-soft); font-size: 0.875rem; font-weight: 700; text-transform: none; letter-spacing: normal; }
+.sidebar-drawer .menu-extra-actions > summary { cursor: pointer; padding: 0.6rem 0.4rem; }
+.menu-extra-actions[open] > .menu-section-grid { margin-top: 0.5rem; }
+.sidebar-context .sidebar-context-action { display: inline-flex; gap: 0.6rem; justify-content: center; align-items: center; }
+@media (max-width: 600px) {
+  .mission-compose-grid { grid-template-columns: minmax(0, 1fr); }
+  .mission-compose-footer { flex-direction: column-reverse; }
+  .mission-shell .mission-page-header h2 { font-size: 1.5rem; }
+}

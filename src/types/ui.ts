@@ -104,26 +104,30 @@ export type NavigationSection = {
   label: string
   description: string
   items: Screen[]
+  collapsible?: boolean
 }
 
 export const NAVIGATION_SECTIONS: NavigationSection[] = [
   {
-    label: 'Essenziali',
-    description: 'Le viste che userai più spesso.',
-    items: ['Profilo', 'Lista Campagne', 'Missioni', 'Gestione Personaggi', 'Log'],
+    label: 'Il tavolo',
+    description: 'Gioca e ritrova il gruppo.',
+    items: ['Missioni', 'Gestione Personaggi', 'Scheda PG', 'Scheda Campagna'],
   },
   {
-    label: 'Strumenti',
-    description: 'Operazioni di supporto e dettagli.',
-    items: [
-      'Crea Campagna',
-      'Scheda Campagna',
-      'Approvazione Accessi',
-      'Gestione Campagna',
-      'Modifica Profilo',
-      'Scheda PG',
-      'Crea Personaggio',
-    ],
+    label: 'Gestione',
+    description: 'Accessi e impostazioni della campagna.',
+    items: ['Approvazione Accessi', 'Gestione Campagna', 'Log'],
+  },
+  {
+    label: 'Il tuo account',
+    description: 'Profilo e campagne disponibili.',
+    items: ['Profilo', 'Lista Campagne'],
+  },
+  {
+    label: 'Altre azioni',
+    description: 'Crea e personalizza.',
+    items: ['Crea Campagna', 'Crea Personaggio', 'Modifica Profilo'],
+    collapsible: true,
   },
 ]
 

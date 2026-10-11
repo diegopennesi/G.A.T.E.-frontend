@@ -29,6 +29,8 @@ export async function installApi(page: Page, authenticated = true) {
     delayMutation: 0,
     failCampaignCreate: false, failCampaignRefresh: false, campaignCreates: 0,
     lastCampaignPayload: null as Record<string, unknown> | null,
+    membershipRole: 'SUPER_MASTER' as 'SUPER_MASTER' | 'PLAYER',
+    lastMissionPayload: null as Record<string, unknown> | null,
     missions: [initialMission],
     messages: [] as Array<Record<string, unknown>>,
     unknown: [] as string[],
@@ -54,7 +56,7 @@ export async function installApi(page: Page, authenticated = true) {
     if (path.startsWith('/public/realms/')) return reply({ code: 'gate', name: 'Taverna del Codice', type: 'GATE_OPEN', logoUrl: null, allowUserCampaignCreation: true })
     if (path === '/users/me' || path === `/users/${profile.id}`) return reply(profile)
     if (path === '/realms/me/permissions') return reply({ realmId: 'ui-realm', realmCode: 'gate', platformRole: 'USER', realmRole: 'USER', explicitRealmAccess: true, permissions: { createCampaign: true, manageRealm: false, manageRealmUsers: false, viewRealmAdmin: false } })
-    if (path === '/campaigns/me/memberships') return reply([{ campaignId: campaign.id, campaignName: campaign.name, role: 'SUPER_MASTER', memberStatus: 'APPROVED', characterStatus: null, moderationReason: null, isFounder: true }])
+    if (path === '/campaigns/me/memberships') return reply([{ campaignId: campaign.id, campaignName: campaign.name, role: state.membershipRole, memberStatus: 'APPROVED', characterStatus: null, moderationReason: null, isFounder: state.membershipRole === 'SUPER_MASTER' }])
     if (path === '/campaigns/discover') return state.failCampaignRefresh ? error() : reply([{ ...campaign, membershipStatus: 'APPROVED', membershipRole: 'SUPER_MASTER', moderationReason: null }])
     if (path === '/campaigns/post-login-summary') return state.failCampaignRefresh ? error() : reply({ canCreateCampaign: true, campaigns: [{ ...campaign, isVisible: true, membershipStatus: 'APPROVED', membershipRole: 'SUPER_MASTER', moderationReason: null }] })
     if (path === '/campaigns/modules') return reply([{ code: 'MISSIONI', label: 'Missioni', description: null, active: true, sortOrder: 1 }])
@@ -72,6 +74,7 @@ export async function installApi(page: Page, authenticated = true) {
     if (/\/missions$/.test(path)) {
       if (method === 'POST') {
         state.creates++
+        state.lastMissionPayload = request.postDataJSON()
         await mutation()
         if (state.failCreate) return error()
         const created = { ...initialMission, ...request.postDataJSON(), id: `created-${state.creates}` }
