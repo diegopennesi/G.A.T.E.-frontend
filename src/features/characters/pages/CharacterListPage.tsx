@@ -5,6 +5,8 @@ import { Icon, ResponsiveDataList } from '../../../shared/components'
 import type { CharacterStatus } from '../../../types/domain'
 
 type CharacterTypeFilter = 'NPC' | 'PG'
+type CharacterStateFilter = CharacterStatus | 'UNSPECIFIED'
+const statusLabels = { ACTIVE: 'Attivo', RETIRED: 'Ritirato', DEAD: 'Deceduto' }
 
 type FilterOption<T extends string> = {
   value: T
@@ -17,10 +19,11 @@ const TYPE_FILTER_OPTIONS: Array<FilterOption<CharacterTypeFilter>> = [
   { value: 'NPC', label: 'NPC', icon: 'fa-solid fa-mask' },
 ]
 
-const STATUS_FILTER_OPTIONS: Array<FilterOption<CharacterStatus>> = [
-  { value: 'ACTIVE', label: 'Active', icon: 'fa-solid fa-circle-check' },
-  { value: 'RETIRED', label: 'Retired', icon: 'fa-solid fa-hourglass-half' },
-  { value: 'DEAD', label: 'Dead', icon: 'fa-solid fa-circle-xmark' },
+const STATUS_FILTER_OPTIONS: Array<FilterOption<CharacterStateFilter>> = [
+  { value: 'ACTIVE', label: 'Attivo', icon: 'fa-solid fa-circle-check' },
+  { value: 'RETIRED', label: 'Ritirato', icon: 'fa-solid fa-hourglass-half' },
+  { value: 'DEAD', label: 'Deceduto', icon: 'fa-solid fa-circle-xmark' },
+  { value: 'UNSPECIFIED', label: 'Non assegnato', icon: 'fa-solid fa-circle-info' },
 ]
 
 function characterStatusBadge(status: CharacterStatus | null | undefined) {
@@ -37,7 +40,7 @@ function characterStatusBadge(status: CharacterStatus | null | undefined) {
                 : 'fa-solid fa-circle-info'
         }
       />
-      <span>{status || 'N/A'}</span>
+      <span>{status ? statusLabels[status] : 'Non assegnato'}</span>
     </span>
   )
 }
@@ -53,7 +56,13 @@ function characterTypeBadge(isNpc: boolean) {
 
 export function CharacterListPage() {
   const {
-    characters,
+    currentUserId,
+    charactersLoaded,
+    charactersLoadFailed,
+    managedCharacters: characters,
+    hasActiveCampaign,
+    canCreatePlayerCharacter,
+    canCreateNpc,
     selectedCharacterId,
     selectCharacter: onSelectCharacter,
     canOpenCharacterSheet,
@@ -63,7 +72,10 @@ export function CharacterListPage() {
     reloadCharacters: onReload,
   } = useCharacterContext()
   const [typeFilters, setTypeFilters] = useState<CharacterTypeFilter[]>(['NPC', 'PG'])
-  const [statusFilters, setStatusFilters] = useState<CharacterStatus[]>(['ACTIVE', 'RETIRED', 'DEAD'])
+  const [statusFilters, setStatusFilters] = useState<CharacterStateFilter[]>(['ACTIVE', 'RETIRED', 'DEAD', 'UNSPECIFIED'])
+  const [onlyMine, setOnlyMine] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+  const [refreshError, setRefreshError] = useState('')
   const [searchText, setSearchText] = useState('')
   const [sortBy, setSortBy] = useState<'character' | 'campaign'>('character')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
@@ -71,7 +83,8 @@ export function CharacterListPage() {
   const normalizedSearchText = searchText.trim().toLowerCase()
   const filteredCharacters = useMemo(() => {
     const list = characters.filter((character) => {
-      if (!character.characterStatus || !statusFilters.includes(character.characterStatus)) return false
+      if (onlyMine && character.userId !== currentUserId) return false
+      if (!statusFilters.includes(character.characterStatus ?? 'UNSPECIFIED')) return false
       const type = character.isNpc ? 'NPC' : 'PG'
       if (!typeFilters.includes(type)) return false
       if (!normalizedSearchText) return true
@@ -92,7 +105,7 @@ export function CharacterListPage() {
           return sortString(left.name, right.name)
       }
     })
-  }, [characters, statusFilters, typeFilters, normalizedSearchText, sortBy, sortDirection, ownerProfileLabel, campaignNameForCharacter])
+  }, [characters, onlyMine, currentUserId, statusFilters, typeFilters, normalizedSearchText, sortBy, sortDirection, ownerProfileLabel, campaignNameForCharacter])
 
   const handleSortChange = (nextSortBy: string) => {
     setSortBy((prev) => {
@@ -106,28 +119,55 @@ export function CharacterListPage() {
     })
   }
 
+  const listError = refreshError || (charactersLoadFailed ? 'Non riesco ad aggiornare i personaggi. Quelli già caricati restano visibili: riprova.' : '')
+  const canCreate = hasActiveCampaign && (canCreatePlayerCharacter || canCreateNpc)
+  const filtersActive = Boolean(searchText || onlyMine || typeFilters.length !== 2 || statusFilters.length !== 4)
+  const resetFilters = () => {
+    setSearchText('')
+    setOnlyMine(false)
+    setTypeFilters(['NPC', 'PG'])
+    setStatusFilters(['ACTIVE', 'RETIRED', 'DEAD', 'UNSPECIFIED'])
+  }
+  const refresh = async () => {
+    if (refreshing) return
+    setRefreshing(true)
+    setRefreshError('')
+    try { await onReload() } catch {
+      setRefreshError('Non riesco ad aggiornare i personaggi. Quelli già caricati restano visibili: riprova.')
+    } finally { setRefreshing(false) }
+  }
+
   return (
-    <section className="panel">
-      <div className="row-between">
-        <h2>Gestione Personaggi</h2>
+    <section className="panel character-browser">
+      <div className="character-browser-heading">
+        <div>
+          <h2>Personaggi</h2>
+          <p className="muted">Ritrova i personaggi delle tue campagne e apri la loro scheda.</p>
+        </div>
         <div className="inline-actions character-page-actions">
-          <button type="button" className="secondary-btn" onClick={onReload}>
-            <Icon name="fa-solid fa-rotate" />
-            Reload
+          <button type="button" className="secondary-btn" disabled={refreshing} onClick={() => void refresh()}>
+            <Icon name="fa-solid fa-rotate" />{refreshing ? 'Aggiornamento…' : 'Aggiorna elenco'}
           </button>
-          <button type="button" className="primary-btn" onClick={onCreateScreen}>
-            <Icon name="fa-solid fa-plus" />
-            Crea Personaggio
-          </button>
+          {canCreate && <button type="button" className="primary-btn" onClick={onCreateScreen}><Icon name="fa-solid fa-plus" />Crea personaggio</button>}
         </div>
       </div>
+      {!hasActiveCampaign && <p className="muted">Seleziona una campagna attiva per creare un personaggio.</p>}
+      {hasActiveCampaign && !canCreatePlayerCharacter && <p className="muted">Hai già un PG attivo in questa campagna.{canCreateNpc ? ' Puoi ancora creare un NPC.' : ' Apri la sua scheda dall’elenco.'}</p>}
+      {listError && <div className="character-refresh-error" role="alert"><p>{listError}</p><button type="button" className="secondary-btn" disabled={refreshing} onClick={() => void refresh()}>Riprova</button></div>}
+      <div className="character-browser-search">
+        <label><span>Cerca personaggi</span><input value={searchText} onChange={event => setSearchText(event.target.value)} placeholder="Nome, profilo o campagna" /></label>
+        <label className="character-mine-toggle"><input type="checkbox" checked={onlyMine} onChange={event => setOnlyMine(event.target.checked)} /><span>Solo i miei</span></label>
+      </div>
+      <details className="character-browser-filters">
+        <summary>Filtra per tipo e stato</summary>
       <div className="member-filters-panel">
         <div className="character-filter-toolbar">
           <label className="member-filter-field">
-            <span className="muted">Tipo</span>
+            <span id="character-type-label" className="muted">Tipo</span>
             <MultiSelect
               className="surface-field member-filter-select"
               panelClassName="surface-field-panel member-filter-select-panel"
+              ariaLabelledBy="character-type-label"
               value={typeFilters}
               options={TYPE_FILTER_OPTIONS}
               optionLabel="label"
@@ -145,19 +185,20 @@ export function CharacterListPage() {
             />
           </label>
           <label className="member-filter-field">
-            <span className="muted">Stato</span>
+            <span id="character-status-label" className="muted">Stato</span>
             <MultiSelect
               className="surface-field member-filter-select"
               panelClassName="surface-field-panel member-filter-select-panel"
+              ariaLabelledBy="character-status-label"
               value={statusFilters}
               options={STATUS_FILTER_OPTIONS}
               optionLabel="label"
               optionValue="value"
-              onChange={(event) => setStatusFilters(event.value as CharacterStatus[])}
+              onChange={(event) => setStatusFilters(event.value as CharacterStateFilter[])}
               placeholder="Tutti gli stati"
               maxSelectedLabels={2}
               selectedItemsLabel="{0} selezionati"
-              itemTemplate={(option: FilterOption<CharacterStatus>) => (
+              itemTemplate={(option: FilterOption<CharacterStateFilter>) => (
                 <span className="member-filter-option-copy">
                   <Icon name={option.icon} />
                   <span>{option.label}</span>
@@ -165,13 +206,21 @@ export function CharacterListPage() {
               )}
             />
           </label>
-          <label className="member-filter-field">
-            <span className="muted">Ricerca</span>
-            <input value={searchText} onChange={(event) => setSearchText(event.target.value)} placeholder="Nome, profilo o campagna" />
-          </label>
         </div>
       </div>
-      <ResponsiveDataList
+      </details>
+      <div className="character-results-toolbar">
+        <p className="muted" role="status">{charactersLoaded ? `${filteredCharacters.length} di ${characters.length} personaggi visibili` : 'Caricamento dei personaggi…'}</p>
+        {filtersActive && <button type="button" className="secondary-btn" onClick={resetFilters}>Azzera filtri</button>}
+        <label className="character-sort-control"><span>Ordina per</span><select value={`${sortBy}-${sortDirection}`} onChange={event => {
+          const [key, direction] = event.target.value.split('-')
+          setSortBy(key as typeof sortBy)
+          setSortDirection(direction as typeof sortDirection)
+        }}><option value="character-asc">Nome: A–Z</option><option value="character-desc">Nome: Z–A</option><option value="campaign-asc">Campagna: A–Z</option><option value="campaign-desc">Campagna: Z–A</option></select></label>
+      </div>
+      {charactersLoaded && characters.length === 0 && !listError && <div className="character-empty-state"><h3>Nessun personaggio disponibile</h3><p className="muted">Qui compariranno i personaggi che puoi consultare nelle tue campagne.{canCreate ? ' Usa Crea personaggio per iniziare.' : ''}</p></div>}
+      {characters.length > 0 && filteredCharacters.length === 0 && <div className="character-empty-state"><h3>Nessun risultato</h3><p className="muted">Prova un altro nome o azzera i filtri per rivedere l’elenco.</p></div>}
+      {filteredCharacters.length > 0 && <ResponsiveDataList
         desktopClassName="character-list-data-table"
         columns={[
           { key: 'character', label: 'Personaggio', sortKey: 'character' },
@@ -179,7 +228,6 @@ export function CharacterListPage() {
           { key: 'type', label: 'Tipo' },
           { key: 'campaign', label: 'Campagna', sortKey: 'campaign' },
           { key: 'profile', label: 'Profilo' },
-          { key: 'edit', label: '' },
         ]}
         rows={filteredCharacters}
         getRowKey={(character) => character.id}
@@ -195,6 +243,7 @@ export function CharacterListPage() {
                 <button
                   type="button"
                   className="data-table-link"
+                  aria-label={`Apri scheda ${character.name}`}
                   onClick={() => onSelectCharacter(character)}
                   disabled={!canOpen}
                 >
@@ -203,48 +252,26 @@ export function CharacterListPage() {
                   </span>{' '}
                   {character.name}
                 </button>
-                <p className="data-table-secondary">{character.nickname || 'no nickname'}</p>
+                {character.nickname && <p className="data-table-secondary">{character.nickname}</p>}
               </td>
               <td>{characterStatusBadge(character.characterStatus)}</td>
               <td>{characterTypeBadge(character.isNpc)}</td>
               <td className="data-table-secondary">{campaignNameForCharacter(character)}</td>
-              <td className="data-table-secondary">{ownerProfileLabel(character.userId, character.ownerProfileName)}</td>
-              <td>
-                <button
-                  type="button"
-                  className="character-edit-btn"
-                  onClick={() => onSelectCharacter(character)}
-                  disabled={!canOpen}
-                  aria-label={canOpen ? `Modifica scheda ${character.name}` : `Scheda non modificabile ${character.name}`}
-                  title={canOpen ? 'Modifica scheda' : 'Scheda non modificabile'}
-                >
-                  <Icon name={canOpen ? 'fa-solid fa-pen' : 'fa-solid fa-lock'} />
-                </button>
-              </td>
+              <td className="data-table-secondary">{ownerProfileLabel(character.userId, character.ownerProfileName)}{character.userId === currentUserId && <span className="character-own-label">Il tuo personaggio</span>}</td>
             </tr>
           )
         }}
         renderMobileCard={(character) => {
           const canOpen = canOpenCharacterSheet(character)
           return (
-            <article className={`rounded-lg border border-white/10 bg-white/4 p-4 shadow-sm ${selectedCharacterId === character.id ? 'ring-1 ring-amber-400/35' : ''}`}>
+            <article className="character-browser-row">
               <div className="grid gap-3">
                 <div className="grid gap-1">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
                       <p className="text-base font-semibold text-[var(--text)]">{character.name}</p>
-                      <p className="text-sm text-[var(--muted)]">{character.nickname || 'no nickname'}</p>
+                      {character.nickname && <p className="text-sm text-[var(--muted)]">{character.nickname}</p>}
                     </div>
-                    <button
-                      type="button"
-                      className="character-edit-btn shrink-0"
-                      onClick={() => onSelectCharacter(character)}
-                      disabled={!canOpen}
-                      aria-label={canOpen ? `Modifica scheda ${character.name}` : `Scheda non modificabile ${character.name}`}
-                      title={canOpen ? 'Modifica scheda' : 'Scheda non modificabile'}
-                    >
-                      <Icon name={canOpen ? 'fa-solid fa-pen' : 'fa-solid fa-lock'} />
-                    </button>
                   </div>
                 </div>
 
@@ -263,12 +290,13 @@ export function CharacterListPage() {
                   </div>
                   <div className="grid gap-1">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--muted)]">Profilo</p>
-                    <p className="text-sm text-[var(--text-soft)]">{ownerProfileLabel(character.userId, character.ownerProfileName)}</p>
+                    <p className="text-sm text-[var(--text-soft)]">{ownerProfileLabel(character.userId, character.ownerProfileName)}{character.userId === currentUserId && <span className="character-own-label">Il tuo personaggio</span>}</p>
                   </div>
                 </div>
 
                 <button
                   type="button"
+                  aria-label={`Apri scheda ${character.name}`}
                   className={`w-full justify-center ${canOpen ? 'secondary-btn' : 'secondary-btn opacity-60'}`}
                   onClick={() => onSelectCharacter(character)}
                   disabled={!canOpen}
@@ -279,7 +307,7 @@ export function CharacterListPage() {
             </article>
           )
         }}
-      />
+      />}
     </section>
   )
 }

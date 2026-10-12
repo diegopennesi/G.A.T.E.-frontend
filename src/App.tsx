@@ -566,6 +566,8 @@ function App() {
     }
     return map
   }, [approvedCampaignMemberships])
+  const characterManagementScope = JSON.stringify([profile?.id, realmCode, approvedCampaignMemberships.map(item => [item.campaignId, item.role])])
+  const [characterManagementResult, setCharacterManagementResult] = useState<{ scope: string; rows: Character[]; failed: boolean } | null>(null)
   const activeCampaignRole = campaignId ? approvedRoleByCampaignId[campaignId] || null : null
   const campaignRoleRank: Record<CampaignRole, number> = {
     GIOCATORE: 1,
@@ -1683,6 +1685,7 @@ function App() {
   const loadCharactersForManagement = async (options: { force?: boolean } = {}) => {
     const approvedCampaignIds = approvedCampaignMemberships.map((item) => item.campaignId)
     if (approvedCampaignIds.length === 0) {
+      setCharacterManagementResult({ scope: characterManagementScope, rows: [], failed: false })
       setCharacters([])
       setSelectedCharacterId('')
       setCharacterDetail(null)
@@ -1752,8 +1755,12 @@ function App() {
       }
     }
 
+    // Preserve previously loaded rows only for campaigns whose refresh failed.
+    const failedCampaignIds = new Set(approvedCampaignIds.filter((_, index) => settled[index].status === 'rejected'))
+    nextCharacters.push(...(characterManagementResult?.scope === characterManagementScope ? characterManagementResult.rows : []).filter(character => character.campaignId && failedCampaignIds.has(character.campaignId)))
     nextCharacters.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
     setCharacters(nextCharacters)
+    setCharacterManagementResult({ scope: characterManagementScope, rows: nextCharacters, failed: failedCampaignIds.size > 0 })
 
     const missingUserIds = Array.from(userNamesToResolve).filter((userId) => !memberNames[userId])
     if (missingUserIds.length > 0) {
@@ -1768,6 +1775,8 @@ function App() {
       if (nextCharacters.some((item) => item.id === prev)) return prev
       return nextCharacters[0]?.id || ''
     })
+    const failedRead = settled.find(item => item.status === 'rejected')
+    if (failedRead?.status === 'rejected') throw failedRead.reason
   }
 
     useEffect(() => {
@@ -3076,7 +3085,11 @@ function App() {
   }
 
   const characterContextValue = {
+    currentUserId: profile?.id || '',
+    charactersLoaded: characterManagementResult?.scope === characterManagementScope,
+    charactersLoadFailed: characterManagementResult?.scope === characterManagementScope && characterManagementResult.failed,
     characters,
+    managedCharacters: characterManagementResult?.scope === characterManagementScope ? characterManagementResult.rows : [],
     selectedCharacterId,
     selectCharacter: (character: Character) => {
       if (!canOpenCharacterSheet(character)) {
@@ -3095,7 +3108,7 @@ function App() {
     campaignNameForCharacter,
     openCreateCharacter: () => setScreen('Crea Personaggio'),
     reloadCharacters: () =>
-      void run('Lista personaggi caricata', async () => {
+      runResult('Lista personaggi caricata', async () => {
         await loadCharactersForManagement({ force: true })
       }),
     selectedCharacter,

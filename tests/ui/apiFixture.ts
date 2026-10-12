@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import type { CampaignResponse, CampaignMembershipResponse, CampaignRole, MissionResponse, UserProfile } from '../../src/types/domain'
+import type { Character, CampaignResponse, CampaignMembershipResponse, CampaignRole, MissionResponse, UserProfile } from '../../src/types/domain'
 
 const now = '2026-07-23T10:00:00Z'
 export const profile: UserProfile = {
@@ -35,6 +35,7 @@ export async function installApi(page: Page, authenticated = true) {
     members: [{ userId: profile.id, campaignId: campaign.id, characterId: null, joinedAt: now, role: 'SUPER_MASTER', memberStatus: 'APPROVED', characterStatus: null, moderationReason: null, moderationByUserId: null, moderationAt: null }] as CampaignMembershipResponse[],
     lastMissionPayload: null as Record<string, unknown> | null,
     missions: [initialMission],
+    characters: [] as Character[], failCharacterRead: false, delayCharacterRead: 0,
     messages: [] as Array<Record<string, unknown>>,
     unknown: [] as string[],
   }
@@ -58,6 +59,7 @@ export async function installApi(page: Page, authenticated = true) {
     }
     if (path.startsWith('/public/realms/')) return reply({ code: 'gate', name: 'Taverna del Codice', type: 'GATE_OPEN', logoUrl: null, allowUserCampaignCreation: true })
     if (path === '/users/me' || path === `/users/${profile.id}`) return reply(profile)
+    if (path.startsWith('/users/') && state.members.some(member => member.userId === path.split('/').at(-1))) return reply({ ...profile, id: path.split('/').at(-1), profileName: 'Compagno di tavolo' })
     if (path === '/realms/me/permissions') return reply({ realmId: 'ui-realm', realmCode: 'gate', platformRole: 'USER', realmRole: 'USER', explicitRealmAccess: true, permissions: { createCampaign: true, manageRealm: false, manageRealmUsers: false, viewRealmAdmin: false } })
     if (path === '/campaigns/me/memberships') return reply([{ campaignId: campaign.id, campaignName: campaign.name, role: state.membershipRole, memberStatus: 'APPROVED', characterStatus: null, moderationReason: null, isFounder: state.membershipRole === 'SUPER_MASTER' }])
     if (path === '/campaigns/discover') return state.failCampaignRefresh ? error() : reply([{ ...state.campaign, membershipStatus: 'APPROVED', membershipRole: state.membershipRole, moderationReason: null }])
@@ -107,6 +109,17 @@ export async function installApi(page: Page, authenticated = true) {
     if (/\/mission-chat\/[^/]+$/.test(path)) {
       if (state.failChatRefresh && state.messages.length) return error()
       return reply({ room: { id: 'ui-chat', campaignId: campaign.id, roomType: 'MISSION', missionId: initialMission.id, title: 'Chat della torre', slowmodeSeconds: 0, maxPersistedMessages: 100, pruneAfterHours: null, isActive: true, createdAt: now }, messages: state.messages })
+    }
+    if (path === `/campaigns/${campaign.id}/characters`) {
+      if (state.delayCharacterRead) await new Promise(resolve => setTimeout(resolve, state.delayCharacterRead))
+      return state.failCharacterRead ? error() : reply(state.characters)
+    }
+    const characterMatch = path.match(/\/characters\/([^/]+)(\/sheet(?:\/history)?)?$/)
+    if (characterMatch) {
+      const character = state.characters.find(item => item.id === characterMatch[1])
+      if (characterMatch[2] === '/sheet/history') return reply([])
+      if (characterMatch[2] === '/sheet') return reply({ characterId: character?.id, campaignId: campaign.id, gameSystemCode: 'DND5E', sheetTypeCode: null, schemaVersion: 1, schemaJson: {}, dataJson: {}, catalogOptions: {}, derivedJson: {}, hasTemplate: false, editable: true, updatedAt: now })
+      if (character) return reply(character)
     }
     if (/\/(characters|rooms|participants|pending|mission-rules)$/.test(path)) return reply([])
     if (request.headers().accept?.includes('text/event-stream')) return route.fulfill({ status: 200, contentType: 'text/event-stream', body: ': fixture\n\n' })

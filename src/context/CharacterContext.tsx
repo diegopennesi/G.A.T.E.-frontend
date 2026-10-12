@@ -4,14 +4,18 @@ import type { ReactNode } from 'react'
 import type { Character, CharacterStatus, CharacterSheetResponse, CharacterSheetReviewResponse } from '../types/domain'
 
 export type CharacterContextValue = {
+  currentUserId: string
+  charactersLoaded: boolean
+  charactersLoadFailed: boolean
   characters: Character[]
+  managedCharacters: Character[]
   selectedCharacterId: string
   selectCharacter: (character: Character) => void
   canOpenCharacterSheet: (character: Character) => boolean
   ownerProfileLabel: (userId: string | null, ownerProfileName?: string | null) => string
   campaignNameForCharacter: (character: Character) => string
   openCreateCharacter: () => void
-  reloadCharacters: () => void
+  reloadCharacters: () => Promise<void>
   selectedCharacter: Character | null
   characterDetail: Character | null
   characterSheetDetail: CharacterSheetResponse | null
