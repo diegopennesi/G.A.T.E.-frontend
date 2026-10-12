@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
+import { useUnsavedChanges } from '../../../context/NavigationGuardContext'
 import { useCharacterContext } from '../../../context'
 import { ConfirmActionDialog, Icon } from '../../../shared/components'
 import { CharacterSheetFields } from '../components/CharacterSheetFields'
@@ -36,6 +37,7 @@ export function CharacterDetailPage() {
   const blockedByReview = Boolean(pending && !canReviewSheetChanges)
   const editable = Boolean(sheet?.hasTemplate && sheet.editable && !blockedByStatus && !blockedByReview)
   const busy = saving || refreshing || operationBusy
+  useUnsavedChanges(dirty, busy)
   const serverChanged = dirty && sheet && source && (sheet.updatedAt !== source.updatedAt || JSON.stringify(sheet.dataJson) !== JSON.stringify(source.dataJson))
   const refresh = async () => {
     if (busy || dirty) return

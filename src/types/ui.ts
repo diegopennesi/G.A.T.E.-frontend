@@ -89,7 +89,7 @@ export const SCREEN_LABELS: Record<Screen, string> = {
   'Approvazione Accessi': 'Accessi',
   Missioni: 'Missioni',
   Stanze: 'Stanze',
-  Log: 'Log',
+  Log: 'Attività',
   Profilo: 'Profilo',
   'Modifica Profilo': 'Modifica profilo',
   'Gestione Personaggi': 'Personaggi',

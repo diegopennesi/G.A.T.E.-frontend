@@ -6,6 +6,7 @@ import 'primereact/resources/primereact.min.css'
 import 'primeicons/primeicons.css'
 import './index.css'
 import App from './App.tsx'
+import { NavigationGuardProvider } from './context/NavigationGuardContext'
 import { GlobalApiLoader } from './shared/components'
 import { queryClient } from './services/queryClient'
 
@@ -15,7 +16,7 @@ document.documentElement.dataset.theme = initialTheme === 'dark' ? 'dark' : 'lig
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <App />
+      <NavigationGuardProvider><App /></NavigationGuardProvider>
       <GlobalApiLoader />
     </QueryClientProvider>
   </StrictMode>,

@@ -1,79 +1,23 @@
+import { useState } from 'react'
 import { useCampaignContext } from '../../../context'
-import { ResponsiveDataList } from '../../../shared/components'
+import { useAsyncAction } from '../../../hooks/useAsyncAction'
+import { ResponsiveDataList, ConfirmActionDialog } from '../../../shared/components'
+import type { CampaignApplicationResponse } from '../../../types/domain'
 
 export function ApprovalPage() {
-  const {
-    pendingApplications,
-    loadPendingApplications: onLoadPending,
-    approvePendingApplication: onApprove,
-    rejectPendingApplication: onReject,
-  } = useCampaignContext()
-  return (
-    <section className="panel">
-      <h2>Approvazione Accessi</h2>
-      <div className="row-between">
-        <p className="muted">Le richieste si caricano automaticamente quando entri in questa pagina.</p>
-        <button type="button" className="secondary-btn" onClick={onLoadPending}>
-          Aggiorna elenco
-        </button>
-      </div>
-      <ResponsiveDataList
-        desktopClassName="approval-data-table"
-        columns={[
-          { key: 'profile', label: 'Profilo' },
-          { key: 'username', label: 'Username' },
-          { key: 'status', label: 'Stato' },
-          { key: 'actions', label: 'Azioni' },
-        ]}
-        rows={pendingApplications}
-        getRowKey={(item) => item.userId}
-        emptyMessage="Nessuna richiesta pending."
-        renderDesktopRow={(item) => (
-          <tr>
-            <td>
-              <div className="data-table-primary">
-                <p className="data-table-title">{item.profileName}</p>
-              </div>
-            </td>
-            <td className="data-table-muted">@{item.username}</td>
-            <td>
-              <span className="status status-warning">PENDING</span>
-            </td>
-            <td>
-              <div className="data-table-actions">
-                <button type="button" className="primary-btn" onClick={() => onApprove(item.userId)}>
-                  Approva
-                </button>
-                <button type="button" className="secondary-btn" onClick={() => onReject(item.userId)}>
-                  Rifiuta
-                </button>
-              </div>
-            </td>
-          </tr>
-        )}
-        renderMobileCard={(item) => (
-          <article className="rounded-lg border border-white/10 bg-white/4 p-4 shadow-sm">
-            <div className="grid gap-3">
-              <div className="grid gap-1">
-                <p className="text-base font-semibold text-[var(--text)]">{item.profileName}</p>
-                <p className="text-sm text-[var(--muted)]">@{item.username}</p>
-              </div>
-              <div className="grid gap-1">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--muted)]">Stato</p>
-                <span className="status status-warning w-fit">PENDING</span>
-              </div>
-              <div className="grid gap-2">
-                <button type="button" className="primary-btn w-full justify-center" onClick={() => onApprove(item.userId)}>
-                  Approva
-                </button>
-                <button type="button" className="secondary-btn w-full justify-center" onClick={() => onReject(item.userId)}>
-                  Rifiuta
-                </button>
-              </div>
-            </div>
-          </article>
-        )}
-      />
-    </section>
-  )
+  const { pendingApplications, loadPendingApplications, approvePendingApplication, rejectPendingApplication } = useCampaignContext()
+  const action = useAsyncAction()
+  const [target, setTarget] = useState('')
+  const [reject, setReject] = useState<CampaignApplicationResponse | null>(null)
+  const decide = async (item: CampaignApplicationResponse, approve: boolean) => {
+    setTarget(item.userId)
+    await action.execute(() => (approve ? approvePendingApplication : rejectPendingApplication)(item.userId), `${item.profileName}: richiesta ${approve ? 'approvata' : 'rifiutata'}.`)
+  }
+  const actions = (item: CampaignApplicationResponse) => <div><div className="inline-actions"><button type="button" className="primary-btn" disabled={action.pending} onClick={() => void decide(item, true)}>{action.pending && target === item.userId ? 'Elaborazione…' : 'Approva accesso'}</button><button type="button" className="secondary-btn" disabled={action.pending} onClick={() => setReject(item)}>Rifiuta richiesta</button></div>{target === item.userId && action.error && <p role="alert">{action.error}</p>}</div>
+  return <section className="panel remaining-flow approvals-page">
+    <header className="flow-header"><h2>Richieste di accesso</h2><p className="muted">{pendingApplications.length} richieste in attesa. Approva chi entrerà nel tavolo.</p><button type="button" className="secondary-btn" disabled={action.pending} onClick={() => { setTarget(''); void action.execute(loadPendingApplications, 'Elenco aggiornato.') }}>{action.pending && !target ? 'Aggiornamento…' : 'Aggiorna elenco'}</button></header>
+    {!target && action.error && <p role="alert">{action.error}</p>}{action.notice && <p role="status">{action.notice}</p>}
+    <ResponsiveDataList desktopClassName="approval-data-table" columns={[{ key: 'profile', label: 'Profilo' }, { key: 'requested', label: 'Richiesta' }, { key: 'actions', label: 'Azioni' }]} rows={pendingApplications} getRowKey={item => item.userId} emptyMessage="Nessuna richiesta in attesa. Le nuove richieste compariranno qui." renderDesktopRow={item => <tr><td><strong>{item.profileName}</strong><p className="muted">@{item.username}</p></td><td>{new Date(item.requestedAt).toLocaleDateString('it-IT')}</td><td>{actions(item)}</td></tr>} renderMobileCard={item => <article className="flow-row"><h3>{item.profileName}</h3><p className="muted">@{item.username} · {new Date(item.requestedAt).toLocaleDateString('it-IT')}</p>{actions(item)}</article>} />
+    <ConfirmActionDialog open={Boolean(reject)} title="Rifiutare la richiesta?" message={`${reject?.profileName || 'L’utente'} non entrerà nella campagna con questa richiesta.`} confirmLabel="Rifiuta richiesta" tone="danger" onCancel={() => setReject(null)} onConfirm={() => { const item = reject; setReject(null); if (item) void decide(item, false) }} />
+  </section>
 }

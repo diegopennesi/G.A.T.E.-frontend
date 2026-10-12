@@ -26,3 +26,4 @@ playwright-report/
 *.sw?
 
 ui-test-results/
+local-test-results/

@@ -1,3 +1,4 @@
+import { useNavigationGuard, useUnsavedChanges } from '../../../context/NavigationGuardContext'
 import { useId, useRef, useState } from 'react'
 import { Icon } from '../../../shared/components'
 import { toMessage } from '../../../shared/utils'
@@ -29,24 +30,26 @@ function formatAuthorBadge(value: string) {
     case 'GIOCATORE':
       return 'giocatore'
     case 'CO_MASTER':
-      return 'co_master'
+      return 'Co-master'
     case 'SUPER_MASTER':
-      return 'super_master'
+      return 'Super master'
     case 'MASTER':
       return 'master'
     case 'SYSTEM':
-      return 'System'
+      return 'Sistema'
     default:
       return value.toLowerCase()
   }
 }
 
 export function MissionChatPanel({ chat, busy, error, currentUserId, onClose, onSend, showCloseAction = true }: MissionChatPanelProps) {
+  const { requestNavigation } = useNavigationGuard()
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState('')
   const sendLock = useRef(false)
   const composeId = useId()
+  useUnsavedChanges(Boolean(draft), sending)
   const canSend = draft.trim().length > 0 && !busy && !sending && Boolean(chat)
 
   const send = async () => {
@@ -75,7 +78,7 @@ export function MissionChatPanel({ chat, busy, error, currentUserId, onClose, on
         </div>
         {showCloseAction && (
           <div className="inline-actions">
-            <button type="button" className="mission-chat-action-btn mission-chat-summary-btn" onClick={onClose}>
+            <button type="button" className="mission-chat-action-btn mission-chat-summary-btn" onClick={() => requestNavigation(onClose)}>
               <Icon name="fa-solid fa-table-list" />
               Riepilogo
             </button>
@@ -84,7 +87,7 @@ export function MissionChatPanel({ chat, busy, error, currentUserId, onClose, on
       </div>
 
       {(sendError || error) && <p className="form-error" role="alert">{sendError || error}</p>}
-      {busy && !chat && <p className="muted">Caricamento chat...</p>}
+      {busy && !chat && <p className="muted">Caricamento della conversazione…</p>}
 
       {chat && (
         <>
@@ -119,7 +122,7 @@ export function MissionChatPanel({ chat, busy, error, currentUserId, onClose, on
               aria-label="Messaggio alla missione"
               aria-describedby={composeId}
               disabled={sending}
-              rows={2}
+              rows={3}
               value={draft}
               maxLength={100}
               placeholder="Scrivi un messaggio..."
@@ -132,7 +135,7 @@ export function MissionChatPanel({ chat, busy, error, currentUserId, onClose, on
               onClick={() => void send()}
             >
               <Icon name="fa-solid fa-paper-plane" />
-              {sending ? 'Invio...' : 'Invia'}
+              {sending ? 'Invio…' : 'Invia'}
             </button>
           </div>
           <p id={composeId} className="muted">{draft.length}/100 caratteri</p>

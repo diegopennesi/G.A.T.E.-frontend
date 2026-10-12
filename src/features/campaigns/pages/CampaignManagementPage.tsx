@@ -1,3 +1,7 @@
+import { useAsyncAction } from '../../../hooks/useAsyncAction'
+import { useUnsavedChanges } from '../../../context/NavigationGuardContext'
+import { CampaignInvites } from '../components/CampaignInvites'
+import { ConfirmActionDialog } from '../../../shared/components'
 import { useEffect, useMemo, useState } from 'react'
 import { useCampaignContext } from '../../../context'
 import { ActionStack, BadgeGroup, FieldLabel, Icon, KeyValueGrid, MobileDataCard, ResponsiveDataList } from '../../../shared/components'
@@ -13,8 +17,6 @@ import {
 import type {
   CampaignCatalogEntry,
   CampaignMissionRuleResponse,
-  CreateInviteTokenRequest,
-  InviteTokenResponse,
   UpdateCampaignMissionRuleRequest,
 } from '../../../types/domain'
 
@@ -247,17 +249,12 @@ export function CampaignManagementPage() {
     saveCampaign: onSave,
     refreshPermissionChecklist: onRefreshPermissions,
     transferCampaignOwnership: onTransfer,
-    createCampaignInviteToken: onCreateInviteToken,
     currentUserId,
+    members,
+    memberNames,
     leaveCurrentCampaign: onLeave,
   } = useCampaignContext()
   const [newOwnerUserId, setNewOwnerUserId] = useState('')
-  const [inviteCopyFeedback, setInviteCopyFeedback] = useState('')
-  const [inviteTokenAutoJoin, setInviteTokenAutoJoin] = useState(false)
-  const [inviteTokenExpiresAt, setInviteTokenExpiresAt] = useState('')
-  const [inviteTokenMaxUses, setInviteTokenMaxUses] = useState('')
-  const [inviteTokenResult, setInviteTokenResult] = useState<InviteTokenResponse | null>(null)
-  const [inviteTokenFeedback, setInviteTokenFeedback] = useState('')
   const [name, setName] = useState(campaign?.name || '')
   const [description, setDescription] = useState(campaign?.description || '')
   const [summary, setSummary] = useState(campaign?.summary || '')
@@ -270,7 +267,12 @@ export function CampaignManagementPage() {
   const [isSearchable, setIsSearchable] = useState(campaign?.isSearchable ?? true)
   const [autoJoinEnabled, setAutoJoinEnabled] = useState(campaign?.autoJoinEnabled ?? false)
   const [selectedModules, setSelectedModules] = useState<string[]>(campaign?.allowedModules || [])
-  const [missionRuleDrafts, setMissionRuleDrafts] = useState<Record<string, MissionRuleDraft>>({})
+  const [missionRuleDrafts, setMissionRuleDrafts] = useState<Record<string, MissionRuleDraft>>(() => Object.fromEntries((campaign?.missionRules || []).map(rule => [rule.code, { enabled: rule.campaignEnabled, configJson: { ...rule.configJson } }])))
+  const [dirty, setDirty] = useState(false)
+  const [transferOpen, setTransferOpen] = useState(false)
+  const saveAction = useAsyncAction()
+  const transferAction = useAsyncAction()
+  useUnsavedChanges(dirty, saveAction.pending || transferAction.pending)
 
   const availableModuleCodes = useMemo(
     () =>
@@ -285,7 +287,7 @@ export function CampaignManagementPage() {
       : selectedModules.filter((moduleCode) => availableModuleCodes.includes(moduleCode))
 
   const permissionChecklist: Array<{ action: string; label: string; description: string }> = [
-    { action: 'APPROVE_OR_REJECT_APPLICATIONS', label: 'Gestire accessi', description: 'Approva o rifiuta le richieste pending.' },
+    { action: 'APPROVE_OR_REJECT_APPLICATIONS', label: 'Gestire accessi', description: 'Approva o rifiuta le richieste in attesa.' },
     { action: 'TRANSFER_OWNERSHIP', label: 'Trasferire proprietà', description: 'Cedere la leadership della campagna.' },
     { action: 'MANAGE_CAMPAIGN_SETTINGS', label: 'Modificare impostazioni', description: 'Aggiornare regole, requisiti e visibilità.' },
   ]
@@ -311,7 +313,7 @@ export function CampaignManagementPage() {
     },
     {
       key: 'auto-join',
-      title: 'Auto join',
+      title: 'Ingresso automatico',
       description: "Approva automaticamente l'accesso da app quando la campagna e aperta e visibile.",
       active: autoJoinEnabled,
       activeLabel: 'Automatico',
@@ -320,41 +322,13 @@ export function CampaignManagementPage() {
     },
   ]
 
-  useEffect(() => {
-    if (!campaign) return
-    setName(campaign.name || '')
-    setDescription(campaign.description || '')
-    setSummary(campaign.summary || '')
-    setSetting(campaign.setting || '')
-    setTone(campaign.tone || '')
-    setRules(campaign.rules || '')
-    setRequirements(campaign.requirements || '')
-    setCoverImageUrl(campaign.coverImageUrl || '')
-    setIsOpen(campaign.isOpen ?? true)
-    setIsSearchable(campaign.isSearchable ?? true)
-    setAutoJoinEnabled(campaign.autoJoinEnabled ?? false)
-    setSelectedModules(campaign.allowedModules || [])
-    setMissionRuleDrafts(
-      Object.fromEntries(
-        (campaign.missionRules || []).map((rule) => [
-          rule.code,
-          {
-            enabled: rule.campaignEnabled,
-            configJson: { ...(rule.configJson || {}) },
-          },
-        ]),
-      ),
-    )
-    if (permissions.length === 0) {
-      onRefreshPermissions()
-    }
-  }, [campaign?.id, permissions.length])
+  useEffect(() => { if (campaign?.id && permissions.length === 0) onRefreshPermissions() }, [campaign?.id, permissions.length, onRefreshPermissions])
 
   const toggleModule = (moduleCode: string) => {
     setSelectedModules((prev) =>
       prev.includes(moduleCode)
         ? prev.filter((item) => item !== moduleCode)
-        : [...prev.filter((item) => availableModuleCodes.includes(item)), moduleCode],
+        : [...prev, moduleCode],
     )
   }
 
@@ -378,52 +352,26 @@ export function CampaignManagementPage() {
     }
   })
 
-  const copyInviteCode = async () => {
-    const value = campaign?.inviteCode?.trim()
-    if (!value) {
-      setInviteCopyFeedback('Codice non disponibile.')
-      return
-    }
-    try {
-      await navigator.clipboard.writeText(value)
-      setInviteCopyFeedback('Codice copiato.')
-    } catch {
-      setInviteCopyFeedback('Copia non disponibile.')
-    }
+  const save = async () => {
+    if (!name.trim()) { saveAction.setError('Scrivi il nome della campagna.'); return }
+    const saved = await saveAction.execute(() => onSave({ name: name.trim(), description, summary, setting, tone, rules, requirements, coverImageUrl, isOpen, isSearchable, autoJoinEnabled, allowedModules: [...selectedModules.filter(code => !availableModuleCodes.includes(code)), ...selectedAvailableModules], missionRules: missionRuleUpdates }), 'Impostazioni salvate.')
+    if (saved) setDirty(false)
   }
-
-  const createInviteToken = async () => {
-    const expiresAt = inviteTokenExpiresAt.trim()
-    const maxUsesValue = inviteTokenMaxUses.trim()
-    const maxUses =
-      maxUsesValue.length === 0 ? null : Number.isFinite(Number(maxUsesValue)) && Number(maxUsesValue) > 0 ? Number(maxUsesValue) : NaN
-    if (Number.isNaN(maxUses)) {
-      setInviteTokenFeedback('Max utilizzi non valido.')
-      return
-    }
-    setInviteTokenFeedback('')
-    const payload: CreateInviteTokenRequest = {
-      capabilities: inviteTokenAutoJoin ? ['AUTOJOIN'] : [],
-      expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
-      maxUses: maxUses === null ? null : maxUses,
-    }
-    const created = await onCreateInviteToken(payload)
-    setInviteTokenResult(created)
-    setInviteTokenFeedback('Token creato.')
-  }
-
-  const inviteTokenModeLabel = inviteTokenAutoJoin ? 'AUTOJOIN attivo' : 'Richiesta manuale'
 
   return (
-    <section className="panel">
-      <h2>Gestione Campagna</h2>
+    <section className="panel remaining-flow campaign-settings">
+      <h2>Gestione campagna</h2>
+      <p className="muted">Impostazioni del tavolo, inviti e strumenti. Le modifiche si applicano quando salvi.</p>
       {!campaign && <p className="muted">Apri prima una scheda campagna.</p>}
       {campaign && (
         <>
+          <form onSubmit={event => { event.preventDefault(); void save() }} onChangeCapture={() => { setDirty(true); saveAction.setNotice('') }} onClickCapture={event => { if ((event.target as HTMLElement).closest('button[type="button"]')) setDirty(true) }} onInvalidCapture={event => { const details = (event.target as HTMLElement).closest('details'); if (details) details.open = true }} aria-busy={saveAction.pending}>
+          <fieldset className="flow-fieldset" disabled={saveAction.pending}>
+          <p role="status">{dirty ? 'Modifiche non salvate' : saveAction.notice || 'Nessuna modifica da salvare'}</p>
           <div className="form-grid">
             <label>
               <FieldLabel icon="fa-solid fa-signature" label="Nome" />
-              <input value={name} placeholder="Nome della campagna" onChange={(event) => setName(event.target.value)} />
+              <input required maxLength={200} value={name} placeholder="Nome della campagna" onChange={(event) => setName(event.target.value)} />
             </label>
             <label>
               <FieldLabel icon="fa-solid fa-wand-magic-sparkles" label="Tono" />
@@ -437,6 +385,7 @@ export function CampaignManagementPage() {
               </select>
             </label>
           </div>
+          <details className="flow-details"><summary>Storia e presentazione della campagna</summary>
           <label>
             <FieldLabel icon="fa-solid fa-align-left" label="Descrizione" />
             <textarea rows={3} placeholder="Descrizione estesa della campagna" value={description} onChange={(event) => setDescription(event.target.value)} />
@@ -459,7 +408,7 @@ export function CampaignManagementPage() {
           </label>
           <label>
             <FieldLabel icon="fa-solid fa-image" label="URL immagine copertina" />
-            <input value={coverImageUrl} placeholder="https://..." onChange={(event) => setCoverImageUrl(event.target.value)} />
+            <input type="url" maxLength={500} value={coverImageUrl} placeholder="https://..." onChange={(event) => setCoverImageUrl(event.target.value)} />
           </label>
           <label>
             <FieldLabel icon="fa-solid fa-gamepad" label="Sistema di gioco" />
@@ -467,118 +416,15 @@ export function CampaignManagementPage() {
             <p className="muted">{catalogEntryDescription(availableGameSystems, campaign.gameSystem)}</p>
             <p className="muted">Definito in creazione. Per cambiare sistema va creata una nuova campagna.</p>
           </label>
-          <label>
-            <FieldLabel icon="fa-solid fa-key" label="Codice invito" />
-            <div className="invite-code-row">
-              <input className="invite-code-input" value={campaign.inviteCode} readOnly />
-              <button type="button" className="secondary-btn" onClick={copyInviteCode}>
-                <Icon name="fa-solid fa-copy" />
-                Copia
-              </button>
-            </div>
-            <p className="muted">
-              Condividilo per accedere anche quando la campagna non è ricercabile. La chiusura della campagna resta attiva.
-            </p>
-            {inviteCopyFeedback && <p className="muted invite-copy-feedback">{inviteCopyFeedback}</p>}
-          </label>
-          <div className="campaign-token-panel">
-            <div className="campaign-token-panel-head">
-              <div>
-                <p className="section-title">Token invito</p>
-                <p className="muted">Crea un link opaco con approvazione automatica o manuale.</p>
-              </div>
-              <span className="readonly-chip">{inviteTokenModeLabel}</span>
-            </div>
-            <div className="campaign-token-form">
-              <label className="campaign-token-switch">
-                <FieldLabel icon="fa-solid fa-wand-magic-sparkles" label="Auto join" />
-                <label className="switch" aria-label="Auto join token">
-                  <input
-                    type="checkbox"
-                    checked={inviteTokenAutoJoin}
-                    onChange={(event) => setInviteTokenAutoJoin(event.target.checked)}
-                  />
-                  <span className="switch-track" aria-hidden="true">
-                    <span className="switch-thumb" />
-                  </span>
-                </label>
-              </label>
-              <label>
-                <FieldLabel icon="fa-solid fa-calendar-day" label="Scadenza" />
-                <input
-                  type="datetime-local"
-                  value={inviteTokenExpiresAt}
-                  onChange={(event) => setInviteTokenExpiresAt(event.target.value)}
-                />
-              </label>
-              <label>
-                <FieldLabel icon="fa-solid fa-hashtag" label="Max utilizzi" />
-                <input
-                  type="number"
-                  min={1}
-                  placeholder="Illimitato"
-                  value={inviteTokenMaxUses}
-                  onChange={(event) => setInviteTokenMaxUses(event.target.value)}
-                />
-              </label>
-            </div>
-            <div className="campaign-token-actions">
-              <button type="button" className="primary-btn" onClick={createInviteToken}>
-                <Icon name="fa-solid fa-circle-plus" />
-                Crea token
-              </button>
-            </div>
-            {inviteTokenFeedback && <p className="muted invite-copy-feedback">{inviteTokenFeedback}</p>}
-            {inviteTokenResult && (
-              <div className="campaign-token-result">
-                <div className="row-between campaign-invite-preview-head">
-                  <div className="data-table-primary">
-                    <p className="data-table-title">{inviteTokenResult.token}</p>
-                    <p className="data-table-secondary">
-                      {inviteTokenResult.capabilities.includes('AUTOJOIN') ? 'Approvazione automatica' : 'Richiesta manuale'}
-                    </p>
-                  </div>
-                  <div className="campaign-invite-preview-badges">
-                    <span className={`status ${inviteTokenResult.isActive ? 'status-success' : 'status-neutral'}`}>
-                      {inviteTokenResult.isActive ? 'Attivo' : 'Disattivo'}
-                    </span>
-                    <span className={`status ${inviteTokenResult.capabilities.includes('AUTOJOIN') ? 'status-success' : 'status-warning'}`}>
-                      {inviteTokenResult.capabilities.includes('AUTOJOIN') ? 'AUTOJOIN' : 'MANUALE'}
-                    </span>
-                  </div>
-                </div>
-                <div className="invite-token-copy-row">
-                  <input className="invite-code-input" value={inviteTokenResult.token} readOnly />
-                  <button
-                    type="button"
-                    className="secondary-btn"
-                    onClick={async () => {
-                      try {
-                        await navigator.clipboard.writeText(inviteTokenResult.token)
-                        setInviteTokenFeedback('Token copiato.')
-                      } catch {
-                        setInviteTokenFeedback('Copia non disponibile.')
-                      }
-                    }}
-                  >
-                    <Icon name="fa-solid fa-copy" />
-                    Copia
-                  </button>
-                </div>
-                <p className="data-table-meta">
-                  {inviteTokenResult.expiresAt ? `Scade il ${inviteTokenResult.expiresAt}` : 'Nessuna scadenza'}
-                  {inviteTokenResult.maxUses ? ` • max ${inviteTokenResult.maxUses} utilizzi` : ' • utilizzi illimitati'}
-                </p>
-              </div>
-            )}
-          </div>
+          </details>
           <CampaignToggleSettingsTable
             title="Visibilità e accesso"
             description="Impostazioni di pubblicazione della campagna, con la stessa logica usata in creazione."
             rows={campaignVisibilityRows}
           />
+          <details className="flow-details"><summary>Moduli e regole delle missioni</summary>
           <CampaignToggleSettingsTable
-            title="Addon campagna"
+            title="Moduli della campagna"
             description="I moduli disponibili possono essere attivati o disattivati senza ricaricare la lista."
             availableModules={availableModules}
             selectedModules={selectedAvailableModules}
@@ -659,30 +505,12 @@ export function CampaignManagementPage() {
               </div>
             </div>
           )}
-          <button
-            type="button"
-            className="primary-btn"
-            onClick={() =>
-              onSave({
-                name,
-                description,
-                summary,
-                setting,
-                tone,
-                rules,
-                requirements,
-                coverImageUrl,
-                isOpen,
-                isSearchable,
-                autoJoinEnabled,
-                allowedModules: selectedAvailableModules,
-                missionRules: missionRuleUpdates,
-              })
-            }
-          >
-            <Icon name="fa-solid fa-floppy-disk" />
-            Salva anagrafica
-          </button>
+          </details>
+          <div className="flow-save-bar"><button type="submit" className="primary-btn" disabled={!dirty}>{saveAction.pending ? 'Salvataggio…' : 'Salva impostazioni'}</button></div>
+          </fieldset>
+          {saveAction.error && <p role="alert">{saveAction.error}</p>}
+          </form>
+          <CampaignInvites />
           <div className="divider" />
         </>
       )}
@@ -717,7 +545,7 @@ export function CampaignManagementPage() {
                       <p className="muted">{item.description}</p>
                     </div>
                   </div>
-                  <span className={`status ${allowed ? 'status-success' : 'status-danger'}`}>{allowed ? 'OK' : 'KO'}</span>
+                  <span className={`status ${allowed ? 'status-success' : 'status-danger'}`}>{allowed ? 'Consentito' : 'Non consentito'}</span>
                 </div>
               )
             })}
@@ -725,16 +553,8 @@ export function CampaignManagementPage() {
         </div>
       </details>
 
-      <div className="divider" />
-      <label>
-        <FieldLabel icon="fa-solid fa-user-pen" label="New owner userId" />
-        <input value={newOwnerUserId} placeholder="ID utente del nuovo proprietario" onChange={(event) => setNewOwnerUserId(event.target.value)} />
-      </label>
-      <button type="button" className="secondary-btn" onClick={() => onTransfer(newOwnerUserId)}>
-        <Icon name="fa-solid fa-right-left" />
-        Transfer ownership
-      </button>
-
+      {campaign?.founderId === currentUserId && <details className="flow-details"><summary>Trasferisci la proprietà della campagna</summary><p className="muted">Il nuovo proprietario diventerà super master. Salva le modifiche prima di procedere.</p><label>Nuovo proprietario<select value={newOwnerUserId} onChange={event => setNewOwnerUserId(event.target.value)} disabled={transferAction.pending}><option value="">Seleziona un membro approvato</option>{members.filter(member => member.memberStatus === 'APPROVED' && member.userId !== currentUserId).map(member => <option key={member.userId} value={member.userId}>{memberNames[member.userId] || member.userId}</option>)}</select></label><button type="button" className="secondary-btn" disabled={!newOwnerUserId || dirty || transferAction.pending} onClick={() => setTransferOpen(true)}>Trasferisci proprietà</button>{transferAction.error && <p role="alert">{transferAction.error}</p>}{transferAction.notice && <p role="status">{transferAction.notice}</p>}</details>}
+      <ConfirmActionDialog open={transferOpen} title="Trasferire la proprietà?" message="Il membro selezionato diventerà il proprietario della campagna. Il tuo ruolo sarà aggiornato secondo le regole del tavolo." confirmLabel="Trasferisci proprietà" onCancel={() => setTransferOpen(false)} onConfirm={() => { setTransferOpen(false); void transferAction.execute(() => onTransfer(newOwnerUserId), 'Proprietà trasferita.') }} />
       <div className="divider" />
       {campaign && campaign.founderId !== currentUserId && (
         <div className="leave-campaign-block">

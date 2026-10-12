@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
+import { useNavigationGuard } from './context/NavigationGuardContext'
 import { AuthScreen } from './features/auth'
 import {
   ApprovalPage, CreateCampaignPage,
@@ -166,6 +167,7 @@ const CAMPAIGN_REQUIRED_TOOLTIP = 'Caricare prima la campagna'
 const MODULE_REQUIRED_BY_SCREEN: Partial<Record<Screen, string>> = {}
 
 function App() {
+  const { requestNavigation } = useNavigationGuard()
   const initialRealmContext = useMemo(() => resolveRealmContextFromPath(window.location.pathname), [])
   const {
     screen,
@@ -347,6 +349,7 @@ function App() {
   const [postLoginError, setPostLoginError] = useState('')
   const [campaignMembershipsLoaded, setCampaignMembershipsLoaded] = useState(false)
   const [routeContextHydratedForUserId, setRouteContextHydratedForUserId] = useState<string | null>(null)
+  const routeContextHydrated = Boolean(activeUserId && routeContextHydratedForUserId === activeUserId)
   const missionShareTargetRef = useRef<MissionShareTarget | null>(null)
   const missionShareTargetAppliedRef = useRef(false)
   const missionShareTargetActivationStartedRef = useRef(false)
@@ -648,7 +651,7 @@ function App() {
     const target = missionShareTargetRef.current
     if (!target || missionShareTargetAppliedRef.current) return
     if (!profile || !activeUserId) return
-    if (!campaignMembershipsLoaded) return
+    if (!campaignMembershipsLoaded || !routeContextHydrated) return
 
     const targetCampaignId = target.campaignId.trim()
     const currentCampaignId = campaignId.trim()
@@ -689,7 +692,7 @@ function App() {
     setSelectedMissionId(target.missionId)
     missionShareTargetAppliedRef.current = true
     missionShareTargetActivationStartedRef.current = false
-  }, [activeUserId, campaignId, campaignMembershipsLoaded, missions, myCampaigns, profile, screen, setScreen, setSelectedMissionId])
+  }, [activeUserId, campaignId, campaignMembershipsLoaded, missions, myCampaigns, profile, routeContextHydrated, screen, setScreen, setSelectedMissionId])
 
   const normalizeLegacyInvitePreview = (preview: CampaignInvitePreviewResponse): InviteAccessPreview => ({
     campaignId: preview.id,
@@ -1362,6 +1365,19 @@ function App() {
     [addEvent, handleLogout, setBusy, setError],
   )
 
+  const refreshPermissionChecklist = useCallback(() =>
+      void run('Checklist permessi aggiornata', async () => {
+        const actions = ['CREATE_ROOM', 'APPROVE_OR_REJECT_APPLICATIONS', 'TRANSFER_OWNERSHIP', 'MANAGE_CAMPAIGN_SETTINGS']
+        const settled = await Promise.all(
+          actions.map(async (actionValue) =>
+            queryClient.fetchQuery({
+              ...campaignQueries.permission(campaignId, actionValue),
+            }),
+          ),
+        )
+        setPermissions(settled)
+      }), [campaignId, run, setPermissions])
+
   const loadCharacterDetailBlock = useCallback(async (targetCampaignId: string, targetCharacterId: string, force = false) => {
     const canLoadHistory = canViewSheetHistoryForCampaign(targetCampaignId)
     const [detailValue, sheetValue, historyValue] = await Promise.all([
@@ -1515,6 +1531,8 @@ function App() {
 
     const campaignMutations = useCampaignMutations({
       campaignId,
+      setPendingApplications,
+      reportRefreshError: () => setError('Richiesta elaborata. Aggiorna gli accessi per rileggere l’elenco.'),
       selectedMissionId,
       selectedMissionChatContext,
       selectedMissionCharacterId,
@@ -1565,6 +1583,8 @@ function App() {
 
     const campaignMemberMutations = useCampaignMemberMutations({
       campaignId,
+      setSelectedCampaignMember,
+      reportRefreshError: () => setError('Operazione completata. Aggiorna il profilo membro per rileggere i dati.'),
       selectedCampaignMember,
       refreshSelectedCampaignMember,
       refreshCampaignMembers: refreshCampaignMemberViews,
@@ -1889,7 +1909,6 @@ function App() {
 
   const activeCampaignListEntry = campaignId ? campaignsForList.find((item) => item.id === campaignId) : undefined
   const activeCampaignIsEnabled = isSystemRole || campaign?.isActive === true || activeCampaignListEntry?.isActive === true
-  const routeContextHydrated = Boolean(activeUserId && routeContextHydratedForUserId === activeUserId)
   const activeCampaignDetailLoaded = Boolean(
     campaignId.trim() && (campaign?.id === campaignId || campaignDetailsById[campaignId]),
   )
@@ -1978,19 +1997,21 @@ function App() {
 
   useEffect(() => {
     if (screen !== 'Approvazione Accessi') return
+    if (!campaignMembershipsLoaded || !routeContextHydrated) return
     if (canAccessCampaignManagement) return
     // Navigation guard: access approval requires campaign management permissions.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setScreen('Scheda Campagna')
-  }, [screen, canAccessCampaignManagement])
+  }, [screen, canAccessCampaignManagement, campaignMembershipsLoaded, routeContextHydrated])
 
   useEffect(() => {
     if (screen !== 'Gestione Campagna') return
+    if (!campaignMembershipsLoaded || !routeContextHydrated) return
     if (canAccessCampaignManagement) return
     // Navigation guard: campaign management requires management permissions.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setScreen('Scheda Campagna')
-  }, [screen, canAccessCampaignManagement])
+  }, [screen, canAccessCampaignManagement, campaignMembershipsLoaded, routeContextHydrated])
 
   useEffect(() => {
     if (!getAccessToken()) return
@@ -2499,7 +2520,7 @@ function App() {
             handleAuth,
             saveProfile: async () => undefined,
             changePassword: async () => undefined,
-            logout: handleLogout,
+            logout: () => requestNavigation(handleLogout),
           }}
         >
           <AuthScreen key={`${realmCode}:${authMode}`} />
@@ -2872,13 +2893,13 @@ function App() {
       }
     }
   })()
-  const goToScreen = (value: Screen) => {
+  const goToScreen = (value: Screen) => requestNavigation(() => {
     if (value === 'Missioni') {
       setSelectedMissionId('')
     }
     setScreen(value)
     setIsSidebarOpen(false)
-  }
+  })
 
   const uiContextValue = {
     screen,
@@ -2897,14 +2918,14 @@ function App() {
     profile,
     handleAuth,
     saveProfile: (draft: Parameters<typeof updateMe>[0]) =>
-      run('Profilo aggiornato', async () => {
+      runResult('Profilo aggiornato', async () => {
         await profileMutations.saveProfile(draft)
       }),
     changePassword: (params: { currentPassword: string; newPassword: string }) =>
-      run('Password aggiornata', async () => {
+      runResult('Password aggiornata', async () => {
         await profileMutations.changePassword(params)
       }),
-    logout: handleLogout,
+    logout: () => requestNavigation(handleLogout),
   }
 
   const campaignContextValue = {
@@ -2987,15 +3008,15 @@ function App() {
     membershipRole: campaign?.id ? campaignsForList.find((item) => item.id === campaign.id)?.membershipRole || null : null,
     pendingApplications,
     loadPendingApplications: () =>
-      void run('Richieste pending caricate', async () => {
-        await loadPendingForActiveCampaign()
+      runResult('Richieste in attesa caricate', async () => {
+        await loadPendingForActiveCampaign({ force: true })
       }),
     approvePendingApplication: (userId: string) =>
-      void run('Approvazione utente completata', async () => {
+      runResult('Approvazione utente completata', async () => {
         await campaignMutations.approvePendingForActiveCampaign(userId)
       }),
     rejectPendingApplication: (userId: string) =>
-      void run('Rifiuto utente completato', async () => {
+      runResult('Rifiuto utente completato', async () => {
         await campaignMutations.rejectPendingForActiveCampaign(userId)
       }),
     createCampaign: (payload: Parameters<typeof campaignCommandMutations.createCampaign>[0]) =>
@@ -3003,26 +3024,15 @@ function App() {
         await campaignCommandMutations.createCampaign(payload)
       }),
     permissions,
-    saveCampaign: (payload: Parameters<typeof campaignCommandMutations.saveCampaign>[1]) => {
-      if (!campaign?.id) return
-      void run('Campagna aggiornata', async () => {
+    saveCampaign: async (payload: Parameters<typeof campaignCommandMutations.saveCampaign>[1]) => {
+      if (!campaign?.id) throw new Error('Campagna non disponibile.')
+      await runResult('Campagna aggiornata', async () => {
         await campaignCommandMutations.saveCampaign(campaign.id, payload)
       })
     },
-    refreshPermissionChecklist: () =>
-      void run('Checklist permessi aggiornata', async () => {
-        const actions = ['CREATE_ROOM', 'APPROVE_OR_REJECT_APPLICATIONS', 'TRANSFER_OWNERSHIP', 'MANAGE_CAMPAIGN_SETTINGS']
-        const settled = await Promise.all(
-          actions.map(async (actionValue) =>
-            queryClient.fetchQuery({
-              ...campaignQueries.permission(campaignId, actionValue),
-            }),
-          ),
-        )
-        setPermissions(settled)
-      }),
+    refreshPermissionChecklist,
     transferCampaignOwnership: (newOwnerId: string) =>
-      void run('Ownership trasferita', async () => {
+      runResult('Ownership trasferita', async () => {
         await campaignCommandMutations.transferCampaignOwnership(campaignId, newOwnerId)
       }),
     deactivateCampaign: async () => {
@@ -3041,37 +3051,37 @@ function App() {
     selectedCampaignMember,
     selectedCampaignMemberProfile,
     refreshSelectedCampaignMember: () =>
-      void run('Profilo membro aggiornato', async () => {
+      runResult('Profilo membro aggiornato', async () => {
         await refreshSelectedCampaignMember()
       }),
     updateSelectedMemberRole: (role: CampaignRole) =>
-      void run('Ruolo membro aggiornato', async () => {
+      runResult('Ruolo membro aggiornato', async () => {
         await campaignMemberMutations.updateSelectedMemberRole(role)
       }),
     banSelectedMember: (reason: string) =>
-      void run('Membro bannato', async () => {
+      runResult('Membro bannato', async () => {
         await campaignMemberMutations.banSelectedMember(reason)
       }),
     suspendSelectedMember: (reason: string) =>
-      void run('Membro sospeso', async () => {
+      runResult('Membro sospeso', async () => {
         await campaignMemberMutations.suspendSelectedMember(reason)
       }),
     unsuspendSelectedMember: () =>
-      void run('Membro riattivato', async () => {
+      runResult('Membro riattivato', async () => {
         await campaignMemberMutations.unsuspendSelectedMember()
       }),
     unbanSelectedMember: () =>
-      void run('Membro sbloccato', async () => {
+      runResult('Membro sbloccato', async () => {
         await campaignMemberMutations.unbanSelectedMember()
       }),
     approveSelectedMember: () =>
-      void run('Membro approvato', async () => {
+      runResult('Membro approvato', async () => {
         await campaignMemberMutations.approveSelectedMember()
       }),
     rooms,
     canCreateRoom,
     createRoom: (payload: { name: string; type: 'ROLEPLAY' | 'SPAM'; ttlHours: number; slowmodeSeconds: number }) =>
-      void run('Stanza creata', async () => {
+      runResult('Stanza creata', async () => {
         await campaignCommandMutations.createRoom(campaignId, payload)
       }),
     hasActiveCampaign,
@@ -3231,11 +3241,11 @@ function App() {
         )
       }),
     joinMission: (missionId: string, participationType: MissionParticipationType) =>
-      void run('Partecipazione missione aggiornata', async () => {
+      runResult('Partecipazione missione aggiornata', async () => {
         await campaignMutations.joinMission(missionId, participationType)
       }),
     leaveMission: (missionId: string) =>
-      void run('Uscita missione completata', async () => {
+      runResult('Uscita missione completata', async () => {
         await campaignMutations.leaveMission(missionId)
       }),
     openMissionCampaign: (targetCampaignId: string) => void activateCampaignAndNavigate(targetCampaignId, 'Missioni'),
@@ -3246,7 +3256,7 @@ function App() {
         await campaignMutations.updateMission(missionId, payload)
       }),
     completeMission: (missionId: string) =>
-      void run('Missione completata', async () => {
+      runResult('Missione completata', async () => {
         if (!campaignId.trim()) {
           throw new Error('Campagna non attiva.')
         }
@@ -3254,7 +3264,7 @@ function App() {
         await refreshMissions({ force: true })
       }),
     cancelMission: (missionId: string) =>
-      void run('Missione cancellata', async () => {
+      runResult('Missione cancellata', async () => {
         await campaignMutations.cancelMission(missionId)
       }),
   }
@@ -3551,7 +3561,7 @@ function App() {
               <Icon name="fa-solid fa-shield-halved" />
               <span>Tema Sistema</span>
             </button>
-            <button type="button" className="logout-btn" onClick={handleLogout}>
+            <button type="button" className="logout-btn" onClick={() => requestNavigation(handleLogout)}>
               <Icon name="fa-solid fa-right-from-bracket" />
               <span>Logout</span>
             </button>
@@ -4792,7 +4802,7 @@ function App() {
         <div className="sidebar-context">
           <p className="sidebar-context-title">{hasActiveCampaign ? activeCampaignLabel : 'Nessuna campagna attiva'}</p>
           {hasActiveCampaign && (
-            <button type="button" className="secondary-btn sidebar-context-action" onClick={openCampaignList}>
+            <button type="button" className="secondary-btn sidebar-context-action" onClick={() => requestNavigation(openCampaignList)}>
               <Icon name="fa-right-left" />
               <span>Cambia campagna</span>
             </button>
@@ -4875,7 +4885,7 @@ function App() {
               <span>{theme === 'light' ? 'Tema scuro' : 'Tema chiaro'}</span>
             </button>
           )}
-          <button type="button" className="logout-btn" onClick={handleLogout}>
+          <button type="button" className="logout-btn" onClick={() => requestNavigation(handleLogout)}>
             <Icon name="fa-solid fa-right-from-bracket" />
             <span>Logout</span>
           </button>
@@ -4969,9 +4979,9 @@ function App() {
         )}
 
         {screen === 'Modifica Profilo' && (
-          <ProfileProvider value={profileContextValue}>
+          <UiProvider value={uiContextValue}><ProfileProvider value={profileContextValue}>
             <EditProfilePage key={profile.id} />
-          </ProfileProvider>
+          </ProfileProvider></UiProvider>
         )}
 
         {screen === 'Gestione Personaggi' && (
