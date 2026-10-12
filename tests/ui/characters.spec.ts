@@ -38,7 +38,7 @@ test('search, ownership, reset and sorting preserve unassigned characters and op
   await expect(browser(page).locator('article').first()).toContainText('Elara')
   await browser(page).getByRole('button', { name: 'Apri scheda Bruno' }).click()
   await expect(page).toHaveURL(/\/personaggio$/)
-  await expect(page.getByRole('heading', { name: 'Scheda PG', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Bruno', exact: true })).toBeVisible()
   await expect(page.getByText('Nessun template configurato', { exact: false })).toBeVisible()
 })
 

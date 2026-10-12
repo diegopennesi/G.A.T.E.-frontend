@@ -8098,3 +8098,46 @@ html[data-theme='light'] .sidebar-drawer .menu-item { border-color: transparent;
 @media (max-width: 600px) { .character-compose-footer button { width: 100%; } }
 
 html[data-theme='light'] .character-compose input::placeholder { color: var(--text-soft); opacity: 1; }
+/* Taste character sheet: identity, editable data, and secondary management. */
+.panel.character-sheet-page { gap: 0; box-shadow: none; }
+.character-sheet-toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.75rem; }
+.character-sheet-toolbar button, .character-sheet-save-bar button { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; }
+.character-sheet-heading { margin-block: 1.5rem; }
+.character-sheet-heading h2 { margin: 0; font-size: clamp(1.5rem, 3vw, 2rem); line-height: 1.2; letter-spacing: -0.025em; overflow-wrap: anywhere; }
+.character-sheet-heading > p { margin-top: 0.75rem; max-width: 65ch; overflow-wrap: anywhere; }
+.character-sheet-alias { color: var(--text-soft); }
+.character-sheet-editor { border-top: 1px solid var(--border); padding-top: 1.5rem; }
+.character-sheet-editor-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; }
+.character-sheet-editor-heading h3 { margin: 0; font-size: 1.25rem; }
+.character-sheet-edit-status { color: var(--text-soft); margin-top: 1rem; }
+.character-sheet-page .sheet-block, .character-sheet-page .sheet-ability-card { border: 0; border-radius: 0; background: transparent; box-shadow: none; padding: 0; }
+.character-sheet-page .sheet-block { border-top: 1px solid var(--border); padding-top: 1.5rem; margin-top: 0.5rem; gap: 1rem; }
+.character-sheet-page .sheet-block-head h4 { font-size: 1.1rem; font-weight: 600; }
+.character-sheet-page .sheet-block-head p { margin: 0.5rem 0 0; }
+.character-sheet-page .sheet-field-label { display: inline-flex; align-items: center; gap: 0.25rem; margin: 0; color: var(--text); }
+.character-sheet-page .sheet-field-help { color: var(--text-soft); font-size: 0.85rem; line-height: 1.5; }
+.character-sheet-page .sheet-field { align-content: start; gap: 0.5rem; }
+.character-sheet-page .sheet-boolean-field { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; min-height: 44px; }
+.character-sheet-page .sheet-boolean-field input { width: 1.1rem; height: 1.1rem; accent-color: var(--accent); }
+.character-sheet-page .sheet-fields-grid { gap: 1.25rem; }
+.character-sheet-page .sheet-fields-grid > .sheet-field:has(textarea) { grid-column: 1 / -1; }
+.character-sheet-page input::placeholder, .character-sheet-page textarea::placeholder, html[data-theme='light'] .character-sheet-page input::placeholder, html[data-theme='light'] .character-sheet-page textarea::placeholder { color: var(--text-soft); opacity: 1; }
+.character-sheet-save-bar { border-top: 1px solid var(--border); margin-top: 1.5rem; padding-top: 1rem; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; }
+.character-sheet-save-bar p { margin: 0; }
+.character-sheet-save-bar .inline-actions { margin: 0; flex-wrap: wrap; }
+.character-sheet-notice { color: var(--text); margin-block: 1rem; }
+.character-sheet-disclosure { border-top: 1px solid var(--border); margin-top: 1.5rem; padding-top: 1rem; }
+.character-sheet-disclosure > summary { cursor: pointer; font-weight: 600; color: var(--text); padding-block: 0.5rem; }
+.character-sheet-disclosure > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.character-sheet-page .sheet-review-panel, .character-sheet-page .sheet-review-item { background: transparent; border-radius: 0; box-shadow: none; padding: 1rem 0; border: 0; }
+.character-sheet-page .sheet-review-panel { border-block: 1px solid var(--border); }
+.character-sheet-page .sheet-review-panel h3 { margin: 0; font-size: 1.1rem; }
+.character-sheet-page .sheet-review-item { border-top: 1px solid var(--border); }
+.character-sheet-page .sheet-review-item:first-of-type { border-top: 0; }
+.character-sheet-page .sheet-review-change-list li { overflow-wrap: anywhere; }
+.character-sheet-page .sheet-review-actions label { color: var(--text); }
+@media (max-width: 600px) {
+  .character-sheet-save-bar .inline-actions { width: 100%; }
+  .character-sheet-save-bar .inline-actions button { flex: 1 1 auto; }
+  .character-sheet-toolbar button { flex: 1 1 auto; }
+}

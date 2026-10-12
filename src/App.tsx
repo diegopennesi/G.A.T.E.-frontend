@@ -1362,13 +1362,13 @@ function App() {
     [addEvent, handleLogout, setBusy, setError],
   )
 
-  const loadCharacterDetailBlock = useCallback(async (targetCampaignId: string, targetCharacterId: string) => {
+  const loadCharacterDetailBlock = useCallback(async (targetCampaignId: string, targetCharacterId: string, force = false) => {
     const canLoadHistory = canViewSheetHistoryForCampaign(targetCampaignId)
     const [detailValue, sheetValue, historyValue] = await Promise.all([
-      readOrFetchQuery(queryClient, characterQueries.detail(targetCampaignId, targetCharacterId)),
-      readOrFetchQuery(queryClient, characterQueries.sheet(targetCampaignId, targetCharacterId)),
+      readOrFetchQuery(queryClient, characterQueries.detail(targetCampaignId, targetCharacterId), { force }),
+      readOrFetchQuery(queryClient, characterQueries.sheet(targetCampaignId, targetCharacterId), { force }),
       canLoadHistory
-        ? readOrFetchQuery(queryClient, characterQueries.sheetHistory(targetCampaignId, targetCharacterId))
+        ? readOrFetchQuery(queryClient, characterQueries.sheetHistory(targetCampaignId, targetCharacterId), { force })
         : Promise.resolve([] as CharacterSheetReviewResponse[]),
     ])
     setCharacterDetail(detailValue)
@@ -3084,6 +3084,14 @@ function App() {
     confirmLeaveCampaign: () => void leaveActiveCampaign(),
   }
 
+  const refreshAfterCharacterWrite = async (targetCampaignId: string, characterId: string) => {
+    try { await loadCharacterDetailBlock(targetCampaignId, characterId, true) }
+    catch {
+      setError('Operazione completata, ma non riesco a rileggere la scheda. Usa Aggiorna scheda tra poco.')
+      addEvent('Operazione personaggio completata; rilettura non disponibile', 'error')
+    }
+  }
+
   const characterContextValue = {
     characterDraftKey: `gate_character_draft:${realmCode}:${profile?.id || ''}:${campaignId}`,
     creationCampaignName: campaign?.name || activeCampaignMembership?.campaignName || '',
@@ -3118,14 +3126,17 @@ function App() {
     characterDetail,
     characterSheetDetail,
     characterSheetHistory,
-    refreshCharacterDetail: () => void refreshCharacterBlock(),
+    refreshCharacterDetail: () => runResult('Scheda personaggio caricata', async () => {
+      const targetCampaignId = selectedCharacter?.campaignId || campaignId
+      if (targetCampaignId && selectedCharacterId) await loadCharacterDetailBlock(targetCampaignId, selectedCharacterId, true)
+    }),
     saveCharacterSheet: (dataJson: Record<string, unknown>) =>
-      run('Scheda personaggio salvata', async () => {
+      runResult('Scheda personaggio salvata', async () => {
         if (!selectedCharacterId) return
         const detailCampaignId = selectedCharacter?.campaignId || campaignId
         if (!detailCampaignId) return
         await characterMutations.saveCharacterSheet(detailCampaignId, selectedCharacterId, dataJson)
-        await loadCharacterDetailBlock(detailCampaignId, selectedCharacterId)
+        await refreshAfterCharacterWrite(detailCampaignId, selectedCharacterId)
       }),
     canViewSheetHistory: selectedCharacter
       ? canViewSheetHistoryForCampaign(selectedCharacter.campaignId || campaignId)
@@ -3134,25 +3145,25 @@ function App() {
       ? canReviewSheetChangesForCampaign(selectedCharacter.campaignId || campaignId)
       : false,
     approveCharacterSheetReview: (reviewId: string, note?: string) =>
-      run('Modifica scheda approvata', async () => {
+      runResult('Modifica scheda approvata', async () => {
         if (!selectedCharacterId) return
         const detailCampaignId = selectedCharacter?.campaignId || campaignId
         if (!detailCampaignId) return
         await characterMutations.approveCharacterSheetReview(detailCampaignId, selectedCharacterId, reviewId, note)
-        await loadCharacterDetailBlock(detailCampaignId, selectedCharacterId)
+        await refreshAfterCharacterWrite(detailCampaignId, selectedCharacterId)
       }),
     rejectCharacterSheetReview: (reviewId: string, note?: string) =>
-      run('Modifica scheda rifiutata', async () => {
+      runResult('Modifica scheda rifiutata', async () => {
         if (!selectedCharacterId) return
         const detailCampaignId = selectedCharacter?.campaignId || campaignId
         if (!detailCampaignId) return
         await characterMutations.rejectCharacterSheetReview(detailCampaignId, selectedCharacterId, reviewId, note)
-        await loadCharacterDetailBlock(detailCampaignId, selectedCharacterId)
+        await refreshAfterCharacterWrite(detailCampaignId, selectedCharacterId)
       }),
     canMarkCharacterDead,
     canReactivateCharacter,
     updateCharacterStatus: (status: CharacterStatus) =>
-      void run('Stato personaggio aggiornato', async () => {
+      runResult('Stato personaggio aggiornato', async () => {
         if (!selectedCharacter) return
         const targetCampaignId = selectedCharacter.campaignId || campaignId
         if (!targetCampaignId) return
@@ -4971,7 +4982,7 @@ function App() {
 
         {screen === 'Scheda PG' && (
           <CharacterProvider value={characterContextValue}>
-            <CharacterDetailPage key={`${selectedCharacterId || 'no-character'}-${characterSheetDetail?.updatedAt || characterSheetDetail?.schemaVersion || 'no-sheet'}-${characterSheetDetail?.pendingReview?.id || 'no-review'}`} />
+            <CharacterDetailPage key={`${realmCode}-${profile?.id}-${selectedCharacterId || 'no-character'}`} />
           </CharacterProvider>
         )}
 

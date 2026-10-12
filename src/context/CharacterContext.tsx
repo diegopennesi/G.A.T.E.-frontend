@@ -23,7 +23,7 @@ export type CharacterContextValue = {
   characterDetail: Character | null
   characterSheetDetail: CharacterSheetResponse | null
   characterSheetHistory: CharacterSheetReviewResponse[]
-  refreshCharacterDetail: () => void
+  refreshCharacterDetail: () => Promise<void>
   saveCharacterSheet: (dataJson: Record<string, unknown>) => Promise<void>
   canViewSheetHistory: boolean
   canReviewSheetChanges: boolean
@@ -31,7 +31,7 @@ export type CharacterContextValue = {
   rejectCharacterSheetReview: (reviewId: string, note?: string) => Promise<void>
   canMarkCharacterDead: (character: Character | null) => boolean
   canReactivateCharacter: (character: Character | null) => boolean
-  updateCharacterStatus: (status: CharacterStatus) => void
+  updateCharacterStatus: (status: CharacterStatus) => Promise<void>
   preferredCharacterId: string
   applyCharacterToCampaign: (characterId: string) => void
   hasActiveCampaign: boolean

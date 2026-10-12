@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import type { Character, CampaignResponse, CampaignMembershipResponse, CampaignRole, MissionResponse, UserProfile } from '../../src/types/domain'
+import type { Character, CharacterSheetResponse, CharacterSheetReviewResponse, CampaignResponse, CampaignMembershipResponse, CampaignRole, MissionResponse, UserProfile } from '../../src/types/domain'
 
 const now = '2026-07-23T10:00:00Z'
 export const profile: UserProfile = {
@@ -36,6 +36,9 @@ export async function installApi(page: Page, authenticated = true) {
     lastMissionPayload: null as Record<string, unknown> | null,
     missions: [initialMission],
     characters: [] as Character[], failCharacterRead: false, delayCharacterRead: 0,
+    sheets: {} as Record<string, CharacterSheetResponse>, sheetSaves: 0, failSheetSave: false, failSheetRead: false, lastSheetPayload: null as Record<string, unknown> | null,
+    sheetHistory: [] as CharacterSheetReviewResponse[], reviewSubmissions: 0, failReview: false, lastReviewPayload: null as Record<string, unknown> | null,
+    statusUpdates: 0, failStatusUpdate: false,
     characterCreates: 0, failCharacterCreate: false, lastCharacterPayload: null as Record<string, unknown> | null,
     messages: [] as Array<Record<string, unknown>>,
     unknown: [] as string[],
@@ -124,11 +127,48 @@ export async function installApi(page: Page, authenticated = true) {
       if (state.delayCharacterRead) await new Promise(resolve => setTimeout(resolve, state.delayCharacterRead))
       return state.failCharacterRead ? error() : reply(state.characters)
     }
+    const reviewMatch = path.match(/\/characters\/([^/]+)\/sheet\/reviews\/([^/]+)\/(approve|reject)$/)
+    if (reviewMatch && method === 'POST') {
+      state.reviewSubmissions++
+      state.lastReviewPayload = request.postDataJSON()
+      await mutation()
+      if (state.failReview) return error()
+      const sheet = state.sheets[reviewMatch[1]]
+      const pending = sheet.pendingReview
+      if (pending) {
+        const status = reviewMatch[3] === 'approve' ? 'APPROVED' : 'REJECTED'
+        const review = { ...pending, campaignId: campaign.id, characterId: reviewMatch[1], sheetTypeCode: sheet.sheetTypeCode || '', gameSystemCode: sheet.gameSystemCode || '', schemaVersion: sheet.schemaVersion, status, reviewedByUserId: profile.id, baseDataJson: sheet.dataJson, proposedDataJson: sheet.dataJson, reviewNote: request.postDataJSON().note || null, reviewedAt: '2026-10-12T10:00:00Z' }
+        if (status === 'APPROVED') for (const change of pending.changes) sheet.dataJson = { ...sheet.dataJson, [change.path]: change.newValue }
+        sheet.pendingReview = null
+        state.sheetHistory = [review as CharacterSheetReviewResponse]
+        return reply(review)
+      }
+    }
+    const statusMatch = path.match(/\/characters\/([^/]+)\/status$/)
+    if (statusMatch && method === 'PATCH') {
+      state.statusUpdates++
+      await mutation()
+      if (state.failStatusUpdate) return error()
+      const character = state.characters.find(item => item.id === statusMatch[1])
+      if (character) { character.characterStatus = request.postDataJSON().status; return reply(character) }
+    }
     const characterMatch = path.match(/\/characters\/([^/]+)(\/sheet(?:\/history)?)?$/)
     if (characterMatch) {
       const character = state.characters.find(item => item.id === characterMatch[1])
-      if (characterMatch[2] === '/sheet/history') return reply([])
-      if (characterMatch[2] === '/sheet') return reply({ characterId: character?.id, campaignId: campaign.id, gameSystemCode: 'DND5E', sheetTypeCode: null, schemaVersion: 1, schemaJson: {}, dataJson: {}, catalogOptions: {}, derivedJson: {}, hasTemplate: false, editable: true, updatedAt: now })
+      if (characterMatch[2] === '/sheet/history') return reply(state.sheetHistory)
+      if (characterMatch[2] === '/sheet') {
+        if (method === 'PATCH') {
+          state.sheetSaves++
+          state.lastSheetPayload = request.postDataJSON().dataJson
+          await mutation()
+          if (state.failSheetSave) return error()
+          state.sheets[characterMatch[1]] = { ...state.sheets[characterMatch[1]], dataJson: request.postDataJSON().dataJson, updatedAt: '2026-10-12T10:00:00Z' }
+          return reply(state.sheets[characterMatch[1]])
+        }
+        if (state.failSheetRead) return error()
+        if (state.sheets[characterMatch[1]]) return reply(state.sheets[characterMatch[1]])
+        return reply({ characterId: character?.id, campaignId: campaign.id, gameSystemCode: 'DND5E', sheetTypeCode: null, schemaVersion: 1, schemaJson: {}, dataJson: {}, catalogOptions: {}, derivedJson: {}, hasTemplate: false, editable: true, updatedAt: now })
+      }
       if (character) return reply(character)
     }
     if (/\/(characters|rooms|participants|pending|mission-rules)$/.test(path)) return reply([])

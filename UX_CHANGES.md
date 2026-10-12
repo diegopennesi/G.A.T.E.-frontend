@@ -41,3 +41,13 @@ Workflow usato: Taste entry-taste, con frontend-ui-engineering per la schermata 
 La bozza in sessionStorage è separata per reame, utente e campagna; ritorno e reload conservano i valori, la creazione riuscita la rimuove. L’invio è asincrono: campi e pulsanti si bloccano durante la richiesta, una richiesta fallita mantiene il form e rende possibile riprovare. Una creazione riuscita porta all’elenco anche se la sua rilettura fallisce. Se il browser impedisce il salvataggio della bozza, l’uscita mantiene il form con istruzione di copia e azione esplicita per uscire senza salvare.
 
 Test UI su localhost con API simulate: bozza, validazione, errori e invio, PG/NPC per master e giocatori, tastiera, separazione delle bozze e memoria browser non disponibile. Layout verificato nei temi chiaro/scuro a 320, 390, 768, 1024 e 1440 px. Nessuna dipendenza o modifica backend aggiunta.
+
+## Scheda personaggio con Taste
+
+Identità, soprannome, proprietario e campagna aprono la scheda. I dati di gioco hanno priorità rispetto al cambio di stato, spostato in una sezione espandibile con stati in italiano e permessi di riattivazione/decesso invariati. Una sola azione aggiorna la scheda tramite una lettura effettiva delle API. Template mancanti, sola lettura, personaggio non attivo e approvazione in attesa hanno testi specifici.
+
+I campi dei template hanno etichette collegate, istruzioni accessibili e validazione nativa dei campi obbligatori e dei limiti numerici. I modificatori DND continuano a seguire la bozza delle caratteristiche. L'editor segnala modifiche non salvate, blocca richieste parallele e conserva la bozza durante gli errori. Il ritorno tramite Torna ai personaggi e lo scarto della bozza richiedono una conferma quando ci sono modifiche; il browser segnala anche uscita/reload. La bozza vive nella pagina aperta, senza persistenza dopo reload o navigazione dalle altre voci del menu.
+
+Le riletture conservano le modifiche in corso; se arriva una versione server diversa, il salvataggio si blocca per evitare di sovrascriverla e offre lo scarto esplicito della bozza. Il salvataggio già accettato dal backend rimane un successo anche se la rilettura fallisce. Revisioni in attesa visibili, note conservate durante gli errori, azioni in italiano e storico espandibile; una revisione confermata non offre un secondo invio quando la rilettura successiva non è disponibile.
+
+Verifica: template con testo, selezioni, numeri, checkbox e tag; validazione numerica, modificatori, errori di salvataggio/rilettura, conferma di scarto, ruoli e sola lettura, approvazione con nota, cambio stato e tastiera. Layout a 320/390/768/1024/1440 px nei temi chiaro/scuro. Test su localhost con API simulate; backend non modificato.
