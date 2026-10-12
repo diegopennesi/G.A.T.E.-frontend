@@ -33,3 +33,11 @@ L’elenco dà priorità a ricerca e filtro Solo i miei. Tipo e stato restano se
 Crea personaggio rispetta la campagna attiva, il limite di un PG attivo e i permessi NPC. Lo stato vuoto distingue assenza di personaggi da filtri senza risultati. L’aggiornamento blocca invii ripetuti, conserva risultati e filtri se una campagna non risponde, mostra l’errore e consente di riprovare. I risultati dell’elenco sono separati dal caricamento della campagna e identificati per utente, reame e ruoli, evitando che letture parallele sovrascrivano la selezione dei personaggi consultabili. La prima lettura fallita mostra recupero dall’errore, non un falso elenco vuoto.
 
 Verifica: ricerca/possessore/ordinamento, apertura della scheda corretta, limiti giocatore, filtro stato da tastiera, refresh fallito e riprova, prima lettura fallita, layout con nomi lunghi a 320/390/1280 px nei temi chiaro e scuro. API simulate su localhost; backend e editor della scheda non modificati in questo step.
+
+## Creazione personaggio con Taste
+
+Workflow usato: Taste entry-taste, con frontend-ui-engineering per la schermata operativa; si conserva il sistema visivo già approvato. Nome vuoto e obbligatorio in primo piano, campagna indicata, scelta PG/NPC con radio native e spiegazioni dei limiti. Soprannome e indirizzo del ritratto sono facoltativi ed espandibili. I campi rispettano i limiti backend esistenti (120/120/500 caratteri); l’indirizzo immagine usa validazione URL nativa, anche quando la sezione è chiusa.
+
+La bozza in sessionStorage è separata per reame, utente e campagna; ritorno e reload conservano i valori, la creazione riuscita la rimuove. L’invio è asincrono: campi e pulsanti si bloccano durante la richiesta, una richiesta fallita mantiene il form e rende possibile riprovare. Una creazione riuscita porta all’elenco anche se la sua rilettura fallisce. Se il browser impedisce il salvataggio della bozza, l’uscita mantiene il form con istruzione di copia e azione esplicita per uscire senza salvare.
+
+Test UI su localhost con API simulate: bozza, validazione, errori e invio, PG/NPC per master e giocatori, tastiera, separazione delle bozze e memoria browser non disponibile. Layout verificato nei temi chiaro/scuro a 320, 390, 768, 1024 e 1440 px. Nessuna dipendenza o modifica backend aggiunta.

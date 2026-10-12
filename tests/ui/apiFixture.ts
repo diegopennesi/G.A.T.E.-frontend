@@ -36,6 +36,7 @@ export async function installApi(page: Page, authenticated = true) {
     lastMissionPayload: null as Record<string, unknown> | null,
     missions: [initialMission],
     characters: [] as Character[], failCharacterRead: false, delayCharacterRead: 0,
+    characterCreates: 0, failCharacterCreate: false, lastCharacterPayload: null as Record<string, unknown> | null,
     messages: [] as Array<Record<string, unknown>>,
     unknown: [] as string[],
   }
@@ -111,6 +112,15 @@ export async function installApi(page: Page, authenticated = true) {
       return reply({ room: { id: 'ui-chat', campaignId: campaign.id, roomType: 'MISSION', missionId: initialMission.id, title: 'Chat della torre', slowmodeSeconds: 0, maxPersistedMessages: 100, pruneAfterHours: null, isActive: true, createdAt: now }, messages: state.messages })
     }
     if (path === `/campaigns/${campaign.id}/characters`) {
+      if (method === 'POST') {
+        state.characterCreates++
+        state.lastCharacterPayload = request.postDataJSON()
+        await mutation()
+        if (state.failCharacterCreate) return error()
+        const created: Character = { id: `created-character-${state.characterCreates}`, userId: profile.id, ownerProfileName: profile.profileName, name: String(state.lastCharacterPayload?.name), nickname: String(state.lastCharacterPayload?.nickname || '') || null, portraitUrl: String(state.lastCharacterPayload?.portraitUrl || '') || null, isNpc: state.lastCharacterPayload?.isNpc === true, campaignId: campaign.id, characterStatus: 'ACTIVE', createdAt: now }
+        state.characters.push(created)
+        return reply(created)
+      }
       if (state.delayCharacterRead) await new Promise(resolve => setTimeout(resolve, state.delayCharacterRead))
       return state.failCharacterRead ? error() : reply(state.characters)
     }

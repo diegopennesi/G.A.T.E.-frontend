@@ -3085,6 +3085,9 @@ function App() {
   }
 
   const characterContextValue = {
+    characterDraftKey: `gate_character_draft:${realmCode}:${profile?.id || ''}:${campaignId}`,
+    creationCampaignName: campaign?.name || activeCampaignMembership?.campaignName || '',
+    closeCreateCharacter: () => setScreen('Gestione Personaggi'),
     currentUserId: profile?.id || '',
     charactersLoaded: characterManagementResult?.scope === characterManagementScope,
     charactersLoadFailed: characterManagementResult?.scope === characterManagementScope && characterManagementResult.failed,
@@ -3164,7 +3167,7 @@ function App() {
     canCreatePlayerCharacter,
     canCreateNpc,
     createCharacter: (payload: { name: string; nickname?: string; portraitUrl?: string; isNpc?: boolean }) =>
-      void run('Personaggio creato', async () => {
+      runResult('Personaggio creato', async () => {
         await characterMutations.createCharacter(payload)
       }),
   }
@@ -4992,7 +4995,7 @@ function App() {
 
         {screen === 'Crea Personaggio' && (
           <CharacterProvider value={characterContextValue}>
-            <CreateCharacterPage key={`${canCreatePlayerCharacter}-${canCreateNpc}`} />
+            <CreateCharacterPage key={`${realmCode}-${profile?.id}-${campaignId}-${canCreatePlayerCharacter}-${canCreateNpc}`} />
           </CharacterProvider>
         )}
         {isLeaveCampaignOpen && (
