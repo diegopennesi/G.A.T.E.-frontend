@@ -1,3 +1,5 @@
+import type { Dispatch, SetStateAction } from 'react'
+import type { CampaignApplicationResponse } from '../types/domain'
 import { useMutation } from '@tanstack/react-query'
 import { queryClient } from '../services/queryClient'
 import { queryKeys } from '../services/queryKeys'
@@ -18,6 +20,8 @@ import {
 
 type MutationDeps = {
   campaignId: string
+  setPendingApplications: Dispatch<SetStateAction<CampaignApplicationResponse[]>>
+  reportRefreshError: () => void
   selectedMissionId: string
   selectedMissionChatContext: { campaignId: string; missionId: string } | null
   selectedMissionCharacterId: string
@@ -82,19 +86,25 @@ export function useCampaignMutations(deps: MutationDeps) {
 
   const approvePendingMutation = useMutation({
     mutationFn: (userId: string) => approveApplication(deps.campaignId, userId),
-    onSuccess: async () => {
+    onSuccess: async (_updated, userId) => {
+      deps.setPendingApplications(previous => previous.filter(item => item.userId !== userId))
+      try {
       await invalidateCampaignSideData(deps.campaignId)
       await invalidateBootstrap()
       await deps.loadPendingForActiveCampaign({ force: true })
       await deps.refreshProfile({ force: true })
+      } catch { deps.reportRefreshError() }
     },
   })
 
   const rejectPendingMutation = useMutation({
     mutationFn: (userId: string) => rejectApplication(deps.campaignId, userId),
-    onSuccess: async () => {
+    onSuccess: async (_updated, userId) => {
+      deps.setPendingApplications(previous => previous.filter(item => item.userId !== userId))
+      try {
       await invalidateCampaignSideData(deps.campaignId)
       await deps.loadPendingForActiveCampaign({ force: true })
+      } catch { deps.reportRefreshError() }
     },
   })
 

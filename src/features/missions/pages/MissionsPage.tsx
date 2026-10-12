@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useAsyncAction } from '../../../hooks/useAsyncAction'
+import { useNavigationGuard, useUnsavedChanges } from '../../../context/NavigationGuardContext'
+import { useMemo, useRef, useState } from 'react'
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
 import { Skeleton } from 'primereact/skeleton'
 import { useMissionContext } from '../../../context'
@@ -366,8 +368,11 @@ export function MissionsPage() {
     completeMission: onCompleteMission,
     cancelMission: onCancelMission,
   } = useMissionContext()
+  const { requestNavigation } = useNavigationGuard()
+  const operation = useAsyncAction()
   const [mode, setMode] = useState<'browse' | 'create'>('browse')
   const [createDraft, setCreateDraft] = useState<MissionDraft>(defaultDraft)
+  const [initialCreateDraft, setInitialCreateDraft] = useState(createDraft)
   const [createError, setCreateError] = useState('')
   const [creating, setCreating] = useState(false)
   const createLock = useRef(false)
@@ -380,7 +385,8 @@ export function MissionsPage() {
   const [participantSortDirection, setParticipantSortDirection] = useState<'asc' | 'desc'>('asc')
   const [now, setNow] = useState(Date.now)
   const [editingMissionId, setEditingMissionId] = useState<string | null>(null)
-  const [isDetailVisible, setIsDetailVisible] = useState(false)
+  const [closedMissionId, setClosedMissionId] = useState<string | null>(null)
+  const isDetailVisible = Boolean(selectedMission && closedMissionId !== selectedMission.id)
   const [detailPane, setDetailPane] = useState<'summary' | 'chat'>('summary')
   const [chatReturnTarget, setChatReturnTarget] = useState<'list' | 'summary'>('summary')
   const [confirmAction, setConfirmAction] = useState<null | 'leave' | 'complete' | 'cancel'>(null)
@@ -391,6 +397,7 @@ export function MissionsPage() {
   const hasActiveCampaign = Boolean(activeCampaignId)
   const canUseCreateMode = canCreateMissions && hasActiveCampaign
   const visibleMode = mode === 'create' && canUseCreateMode ? 'create' : 'browse'
+  useUnsavedChanges(visibleMode === 'create' && JSON.stringify(createDraft) !== JSON.stringify(initialCreateDraft), creating || operation.pending)
   const selectedMissionInActiveCampaign = Boolean(selectedMission && selectedMission.campaignId === activeCampaignId)
   const canShareSelectedMission = Boolean(selectedMission) && selectedMissionInActiveCampaign
   const campaignFilter = activeCampaignId ? campaignFilters[activeCampaignId] || 'all' : 'all'
@@ -540,20 +547,12 @@ export function MissionsPage() {
     (mission.createdBy === currentUserId || Boolean(myMissionParticipationById[mission.id]))
   const showMissionSkeleton = pendingCount > 0 && missions.length === 0
 
-  useEffect(() => {
-    if (selectedMission || !isDetailVisible) return
-    setIsDetailVisible(false)
-    setDetailPane('summary')
-    setChatReturnTarget('summary')
-    onCloseMissionChat()
-  }, [isDetailVisible, onCloseMissionChat, selectedMission])
-
   const openMissionSummary = (mission: MissionResponse) => {
     onSelectMission(mission.id)
     onCloseMissionChat()
     setEditingMissionId(null)
     setMode('browse')
-    setIsDetailVisible(true)
+    setClosedMissionId(null)
     setDetailPane('summary')
     setChatReturnTarget('summary')
   }
@@ -562,7 +561,7 @@ export function MissionsPage() {
     onSelectMission(mission.id)
     setEditingMissionId(null)
     setMode('browse')
-    setIsDetailVisible(true)
+    setClosedMissionId(null)
     setDetailPane('chat')
     setChatReturnTarget('list')
     onOpenMissionChat(mission.campaignId, mission.id)
@@ -577,7 +576,9 @@ export function MissionsPage() {
     setCreateError('')
     try {
       await onCreate(payload)
-      setCreateDraft(defaultDraft())
+      const resetDraft = defaultDraft()
+      setInitialCreateDraft(resetDraft)
+      setCreateDraft(resetDraft)
       setMode('browse')
     } catch (err) {
       setCreateError(`${toMessage(err)} La bozza è stata conservata: puoi riprovare.`)
@@ -672,7 +673,6 @@ export function MissionsPage() {
     const missingActiveCharacterInCampaign = selectedMissionInActiveCampaign && Boolean(activeCampaignRole) && !activeCampaignCharacterId
     const selectedMissionCanOpenChat = canOpenMissionChat(selectedMission)
     const detailRows: MissionDetailRow[] = [
-      { key: 'title', label: 'Titolo', value: selectedMission.title },
       { key: 'creator', label: 'Creatore', value: selectedMissionCreatorLabel },
       { key: 'session', label: 'Sessione', value: formatMissionDateTime(selectedMission.sessionAt) },
       { key: 'closing', label: 'Chiusura', value: formatMissionDateTime(selectedMission.closesAt) },
@@ -694,25 +694,25 @@ export function MissionsPage() {
             <button
               type="button"
               className="secondary-btn mission-back-btn"
-              onClick={() => {
+              onClick={() => requestNavigation(() => {
                 if (detailPane === 'chat') {
                   onCloseMissionChat()
                   if (chatReturnTarget === 'list') {
-                    setIsDetailVisible(false)
+                    setClosedMissionId(selectedMission?.id ?? null)
                     setDetailPane('summary')
                     return
                   }
                   setDetailPane('summary')
                   return
                 }
-                setIsDetailVisible(false)
+                setClosedMissionId(selectedMission?.id ?? null)
                 onCloseMissionChat()
-              }}
+              })}
             >
               <Icon name="fa-solid fa-chevron-left" />
-              {detailPane === 'chat' ? (chatReturnTarget === 'list' ? 'Torna alle missioni' : 'Torna al riepilogo') : 'Torna indietro'}
+              {detailPane === 'chat' ? (chatReturnTarget === 'list' ? 'Torna alle missioni' : 'Torna al riepilogo') : 'Torna alle missioni'}
             </button>
-            <h3 className="section-title">Missione</h3>
+            <h3 className="section-title">{selectedMission.title}</h3>
             <p className="muted">Campagna: <strong>{missionCampaignName}</strong></p>
             {detailPane === 'summary' && (
               <div className="mission-title-inline-badges">
@@ -790,6 +790,8 @@ export function MissionsPage() {
           )}
         </section>
 
+        {operation.error && <p role="alert">{operation.error}</p>}{operation.notice && <p role="status">{operation.notice}</p>}{operation.pending && <p role="status">Aggiornamento della partecipazione…</p>}
+        <p className="muted">I titolari contribuiscono al numero minimo di partecipanti. La panchina resta disponibile per eventuali sostituzioni.</p>
         <div className="mission-join-table">
           <div>
             <FieldLabel icon="fa-solid fa-people-group" label="Come entrare" />
@@ -798,8 +800,9 @@ export function MissionsPage() {
                 <button
                   type="button"
                   className={`segmented-btn ${myMissionParticipation === 'TITOLARE' ? 'is-active' : ''}`}
+                  aria-pressed={myMissionParticipation === 'TITOLARE'} disabled={operation.pending}
                   onClick={() => {
-                    onJoinMission(selectedMission.id, 'TITOLARE')
+                    void operation.execute(() => onJoinMission(selectedMission.id, 'TITOLARE'), 'Partecipazione aggiornata.')
                   }}
                 >
                   Titolare
@@ -807,8 +810,9 @@ export function MissionsPage() {
                 <button
                   type="button"
                   className={`segmented-btn ${myMissionParticipation === 'NON_TITOLARE' ? 'is-active' : ''}`}
+                  aria-pressed={myMissionParticipation === 'NON_TITOLARE'} disabled={operation.pending}
                   onClick={() => {
-                    onJoinMission(selectedMission.id, 'NON_TITOLARE')
+                    void operation.execute(() => onJoinMission(selectedMission.id, 'NON_TITOLARE'), 'Partecipazione aggiornata.')
                   }}
                 >
                   Panchina
@@ -984,7 +988,7 @@ export function MissionsPage() {
             onClose={() => {
               onCloseMissionChat()
               if (chatReturnTarget === 'list') {
-                setIsDetailVisible(false)
+                setClosedMissionId(selectedMission?.id ?? null)
                 setDetailPane('summary')
                 return
               }
@@ -1307,7 +1311,7 @@ export function MissionsPage() {
         tone="danger"
         onCancel={() => setConfirmAction(null)}
         onConfirm={() => {
-          if (selectedMission) onLeaveMission(selectedMission.id)
+          if (selectedMission) void operation.execute(() => onLeaveMission(selectedMission.id), 'Missione aggiornata.')
           setConfirmAction(null)
         }}
       />
@@ -1318,7 +1322,7 @@ export function MissionsPage() {
         confirmLabel="Segna completata"
         onCancel={() => setConfirmAction(null)}
         onConfirm={() => {
-          if (selectedMission) onCompleteMission(selectedMission.id)
+          if (selectedMission) void operation.execute(() => onCompleteMission(selectedMission.id), 'Missione aggiornata.')
           setConfirmAction(null)
         }}
       />
@@ -1330,7 +1334,7 @@ export function MissionsPage() {
         tone="danger"
         onCancel={() => setConfirmAction(null)}
         onConfirm={() => {
-          if (selectedMission) onCancelMission(selectedMission.id)
+          if (selectedMission) void operation.execute(() => onCancelMission(selectedMission.id), 'Missione aggiornata.')
           setConfirmAction(null)
         }}
       />
@@ -1390,6 +1394,8 @@ function MissionEditForm({
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const saveLock = useRef(false)
+  const { requestNavigation } = useNavigationGuard()
+  useUnsavedChanges(JSON.stringify(draft) !== JSON.stringify(draftFromMission(mission)), saving)
 
   const handleSubmit = async () => {
     if (saveLock.current) return
@@ -1410,7 +1416,7 @@ function MissionEditForm({
 
   return (
     <div className="subpanel mission-form-panel">
-      <MissionForm draft={draft} setDraft={setDraft} error={error} setError={setError} submitLabel="Salva modifica" onSubmit={() => void handleSubmit()} onCancel={onCancel} saving={saving} />
+      <MissionForm draft={draft} setDraft={setDraft} error={error} setError={setError} submitLabel="Salva modifica" onSubmit={() => void handleSubmit()} onCancel={() => requestNavigation(onCancel)} saving={saving} />
     </div>
   )
 }

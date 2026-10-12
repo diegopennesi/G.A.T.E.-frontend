@@ -775,13 +775,13 @@ test('access request realtime event updates active campaign pending badge bridge
   expect(calls.refreshMissions).toBeUndefined()
 })
 
-test('mission realtime event updates missions bridge when missions screen is open', async () => {
+test('mission realtime event refreshes the list while preserving the open mission', async () => {
   const calls = await applyRealtime(['campaigns:campaign-1:missions'], {
     screen: 'Missioni',
     campaignId: 'campaign-1',
   })
 
-  expect(calls.refreshMissions).toEqual([{ clearSelection: true }])
+  expect(calls.refreshMissions).toEqual([{ clearSelection: false }])
   expect(calls.loadPendingForActiveCampaign).toBeUndefined()
   expect(calls.refreshCampaignBlock).toBeUndefined()
 })

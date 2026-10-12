@@ -15,6 +15,7 @@
     "lint": "eslint .",
     "test:cache": "playwright test smoke-cache-realtime-contract.spec.ts",
     "test:ui": "playwright test --config playwright.ui.config.ts",
+    "test:local": "playwright test --config playwright.local.config.ts",
     "preview": "vite preview"
   },
   "dependencies": {

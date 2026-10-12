@@ -13,6 +13,8 @@ import type { CampaignMembershipResponse, CampaignRole } from '../types/domain'
 
 type CampaignMemberMutationsDeps = {
   campaignId: string
+  setSelectedCampaignMember: (member: CampaignMembershipResponse) => void
+  reportRefreshError: () => void
   selectedCampaignMember: CampaignMembershipResponse | null
   refreshSelectedCampaignMember: () => Promise<void>
   refreshCampaignMembers: () => Promise<void>
@@ -32,9 +34,12 @@ export function useCampaignMemberMutations(deps: CampaignMemberMutationsDeps) {
       if (!deps.selectedCampaignMember) throw new Error('Nessun membro selezionato.')
       return updateCampaignMemberRole(deps.campaignId, deps.selectedCampaignMember.userId, role)
     },
-    onSuccess: async () => {
+    onSuccess: async (updated) => {
+      deps.setSelectedCampaignMember(updated)
+      try {
       await invalidateMembers()
       await Promise.all([deps.refreshSelectedCampaignMember(), deps.refreshCampaignMembers(), deps.refreshCampaignMembersForManagement()])
+      } catch { deps.reportRefreshError() }
     },
   })
 
@@ -43,9 +48,12 @@ export function useCampaignMemberMutations(deps: CampaignMemberMutationsDeps) {
       if (!deps.selectedCampaignMember) throw new Error('Nessun membro selezionato.')
       return banCampaignMember(deps.campaignId, deps.selectedCampaignMember.userId, reason)
     },
-    onSuccess: async () => {
+    onSuccess: async (updated) => {
+      deps.setSelectedCampaignMember(updated)
+      try {
       await invalidateMembers()
       await Promise.all([deps.refreshSelectedCampaignMember(), deps.refreshCampaignMembers(), deps.refreshCampaignMembersForManagement()])
+      } catch { deps.reportRefreshError() }
     },
   })
 
@@ -54,9 +62,12 @@ export function useCampaignMemberMutations(deps: CampaignMemberMutationsDeps) {
       if (!deps.selectedCampaignMember) throw new Error('Nessun membro selezionato.')
       return suspendCampaignMember(deps.campaignId, deps.selectedCampaignMember.userId, reason)
     },
-    onSuccess: async () => {
+    onSuccess: async (updated) => {
+      deps.setSelectedCampaignMember(updated)
+      try {
       await invalidateMembers()
       await Promise.all([deps.refreshSelectedCampaignMember(), deps.refreshCampaignMembers(), deps.refreshCampaignMembersForManagement()])
+      } catch { deps.reportRefreshError() }
     },
   })
 
@@ -65,9 +76,12 @@ export function useCampaignMemberMutations(deps: CampaignMemberMutationsDeps) {
       if (!deps.selectedCampaignMember) throw new Error('Nessun membro selezionato.')
       return unsuspendCampaignMember(deps.campaignId, deps.selectedCampaignMember.userId)
     },
-    onSuccess: async () => {
+    onSuccess: async (updated) => {
+      deps.setSelectedCampaignMember(updated)
+      try {
       await invalidateMembers()
       await Promise.all([deps.refreshSelectedCampaignMember(), deps.refreshCampaignMembers(), deps.refreshCampaignMembersForManagement()])
+      } catch { deps.reportRefreshError() }
     },
   })
 
@@ -76,9 +90,12 @@ export function useCampaignMemberMutations(deps: CampaignMemberMutationsDeps) {
       if (!deps.selectedCampaignMember) throw new Error('Nessun membro selezionato.')
       return unbanCampaignMember(deps.campaignId, deps.selectedCampaignMember.userId)
     },
-    onSuccess: async () => {
+    onSuccess: async (updated) => {
+      deps.setSelectedCampaignMember(updated)
+      try {
       await invalidateMembers()
       await Promise.all([deps.refreshSelectedCampaignMember(), deps.refreshCampaignMembers(), deps.refreshCampaignMembersForManagement()])
+      } catch { deps.reportRefreshError() }
     },
   })
 
@@ -87,12 +104,15 @@ export function useCampaignMemberMutations(deps: CampaignMemberMutationsDeps) {
       if (!deps.selectedCampaignMember) throw new Error('Nessun membro selezionato.')
       return approveCampaignMember(deps.campaignId, deps.selectedCampaignMember.userId)
     },
-    onSuccess: async () => {
+    onSuccess: async (updated) => {
+      deps.setSelectedCampaignMember(updated)
+      try {
       await Promise.all([
         deps.refreshSelectedCampaignMember(),
         deps.refreshCampaignMembers(),
         deps.refreshCampaignMembersForManagement(),
       ])
+      } catch { deps.reportRefreshError() }
     },
   })
 

@@ -53,9 +53,9 @@ export type CampaignContextValue = {
   membershipStatus: CampaignMemberStatus | null
   membershipRole: CampaignRole | null
   pendingApplications: CampaignApplicationResponse[]
-  loadPendingApplications: () => void
-  approvePendingApplication: (userId: string) => void
-  rejectPendingApplication: (userId: string) => void
+  loadPendingApplications: () => Promise<void>
+  approvePendingApplication: (userId: string) => Promise<void>
+  rejectPendingApplication: (userId: string) => Promise<void>
   createCampaign: (payload: {
     name: string
     description: string
@@ -86,23 +86,23 @@ export type CampaignContextValue = {
     autoJoinEnabled?: boolean
     allowedModules: string[]
     missionRules?: UpdateCampaignMissionRuleRequest[]
-  }) => void
+  }) => Promise<void>
   refreshPermissionChecklist: () => void
-  transferCampaignOwnership: (newOwnerId: string) => void
+  transferCampaignOwnership: (newOwnerId: string) => Promise<void>
   deactivateCampaign: () => Promise<void>
   createCampaignInviteToken: (payload: CreateInviteTokenRequest) => Promise<InviteTokenResponse>
   selectedCampaignMember: CampaignMembershipResponse | null
   selectedCampaignMemberProfile: UserProfile | null
-  refreshSelectedCampaignMember: () => void
-  updateSelectedMemberRole: (role: CampaignRole) => void
-  banSelectedMember: (reason: string) => void
-  suspendSelectedMember: (reason: string) => void
-  unsuspendSelectedMember: () => void
-  unbanSelectedMember: () => void
-  approveSelectedMember: () => void
+  refreshSelectedCampaignMember: () => Promise<void>
+  updateSelectedMemberRole: (role: CampaignRole) => Promise<void>
+  banSelectedMember: (reason: string) => Promise<void>
+  suspendSelectedMember: (reason: string) => Promise<void>
+  unsuspendSelectedMember: () => Promise<void>
+  unbanSelectedMember: () => Promise<void>
+  approveSelectedMember: () => Promise<void>
   rooms: RoomResponse[]
   canCreateRoom: boolean
-  createRoom: (payload: { name: string; type: 'ROLEPLAY' | 'SPAM'; ttlHours: number; slowmodeSeconds: number }) => void
+  createRoom: (payload: { name: string; type: 'ROLEPLAY' | 'SPAM'; ttlHours: number; slowmodeSeconds: number }) => Promise<void>
   hasActiveCampaign: boolean
   isLeaveCampaignOpen: boolean
   leaveCampaignContext: LeaveCampaignContext

@@ -105,7 +105,6 @@ export function useCampaignCommandMutations(deps: CampaignCommandDeps) {
       deps.setMyCampaigns((prev: any[]) => prev.map((item) => (item.campaignId === updated.id ? { ...item, campaignName: updated.name } : item)))
       await invalidateBootstrap()
       await invalidateCampaign(updated.id)
-      deps.setScreen('Lista Campagne')
     },
   })
 

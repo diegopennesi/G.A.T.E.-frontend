@@ -46,8 +46,8 @@ export type MissionContextValue = {
   openMissionChat: (campaignId: string, missionId: string) => void
   closeMissionChat: () => void
   sendMissionChatMessage: (body: string) => Promise<void>
-  joinMission: (missionId: string, participationType: MissionParticipationType) => void
-  leaveMission: (missionId: string) => void
+  joinMission: (missionId: string, participationType: MissionParticipationType) => Promise<void>
+  leaveMission: (missionId: string) => Promise<void>
   openMissionCampaign: (campaignId: string) => void
   browseCampaigns: () => void
   openCreateCharacter: () => void
@@ -63,8 +63,8 @@ export type MissionContextValue = {
     maxCharacterLevel?: number | null
     autoReopenOnDrop?: boolean
   }) => Promise<void>
-  completeMission: (missionId: string) => void
-  cancelMission: (missionId: string) => void
+  completeMission: (missionId: string) => Promise<void>
+  cancelMission: (missionId: string) => Promise<void>
 }
 
 const MissionContext = createContext<MissionContextValue | null>(null)

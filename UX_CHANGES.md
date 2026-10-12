@@ -51,3 +51,19 @@ I campi dei template hanno etichette collegate, istruzioni accessibili e validaz
 Le riletture conservano le modifiche in corso; se arriva una versione server diversa, il salvataggio si blocca per evitare di sovrascriverla e offre lo scarto esplicito della bozza. Il salvataggio già accettato dal backend rimane un successo anche se la rilettura fallisce. Revisioni in attesa visibili, note conservate durante gli errori, azioni in italiano e storico espandibile; una revisione confermata non offre un secondo invio quando la rilettura successiva non è disponibile.
 
 Verifica: template con testo, selezioni, numeri, checkbox e tag; validazione numerica, modificatori, errori di salvataggio/rilettura, conferma di scarto, ruoli e sola lettura, approvazione con nota, cambio stato e tastiera. Layout a 320/390/768/1024/1440 px nei temi chiaro/scuro. Test su localhost con API simulate; backend non modificato.
+
+## Gestione, profilo e flussi restanti — 12 ottobre 2026
+
+Gestione campagna separa impostazioni, storia, moduli/regole, inviti e trasferimento della proprietà. Il form indica le modifiche in attesa, conserva i valori dopo errori e rimane aperto dopo il salvataggio. La modifica di un modulo mantiene anche quelli già attivi che il catalogo non mostra. Gli inviti hanno validazione di scadenza/utilizzi, copia del codice e recupero dagli errori.
+
+Accessi e profilo membro mostrano azioni asincrone, conferme per rifiuto/sospensione/ban, motivo della moderazione e risultati leggibili. Una scrittura confermata resta riuscita quando fallisce soltanto la rilettura. Le protezioni frontend aspettano che appartenenze e contesto campagna siano caricati prima di reindirizzare; le autorizzazioni restano verificate dalle API.
+
+Profilo e password usano form distinti: campi facoltativi espandibili, conferma della password, blocco delle richieste parallele e valori conservati durante gli errori. Le stanze hanno nome vuoto obbligatorio, tipo in italiano e limiti numerici per durata/attesa. Attività recenti filtra gli esiti e spiega che il registro vive nella sessione della pagina.
+
+Il dettaglio missione mette in evidenza titolo, date, partecipanti e scelta titolare/panchina. Chat, autori e descrizione usano colori coerenti e leggibili nei due temi. I link diretti aprono il riepilogo; una notifica realtime aggiorna la missione senza chiudere riepilogo o chat.
+
+La protezione delle modifiche non salvate ora copre menu, breadcrumb, cambio campagna e logout per editor scheda, gestione, profilo, missione e messaggio chat. Durante una richiesta attende il completamento. Uscita/reload mantengono l'avviso del browser; i dati non salvati non diventano bozze persistenti.
+
+Questo intervento modifica presentazione, flussi e codice frontend. Nel backend corregge il wrapper Maven Windows e il suo bootstrap, per eseguire il progetto anche da una nuova copia senza Maven globale. Nessuna modifica alle regole di gioco o agli endpoint backend.
+
+Verifica: 49 test UI, 27 contratti cache/realtime, build TypeScript/Vite; 133 test backend. Aggiunto un collaudo browser con API reali e PostgreSQL isolato: campagne, inviti, approvazione, sospensione/ripristino, divieto di modifica per giocatore, stanze, PG, iscrizione missione, chat, profilo e cambio password. Layout dei nuovi flussi a 320/390/768/1440 px nei due temi, più schermate reali di missione mobile/chat desktop. Dettagli e comandi in LOCAL_VALIDATION.md.

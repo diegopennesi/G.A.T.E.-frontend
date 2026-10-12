@@ -118,7 +118,9 @@ export function applyRealtimeInvalidation(
   }
 
   if (state.screen === 'Missioni' && (campaignDetailsKeyMatch || missionKeyMatch || missionParticipantsKeyMatch || characterKeyMatch)) {
-    void actions.refreshMissions({ clearSelection: true })
+    // Keep the open summary/chat while another participant or our own mutation emits an event.
+    // refreshMissions still clears the selection if the mission disappears from the response.
+    void actions.refreshMissions({ clearSelection: false })
     return
   }
 

@@ -8141,3 +8141,51 @@ html[data-theme='light'] .character-compose input::placeholder { color: var(--te
   .character-sheet-save-bar .inline-actions button { flex: 1 1 auto; }
   .character-sheet-toolbar button { flex: 1 1 auto; }
 }
+/* Remaining operational flows share the approved GATE hierarchy. */
+.panel.remaining-flow { gap: 0; box-shadow: none; }
+.remaining-flow h2 { font-size: clamp(1.5rem, 3vw, 2rem); letter-spacing: -0.025em; margin: 0; line-height: 1.2; }
+.flow-header { display: grid; justify-items: start; gap: 0.75rem; margin-bottom: 1.5rem; }
+.flow-header p { margin: 0; max-width: 65ch; }
+.flow-fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.flow-details, .settings-section { border-top: 1px solid var(--border); margin-top: 1.5rem; padding-top: 1rem; }
+.flow-details > summary { cursor: pointer; font-weight: 600; padding-block: 0.5rem; color: var(--text); }
+.flow-details > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.flow-details > form, .flow-details > .form-grid, .flow-details > label { margin-top: 1rem; }
+.flow-details > .inline-actions { margin-top: 1rem; }
+.flow-save-bar { border-top: 1px solid var(--border); margin-top: 1rem; padding-top: 1rem; display: flex; flex-wrap: wrap; gap: 1rem; }
+.remaining-flow label, .confirm-action-dialog .flow-fieldset label { color: var(--text); }
+.remaining-flow input::placeholder, .remaining-flow textarea::placeholder, html[data-theme='light'] .remaining-flow input::placeholder, html[data-theme='light'] .remaining-flow textarea::placeholder { color: var(--text-soft); opacity: 1; }
+.remaining-flow .inline-actions { flex-wrap: wrap; }
+.remaining-flow .inline-actions > label { flex: 1 1 16rem; min-width: 0; }
+.remaining-flow .inline-actions button { align-self: center; }
+.settings-section h3 { font-size: 1.25rem; margin: 0 0 0.5rem; }
+.settings-section > p { max-width: 65ch; }
+.flow-check { display: flex; align-items: center; gap: 0.75rem; min-height: 44px; }
+.flow-check input { width: 1.1rem; height: 1.1rem; accent-color: var(--accent); }
+.flow-row { border-top: 1px solid var(--border); padding-block: 1rem; }
+.flow-row h3 { margin: 0 0 0.5rem; font-size: 1.1rem; overflow-wrap: anywhere; }
+.flow-row p { overflow-wrap: anywhere; }
+.invite-result { margin-top: 1.25rem; overflow-wrap: anywhere; }
+.campaign-settings > h2 + p { max-width: 65ch; margin-bottom: 1.5rem; }
+.campaign-settings .campaign-toggle-table-block, .campaign-settings .mission-rule-setting-row, .campaign-settings .utility-box { background: transparent; box-shadow: none; border-radius: 0; }
+.campaign-settings .campaign-toggle-table-block { padding-inline: 0; border: 0; }
+.campaign-settings .utility-box { margin-top: 1.5rem; border: 0; border-top: 1px solid var(--border); padding-inline: 0; }
+.activity-log article { border: 0; border-top: 1px solid var(--border); border-radius: 0; background: transparent; box-shadow: none; padding: 1rem 0; }
+.mission-detail-head .section-title { font-size: clamp(1.5rem, 3vw, 2rem); line-height: 1.2; overflow-wrap: anywhere; margin-top: 1.25rem; }
+.mission-detail-block, .mission-detail-block .mission-meta-card, .mission-detail-block .mission-participants-panel { box-shadow: none; background: transparent; }
+.mission-detail-block .mission-meta-card { border: 0; border-top: 1px solid var(--border); border-radius: 0; padding-inline: 0; }
+.mission-chat-panel { background: transparent; box-shadow: none; }
+.mission-chat-message { overflow-wrap: anywhere; }
+.mission-detail-block .mission-description-block { border-color: var(--border); background: var(--surface-soft); }
+.mission-detail-block .mission-chat-inline-badge { color: var(--text); border-color: var(--border); background: var(--surface-soft); min-height: 44px; }
+.mission-detail-block .mission-chat-inline-badge.is-active, .mission-detail-block .mission-share-inline-badge:hover { color: var(--text); border-color: var(--accent); background: var(--accent-soft); }
+.mission-chat-panel .mission-chat-message-meta, .mission-chat-panel .mission-chat-author-separator { color: var(--text-soft); }
+.mission-chat-panel .mission-chat-character-name, .mission-chat-panel .mission-chat-profile-name { color: var(--text); }
+.mission-chat-panel .mission-chat-role-chip, .mission-chat-panel .mission-chat-message.is-mine .mission-chat-role-chip { color: var(--text-soft); border-color: var(--border); background: var(--surface-soft); }
+.mission-chat-panel .mission-chat-send-btn { color: var(--text); border-color: var(--accent); background: var(--accent-soft); }
+.mission-chat-panel .mission-chat-send-btn:disabled { color: var(--text-soft); border-color: var(--border); background: var(--surface-soft); opacity: 0.7; }
+@media (max-width: 600px) {
+  .remaining-flow .flow-save-bar button { width: 100%; }
+  .remaining-flow .form-grid { grid-template-columns: 1fr; }
+  .remaining-flow .inline-actions button { flex: 1 1 auto; }
+}

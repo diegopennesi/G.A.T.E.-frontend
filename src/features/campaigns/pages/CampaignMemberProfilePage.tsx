@@ -1,156 +1,40 @@
 import { useState } from 'react'
+import { Dialog } from 'primereact/dialog'
 import { useCampaignContext } from '../../../context'
-import { FieldLabel, Icon } from '../../../shared/components'
+import { useAsyncAction } from '../../../hooks/useAsyncAction'
+import { useUnsavedChanges } from '../../../context/NavigationGuardContext'
 import type { CampaignRole } from '../../../types/domain'
 
+const roles = { GIOCATORE: 'Giocatore', CO_MASTER: 'Co-master', MASTER: 'Master', SUPER_MASTER: 'Super master' }
+const statuses = { APPROVED: 'Attivo', PENDING: 'In attesa', REJECTED: 'Accesso rifiutato', BLOCKED: 'Sospeso', BANNED: 'Bloccato' }
 export function CampaignMemberProfilePage() {
-  const {
-    selectedCampaignMember: membership,
-    selectedCampaignMemberProfile: profile,
-    refreshSelectedCampaignMember: onRefresh,
-    updateSelectedMemberRole: onUpdateRole,
-    banSelectedMember: onBan,
-    suspendSelectedMember: onSuspend,
-    unsuspendSelectedMember: onUnsuspend,
-    unbanSelectedMember: onUnban,
-    approveSelectedMember: onApprove,
-  } = useCampaignContext()
-  const [role, setRole] = useState<CampaignRole>(membership?.role || 'GIOCATORE')
-  const [moderationMode, setModerationMode] = useState<'suspend' | 'ban' | null>(null)
-  const [moderationReason, setModerationReason] = useState('')
-  if (!membership || !profile) return null
-
-  const roleOptions: CampaignRole[] = ['GIOCATORE', 'CO_MASTER', 'MASTER']
-  const activityLabel =
-    membership.memberStatus === 'APPROVED'
-      ? 'ATTIVO'
-      : membership.memberStatus === 'BLOCKED'
-        ? 'BLOCCATO'
-        : membership.memberStatus === 'BANNED'
-          ? 'BANNATO'
-          : 'DISABILITATO'
-  const activityClass = membership.memberStatus === 'APPROVED' ? 'status-success' : 'status-danger'
-
-  const openModerationModal = (mode: 'suspend' | 'ban') => {
-    setModerationMode(mode)
-    setModerationReason('')
-  }
-
-  const closeModerationModal = () => {
-    setModerationMode(null)
-    setModerationReason('')
-  }
-
-  const confirmModeration = () => {
-    const reason = moderationReason.trim()
-    if (!reason || reason.length > 200) return
-    if (moderationMode === 'suspend') onSuspend(reason)
-    if (moderationMode === 'ban') onBan(reason)
-    closeModerationModal()
-  }
-
-  return (
-    <section className="panel">
-      <div className="row-between">
-        <h2>Profilo Membro Campagna</h2>
-        <button type="button" className="secondary-btn" onClick={onRefresh}>
-          <Icon name="fa-solid fa-rotate" />
-          Reload
-        </button>
-      </div>
-      <p className="character-name">{profile.profileName}</p>
-      {profile.username && <p className="muted">@{profile.username}</p>}
-      <div className="inline-actions">
-        <span className="status status-info">{membership.role}</span>
-        <span className={`status ${activityClass}`}>{activityLabel}</span>
-        <span className="status status-neutral">{membership.memberStatus}</span>
-      </div>
-      <p className="muted">Stato PG in campagna: {membership.characterStatus || 'N/A'}</p>
-
-      <div className="divider" />
-      <div className="form-grid">
-        <label>
-          <FieldLabel icon="fa-solid fa-shield-halved" label="Ruolo campagna" />
-          <select value={role} onChange={(event) => setRole(event.target.value as CampaignRole)}>
-            {roleOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="inline-actions">
-          <button type="button" className="primary-btn" onClick={() => onUpdateRole(role)}>
-            <Icon name="fa-solid fa-user-gear" />
-            Aggiorna ruolo
-          </button>
-        </div>
-      </div>
-
-      <div className="inline-actions">
-        {(membership.memberStatus === 'PENDING' || membership.memberStatus === 'REJECTED') && (
-          <button type="button" className="primary-btn" onClick={onApprove}>
-            <Icon name="fa-solid fa-user-check" />
-            Accetta utente
-          </button>
-        )}
-        {membership.memberStatus === 'APPROVED' && (
-          <button type="button" className="secondary-btn" onClick={() => openModerationModal('suspend')}>
-            <Icon name="fa-solid fa-user-slash" />
-            Sospendi utente
-          </button>
-        )}
-        {membership.memberStatus === 'BLOCKED' && (
-          <button type="button" className="secondary-btn" onClick={onUnsuspend}>
-            <Icon name="fa-solid fa-unlock" />
-            Sblocca sospensione
-          </button>
-        )}
-        {membership.memberStatus !== 'BANNED' && membership.memberStatus !== 'PENDING' && (
-          <button type="button" className="secondary-btn" onClick={() => openModerationModal('ban')}>
-            <Icon name="fa-solid fa-ban" />
-            Blocca utente
-          </button>
-        )}
-        {membership.memberStatus === 'BANNED' && (
-          <button type="button" className="secondary-btn" onClick={onUnban}>
-            <Icon name="fa-solid fa-unlock-keyhole" />
-            Sblocca utente
-          </button>
-        )}
-      </div>
-
-      {moderationMode && (
-        <div className="modal-backdrop">
-          <div className="modal-panel">
-            <h3>{moderationMode === 'ban' ? 'Motivo ban' : 'Motivo sospensione'}</h3>
-            <label>
-              <FieldLabel icon="fa-solid fa-comment-dots" label="Motivo (max 200)" />
-              <textarea
-                rows={4}
-                maxLength={200}
-                placeholder="Spiega il motivo della moderazione"
-                value={moderationReason}
-                onChange={(event) => setModerationReason(event.target.value)}
-              />
-            </label>
-            <p className="muted">{moderationReason.length}/200</p>
-            <div className="inline-actions">
-              <button type="button" className="secondary-btn" onClick={closeModerationModal}>
-                Annulla
-              </button>
-              <button
-                type="button"
-                className="primary-btn"
-                onClick={confirmModeration}
-                disabled={moderationReason.trim().length === 0 || moderationReason.trim().length > 200}
-              >
-                Conferma
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </section>
-  )
+  const { selectedCampaignMember: member, selectedCampaignMemberProfile: profile, currentUserId, membershipRole, refreshSelectedCampaignMember, updateSelectedMemberRole, banSelectedMember, suspendSelectedMember, unsuspendSelectedMember, unbanSelectedMember, approveSelectedMember } = useCampaignContext()
+  const [role, setRole] = useState<CampaignRole>(member?.role || 'GIOCATORE')
+  const [mode, setMode] = useState<'ban' | 'suspend' | null>(null)
+  const [reason, setReason] = useState('')
+  const action = useAsyncAction()
+  useUnsavedChanges(Boolean(mode && reason) || Boolean(member && role !== member.role), action.pending)
+  if (!member || !profile) return null
+  const protectedMember = member.userId === currentUserId || member.role === 'SUPER_MASTER'
+  const options: CampaignRole[] = membershipRole === 'MASTER' ? ['GIOCATORE', 'CO_MASTER'] : ['GIOCATORE', 'CO_MASTER', 'MASTER']
+  const run = (task: () => Promise<unknown>, message: string) => void action.execute(task, message)
+  const close = () => { if (!action.pending) { setMode(null); setReason('') } }
+  return <section className="panel remaining-flow member-profile">
+    <header className="flow-header"><h2>{profile.profileName || profile.username}</h2><p className="muted">@{profile.username} · {roles[member.role]} · {statuses[member.memberStatus] || member.memberStatus}</p><button type="button" className="secondary-btn" disabled={action.pending || role !== member.role} onClick={() => run(refreshSelectedCampaignMember, 'Profilo aggiornato.')}>Aggiorna profilo membro</button></header>
+    {member.moderationReason && <p className="muted">Motivo: {member.moderationReason}</p>}
+    {!mode && action.error && <p role="alert">{action.error}</p>}{action.notice && <p role="status">{action.notice}</p>}
+    {protectedMember ? <p className="muted">Il tuo account e il super master non si gestiscono con le azioni di moderazione. Per cambiare proprietario usa Gestione campagna.</p> : <>
+      <form className="settings-section" onSubmit={event => { event.preventDefault(); run(() => updateSelectedMemberRole(role), 'Ruolo aggiornato.') }}><h3>Ruolo al tavolo</h3><fieldset className="flow-fieldset" disabled={action.pending}><label>Ruolo campagna<select value={role} onChange={event => setRole(event.target.value as CampaignRole)}>{options.map(option => <option key={option} value={option}>{roles[option]}</option>)}</select></label><button type="submit" className="secondary-btn" disabled={role === member.role}>Aggiorna ruolo</button></fieldset></form>
+      <section className="settings-section"><h3>Accesso e moderazione</h3><p className="muted">Per sospendere o bloccare l’accesso devi indicare un motivo.</p><div className="inline-actions">
+        {(member.memberStatus === 'PENDING' || member.memberStatus === 'REJECTED') && <button type="button" className="primary-btn" disabled={action.pending} onClick={() => run(approveSelectedMember, 'Accesso approvato.')}>Approva accesso</button>}
+        {member.memberStatus === 'APPROVED' && <button type="button" className="secondary-btn" disabled={action.pending} onClick={() => { action.setError(''); setMode('suspend') }}>Sospendi accesso</button>}
+        {member.memberStatus === 'BLOCKED' && <button type="button" className="secondary-btn" disabled={action.pending} onClick={() => run(unsuspendSelectedMember, 'Sospensione rimossa.')}>Rimuovi sospensione</button>}
+        {member.memberStatus !== 'BANNED' && member.memberStatus !== 'PENDING' && <button type="button" className="danger-btn" disabled={action.pending} onClick={() => { action.setError(''); setMode('ban') }}>Blocca accesso</button>}
+        {member.memberStatus === 'BANNED' && <button type="button" className="secondary-btn" disabled={action.pending} onClick={() => run(unbanSelectedMember, 'Blocco rimosso.')}>Rimuovi blocco</button>}
+      </div></section>
+    </>}
+    <Dialog visible={Boolean(mode)} modal header={mode === 'ban' ? 'Blocca accesso alla campagna' : 'Sospendi accesso alla campagna'} className="confirm-action-dialog" onHide={close} closable={!action.pending} closeOnEscape={!action.pending} draggable={false} resizable={false}>
+      <form onSubmit={event => { event.preventDefault(); if (!reason.trim() || !mode) return; void action.execute(async () => { await (mode === 'ban' ? banSelectedMember : suspendSelectedMember)(reason.trim()); setMode(null); setReason('') }, 'Accesso aggiornato.') }} aria-busy={action.pending}><fieldset className="flow-fieldset" disabled={action.pending}><label>Motivo della moderazione<textarea required maxLength={200} rows={4} value={reason} onChange={event => setReason(event.target.value)} /></label><p className="muted">{reason.length}/200 caratteri</p><div className="inline-actions"><button type="button" className="secondary-btn" onClick={close}>Annulla</button><button type="submit" className="danger-btn" disabled={!reason.trim()}>{action.pending ? 'Elaborazione…' : 'Conferma'}</button></div></fieldset>{action.error && <p role="alert">{action.error}</p>}</form>
+    </Dialog>
+  </section>
 }
