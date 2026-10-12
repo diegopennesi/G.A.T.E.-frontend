@@ -4,6 +4,9 @@ import type { ReactNode } from 'react'
 import type { Character, CharacterStatus, CharacterSheetResponse, CharacterSheetReviewResponse } from '../types/domain'
 
 export type CharacterContextValue = {
+  characterDraftKey: string
+  creationCampaignName: string
+  closeCreateCharacter: () => void
   currentUserId: string
   charactersLoaded: boolean
   charactersLoadFailed: boolean
@@ -34,7 +37,7 @@ export type CharacterContextValue = {
   hasActiveCampaign: boolean
   canCreatePlayerCharacter: boolean
   canCreateNpc: boolean
-  createCharacter: (payload: { name: string; nickname?: string; portraitUrl?: string; isNpc?: boolean }) => void
+  createCharacter: (payload: { name: string; nickname?: string; portraitUrl?: string; isNpc?: boolean }) => Promise<void>
 }
 
 const CharacterContext = createContext<CharacterContextValue | null>(null)
