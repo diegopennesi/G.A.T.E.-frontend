@@ -291,6 +291,13 @@ export interface AdminRealmListItem {
   isActive: boolean
   logoUrl: string | null
   allowUserCampaignCreation: boolean
+  isDiscoverable: boolean
+  description: string | null
+  theme: RealmMobileTheme
+  accentColor: string | null
+  coverImageUrl: string | null
+  features: RealmMobileFeature[]
+  configVersion: number
   hosts: RealmDomainResponse[]
   createdAt: string
   updatedAt: string
@@ -315,6 +322,12 @@ export interface AdminRealmCreateRequest {
   isActive: boolean
   logoUrl?: string | null
   allowUserCampaignCreation: boolean
+  isDiscoverable: boolean
+  description: string | null
+  theme: RealmMobileTheme
+  accentColor: string | null
+  coverImageUrl: string | null
+  features: RealmMobileFeature[]
   hosts: string[]
 }
 
@@ -325,7 +338,16 @@ export interface AdminRealmUpdateRequest {
   isActive: boolean
   logoUrl?: string | null
   allowUserCampaignCreation: boolean
+  isDiscoverable: boolean
+  description: string | null
+  theme: RealmMobileTheme
+  accentColor: string | null
+  coverImageUrl: string | null
+  features: RealmMobileFeature[]
 }
+
+export type RealmMobileTheme = 'SYSTEM' | 'LIGHT' | 'DARK'
+export type RealmMobileFeature = 'CAMPAGNE' | 'PERSONAGGI' | 'MISSIONI' | 'CHAT'
 
 export interface PublicRealmBrandingResponse {
   code: string

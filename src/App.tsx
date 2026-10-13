@@ -12,7 +12,7 @@ import { MissionsPage } from './features/missions'
 import { LogPage } from './features/notifications'
 import { EditProfilePage, ProfilePage } from './features/profile'
 import { RoomsPage } from './features/rooms'
-import { SystemCatalogsPage, SystemContentReportsPage, SystemGameSystemRulesPage } from './features/admin'
+import { RealmBrandingEditor, SystemCatalogsPage, SystemContentReportsPage, SystemGameSystemRulesPage } from './features/admin'
 import {
   AdminProvider,
   CampaignProvider,
@@ -1233,6 +1233,12 @@ function App() {
       isActive: realm.isActive,
       logoUrl: realm.logoUrl || '',
       allowUserCampaignCreation: realm.allowUserCampaignCreation,
+      isDiscoverable: realm.isDiscoverable,
+      description: realm.description || '',
+      theme: realm.theme,
+      accentColor: realm.accentColor || '#245A45',
+      coverImageUrl: realm.coverImageUrl || '',
+      features: realm.features,
       hosts: [],
     })
     setAdminRealmHostsInput(realm.hosts.map((host) => host.host).join('\n'))
@@ -1247,6 +1253,12 @@ function App() {
       isActive: true,
       logoUrl: '',
       allowUserCampaignCreation: true,
+      isDiscoverable: false,
+      description: '',
+      theme: 'SYSTEM',
+      accentColor: '#245A45',
+      coverImageUrl: '',
+      features: ['CAMPAGNE', 'PERSONAGGI', 'MISSIONI', 'CHAT'],
       hosts: [],
     })
     setAdminRealmHostsInput('')
@@ -4314,6 +4326,7 @@ function App() {
                     />
                   </label>
                 </div>
+                <RealmBrandingEditor draft={adminRealmDraft} onChange={setAdminRealmDraft} />
                 <div className="system-row-actions">
                   <span className="status status-info">
                     {selectedAdminRealmId ? 'In modifica, codice e host restano bloccati in questo step.' : 'Route FE e host BE devono convergere sullo stesso realm.'}
@@ -4330,7 +4343,8 @@ function App() {
                   <button
                     type="button"
                     className="refresh-btn"
-                    disabled={busy || !adminRealmDraft.code.trim() || !adminRealmDraft.name.trim()}
+                    disabled={busy || !adminRealmDraft.code.trim() || !adminRealmDraft.name.trim() ||
+                      !/^#[0-9a-f]{6}$/i.test(adminRealmDraft.accentColor ?? '')}
                     onClick={() => void (selectedAdminRealmId ? saveAdminRealm(selectedAdminRealmId) : createAdminRealmEntry())}
                   >
                     <Icon name={selectedAdminRealmId ? 'fa-solid fa-floppy-disk' : 'fa-solid fa-plus'} />

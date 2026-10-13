@@ -23,6 +23,12 @@ function createDefaultAdminRealmDraft(): AdminRealmCreateRequest {
     isActive: true,
     logoUrl: '',
     allowUserCampaignCreation: true,
+    isDiscoverable: false,
+    description: '',
+    theme: 'SYSTEM',
+    accentColor: '#245A45',
+    coverImageUrl: '',
+    features: ['CAMPAGNE', 'PERSONAGGI', 'MISSIONI', 'CHAT'],
     hosts: [],
   }
 }
