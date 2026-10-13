@@ -56,7 +56,7 @@ export function useAdminState() {
   const [adminMissionRules, setAdminMissionRules] = useState<AdminMissionRuleResponse[]>([])
   const [adminGameSystemRules, setAdminGameSystemRules] = useState<AdminGameSystemRuleResponse[]>([])
   const [adminSheetCatalogsLoaded, setAdminSheetCatalogsLoaded] = useState(false)
-  const [systemAdminView, setSystemAdminView] = useState<'users' | 'campaigns' | 'realms' | 'realmAccess' | 'sheets' | 'gameSystemRules'>('users')
+  const [systemAdminView, setSystemAdminView] = useState<'reports' | 'users' | 'campaigns' | 'realms' | 'realmAccess' | 'sheets' | 'gameSystemRules'>('reports')
 
   return {
     adminUsersPage,

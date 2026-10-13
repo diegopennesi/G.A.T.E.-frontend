@@ -8189,3 +8189,41 @@ html[data-theme='light'] .character-compose input::placeholder { color: var(--te
   .remaining-flow .form-grid { grid-template-columns: 1fr; }
   .remaining-flow .inline-actions button { flex: 1 1 auto; }
 }
+.content-report-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.content-report-card {
+  display: grid;
+  gap: 1rem;
+  padding: 1.25rem;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.14));
+  border-radius: 1rem;
+  background: var(--surface-color, rgba(255, 255, 255, 0.04));
+}
+
+.content-report-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.content-report-head h3,
+.content-report-head p {
+  margin: 0;
+}
+
+.content-report-snapshot {
+  margin: 0;
+  padding: 1rem;
+  border-left: 3px solid var(--accent-color, #dc2626);
+  background: rgba(0, 0, 0, 0.16);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 680px) {
+  .content-report-head { flex-direction: column; }
+}

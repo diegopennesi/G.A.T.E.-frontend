@@ -12,7 +12,7 @@ import { MissionsPage } from './features/missions'
 import { LogPage } from './features/notifications'
 import { EditProfilePage, ProfilePage } from './features/profile'
 import { RoomsPage } from './features/rooms'
-import { SystemCatalogsPage, SystemGameSystemRulesPage } from './features/admin'
+import { SystemCatalogsPage, SystemContentReportsPage, SystemGameSystemRulesPage } from './features/admin'
 import {
   AdminProvider,
   CampaignProvider,
@@ -3395,6 +3395,14 @@ function App() {
   })
   const systemViewMeta = (() => {
     switch (systemAdminView) {
+      case 'reports':
+        return {
+          kicker: 'Sicurezza',
+          title: 'Segnalazioni contenuti',
+          subtitle: 'Esamina il messaggio originale e registra l’esito della moderazione.',
+          primaryMeta: 'Coda moderazione',
+          secondaryMeta: 'Tutti i reami',
+        }
       case 'users':
         return {
           kicker: 'Utenti',
@@ -3482,6 +3490,13 @@ function App() {
           </div>
 
           <div className="system-nav-tabs" role="tablist" aria-label="Selettore dashboard sistema">
+            <button
+              type="button"
+              className={`surface-control system-nav-tab ${systemAdminView === 'reports' ? 'is-active' : ''}`}
+              onClick={() => setSystemAdminView('reports')}
+            >
+              Segnalazioni
+            </button>
             <button
               type="button"
               className={`surface-control system-nav-tab ${systemAdminView === 'users' ? 'is-active' : ''}`}
@@ -3589,7 +3604,9 @@ function App() {
               </div>
             )}
 
-            {systemAdminView === 'users' ? (
+            {systemAdminView === 'reports' ? (
+              <SystemContentReportsPage />
+            ) : systemAdminView === 'users' ? (
               <>
                 <div className="system-filter-bar">
                   <label>
