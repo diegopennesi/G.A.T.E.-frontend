@@ -186,6 +186,12 @@ export function useAdminMutations(deps: AdminMutationsDeps) {
         isActive: true,
         logoUrl: '',
         allowUserCampaignCreation: true,
+        isDiscoverable: false,
+        description: '',
+        theme: 'SYSTEM',
+        accentColor: '#245A45',
+        coverImageUrl: '',
+        features: ['CAMPAGNE', 'PERSONAGGI', 'MISSIONI', 'CHAT'],
         hosts: [],
       })
       deps.setSelectedAdminRealmId('')
@@ -204,6 +210,12 @@ export function useAdminMutations(deps: AdminMutationsDeps) {
         isActive: deps.adminRealmDraft.isActive,
         logoUrl: deps.adminRealmDraft.logoUrl?.trim() || null,
         allowUserCampaignCreation: deps.adminRealmDraft.allowUserCampaignCreation,
+        isDiscoverable: deps.adminRealmDraft.isDiscoverable,
+        description: deps.adminRealmDraft.description?.trim() || null,
+        theme: deps.adminRealmDraft.theme,
+        accentColor: deps.adminRealmDraft.accentColor?.trim() || null,
+        coverImageUrl: deps.adminRealmDraft.coverImageUrl?.trim() || null,
+        features: deps.adminRealmDraft.features,
       }),
     onSuccess: async () => {
       deps.setSelectedAdminRealmId('')
@@ -214,6 +226,12 @@ export function useAdminMutations(deps: AdminMutationsDeps) {
         isActive: true,
         logoUrl: '',
         allowUserCampaignCreation: true,
+        isDiscoverable: false,
+        description: '',
+        theme: 'SYSTEM',
+        accentColor: '#245A45',
+        coverImageUrl: '',
+        features: ['CAMPAGNE', 'PERSONAGGI', 'MISSIONI', 'CHAT'],
         hosts: [],
       })
       deps.setAdminRealmHostsInput('')
