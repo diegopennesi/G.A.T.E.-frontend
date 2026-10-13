@@ -51,7 +51,7 @@ export function clearTokens() {
 }
 
 export type ApiRequestOptions = {
-  method?: 'GET' | 'POST' | 'PUT' | 'PATCH'
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   body?: unknown
   auth?: boolean
   retryOn401?: boolean
