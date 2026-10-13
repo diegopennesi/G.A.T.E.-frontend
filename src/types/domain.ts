@@ -246,6 +246,35 @@ export interface AdminUserPage {
   hasPrevious: boolean
 }
 
+export type ContentReportReason = 'HARASSMENT' | 'HATE' | 'SPAM' | 'SEXUAL' | 'OTHER'
+export type ContentReportStatus = 'OPEN' | 'REVIEWED' | 'DISMISSED' | 'ACTIONED'
+
+export interface ContentReport {
+  id: string
+  reporterUserId: string
+  reportedUserId: string
+  reportedProfileName: string
+  messageId: string
+  campaignId: string
+  missionId: string
+  reason: ContentReportReason
+  details: string | null
+  contentSnapshot: string
+  status: ContentReportStatus
+  createdAt: string
+  reviewedAt: string | null
+  reviewedByUserId: string | null
+}
+
+export interface ContentReportPage {
+  items: ContentReport[]
+  page: number
+  size: number
+  totalElements: number
+  totalPages: number
+  hasNext: boolean
+}
+
 export interface RealmDomainResponse {
   id: string
   host: string

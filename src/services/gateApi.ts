@@ -48,6 +48,9 @@ import type {
   UserProfile,
   InviteTokenPreviewResponse,
   InviteTokenResponse,
+  ContentReportPage,
+  ContentReportStatus,
+  ContentReport,
 } from '../types/domain'
 
 type AuthResponse = {
@@ -205,6 +208,18 @@ export async function updateAdminUser(
   return apiRequest<AdminUserPage['items'][number]>(`/admin/users/${userId}`, {
     method: 'PATCH',
     body: payload,
+    realm: false,
+  })
+}
+
+export async function listContentReports(page = 0): Promise<ContentReportPage> {
+  return apiRequest<ContentReportPage>(`/admin/content-reports?page=${page}`, { realm: false })
+}
+
+export async function updateContentReport(reportId: string, status: ContentReportStatus): Promise<ContentReport> {
+  return apiRequest<ContentReport>(`/admin/content-reports/${reportId}`, {
+    method: 'PATCH',
+    body: { status },
     realm: false,
   })
 }
