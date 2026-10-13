@@ -109,6 +109,15 @@ export async function changePassword(params: {
   return data
 }
 
+export async function logoutAllDevices(): Promise<void> {
+  await apiRequest<void>('/auth/logout-all', {
+    method: 'POST',
+    realm: false,
+    retryOn401: false,
+  })
+  clearTokens()
+}
+
 export type PasswordResetRequestResponse = {
   message: string
 }
