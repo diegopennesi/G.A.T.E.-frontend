@@ -208,6 +208,7 @@ export interface ReviewCharacterSheetRequest {
 export interface UserProfile {
   id: string
   username: string | null
+  email?: string | null
   platformRole?: PlatformRole | null
   profileName: string
   bio: string | null

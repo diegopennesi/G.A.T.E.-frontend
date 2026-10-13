@@ -1,4 +1,4 @@
-import { ApiError, apiRequest, clearTokens, setTokens } from './apiClient'
+import { ApiError, apiRequest, clearTokens, getApiBaseUrl, getRefreshToken, setTokens } from './apiClient'
 import type {
   AdminGameSystemUpsertRequest,
   AdminGameSystemRuleResponse,
@@ -71,6 +71,7 @@ export async function login(username: string, password: string): Promise<AuthSes
 export async function register(params: {
   username: string
   password: string
+  email?: string
   profileName?: string
   bio?: string
 }): Promise<AuthSession> {
@@ -80,6 +81,7 @@ export async function register(params: {
     body: {
       username: normalizeUsername(params.username),
       password: params.password,
+      email: params.email?.trim().toLowerCase() || undefined,
       profileName: params.profileName || undefined,
       bio: params.bio || undefined,
       socialLinks: {},
@@ -105,8 +107,7 @@ export async function changePassword(params: {
 }
 
 export type PasswordResetRequestResponse = {
-  resetSeed: string
-  expiresAt: string
+  message: string
 }
 
 export type PasswordResetConfirmResponse = {
@@ -135,8 +136,15 @@ export async function confirmPasswordReset(params: {
   })
 }
 
-export function logout() {
+export function logout(): Promise<void> {
+  const refreshToken = getRefreshToken()
   clearTokens()
+  if (!refreshToken) return Promise.resolve()
+  return fetch(`${getApiBaseUrl()}/auth/logout`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refreshToken }),
+  }).then(() => undefined).catch(() => undefined)
 }
 
 export async function getMe(): Promise<UserProfile> {
@@ -145,6 +153,7 @@ export async function getMe(): Promise<UserProfile> {
 
 export async function updateMe(payload: {
   profileName: string
+  email: string
   bio: string
   whatsapp: string
   instagram: string
@@ -158,6 +167,7 @@ export async function updateMe(payload: {
     method: 'PATCH',
     body: {
       profileName: payload.profileName.trim(),
+      email: payload.email.trim().toLowerCase() || undefined,
       bio: payload.bio.trim() || null,
       whatsapp: payload.whatsapp.trim() || null,
       socialLinks,

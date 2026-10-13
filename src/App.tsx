@@ -1262,7 +1262,7 @@ function App() {
 
   const handleLogout = useCallback(() => {
     queryClient.clear()
-    logout()
+    void logout()
     setProfile(null)
     setAuthMode('login')
     setScreen('Profilo')

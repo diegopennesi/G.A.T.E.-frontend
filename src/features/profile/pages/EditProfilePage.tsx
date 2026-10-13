@@ -24,6 +24,7 @@ export function EditProfilePage() {
     <form onSubmit={event => { event.preventDefault(); void profileAction.execute(() => saveProfile(draft), 'Profilo salvato.') }} aria-busy={profileAction.pending}>
       <fieldset className="flow-fieldset" disabled={busy}>
         <label>Nome visibile<input maxLength={100} autoComplete="nickname" value={draft.profileName} onChange={event => setDraft(previous => ({ ...previous, profileName: event.target.value }))} /></label>
+        <label>Email per il recupero password<input required type="email" maxLength={254} autoComplete="email" value={draft.email} onChange={event => setDraft(previous => ({ ...previous, email: event.target.value }))} /></label>
         <label>Presentazione<textarea rows={4} maxLength={500} value={draft.bio} onChange={event => setDraft(previous => ({ ...previous, bio: event.target.value }))} /></label>
         <details className="flow-details"><summary>Contatti e social (facoltativi)</summary>
           <div className="form-grid"><label>WhatsApp<input type="tel" autoComplete="tel" value={draft.whatsapp} onChange={event => setDraft(previous => ({ ...previous, whatsapp: event.target.value }))} /></label><label>Instagram<input value={draft.instagram} placeholder="Nome account o link" onChange={event => setDraft(previous => ({ ...previous, instagram: event.target.value }))} /></label><label>Altro social<input value={draft.otherSocial} placeholder="Link o nome account" onChange={event => setDraft(previous => ({ ...previous, otherSocial: event.target.value }))} /></label></div>
