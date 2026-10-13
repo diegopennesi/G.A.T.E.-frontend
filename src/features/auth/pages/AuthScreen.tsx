@@ -13,10 +13,10 @@ export function AuthScreen() {
   const [mode, setMode] = useState<'login' | 'register' | 'recover'>(initialMode)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [email, setEmail] = useState('')
   const [profileName, setProfileName] = useState('')
   const [bio, setBio] = useState('')
   const [resetSeed, setResetSeed] = useState('')
-  const [resetExpiresAt, setResetExpiresAt] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [recoveryStep, setRecoveryStep] = useState<'request' | 'confirm'>('request')
@@ -26,7 +26,6 @@ export function AuthScreen() {
 
   const resetRecoveryState = () => {
     setResetSeed('')
-    setResetExpiresAt('')
     setNewPassword('')
     setConfirmPassword('')
     setRecoveryStep('request')
@@ -62,16 +61,14 @@ export function AuthScreen() {
       }
 
       if (mode === 'register') {
-        await handleAuth(await register({ username: normalizedUsername, password, profileName, bio }))
+        await handleAuth(await register({ username: normalizedUsername, password, email, profileName, bio }))
         return
       }
 
       if (recoveryStep === 'request') {
         const response = await requestPasswordReset(normalizedUsername)
-        setResetSeed(response.resetSeed)
-        setResetExpiresAt(response.expiresAt)
         setRecoveryStep('confirm')
-        setInfo('Codice di recupero generato. Scegli la nuova password per completare il recupero.')
+        setInfo(response.message)
         return
       }
 
@@ -136,7 +133,7 @@ export function AuthScreen() {
           {mode === 'login' && <p className="auth-note">Accedi per ritrovare le tue campagne e il gruppo.</p>}
           {mode === 'recover' && (
             <p className="auth-note">
-              {recoveryStep === 'request' ? 'Inserisci il tuo username per generare un codice di recupero.' : 'Il codice è già inserito. Scegli e conferma la nuova password.'}
+              {recoveryStep === 'request' ? 'Inserisci il tuo username. Se l’account ha un’email associata, riceverai un codice.' : 'Inserisci il codice ricevuto via email e scegli la nuova password.'}
             </p>
           )}
           {mode !== 'recover' && (
@@ -167,6 +164,10 @@ export function AuthScreen() {
                 <input required type="password" autoComplete="new-password" placeholder="Password" value={password} onChange={(event) => setPassword(event.target.value)} />
               </label>
               <label>
+                Email per il recupero
+                <input required type="email" autoComplete="email" maxLength={254} placeholder="nome@example.it" value={email} onChange={(event) => setEmail(event.target.value)} />
+              </label>
+              <label>
                 Nome del profilo
                 <input value={profileName} placeholder="Nome profilo" onChange={(event) => setProfileName(event.target.value)} />
               </label>
@@ -194,14 +195,9 @@ export function AuthScreen() {
                 </label>
               ) : (
                 <>
-                  <div className="auth-result-box">
-                    <p className="auth-result-label">Codice di recupero</p>
-                    <p className="auth-result-value">{resetSeed}</p>
-                    <p className="auth-result-meta">Scadenza: {resetExpiresAt || 'n/d'}</p>
-                  </div>
                   <label>
                     Codice di recupero
-                    <input required value={resetSeed} placeholder="Codice generato" onChange={(event) => setResetSeed(event.target.value)} />
+                    <input required autoCapitalize="none" autoComplete="one-time-code" value={resetSeed} placeholder="Codice ricevuto via email" onChange={(event) => setResetSeed(event.target.value.trim())} />
                   </label>
                   <label>
                     Nuova password
@@ -219,7 +215,7 @@ export function AuthScreen() {
           {info && <p className="auth-note" role="status">{info}</p>}
           {mode === 'recover' ? (
             <button className="primary-btn" disabled={busy} type="submit">
-              {busy ? 'Attendere...' : recoveryStep === 'request' ? 'Genera codice di recupero' : 'Salva nuova password'}
+              {busy ? 'Attendere...' : recoveryStep === 'request' ? 'Invia email di recupero' : 'Salva nuova password'}
             </button>
           ) : (
             <button className="primary-btn" disabled={busy} type="submit">
