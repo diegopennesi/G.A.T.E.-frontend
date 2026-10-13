@@ -175,6 +175,19 @@ export async function updateMe(payload: {
   })
 }
 
+export async function deleteMyAccount(params: {
+  currentPassword: string
+  confirmation: string
+}): Promise<void> {
+  await apiRequest<void>('/users/me', {
+    method: 'DELETE',
+    body: params,
+    realm: false,
+    retryOn401: false,
+  })
+  clearTokens()
+}
+
 export async function getPublicProfile(userId: string): Promise<UserProfile> {
   return apiRequest<UserProfile>(`/users/${userId}`)
 }

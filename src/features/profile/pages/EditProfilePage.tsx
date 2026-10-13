@@ -4,9 +4,10 @@ import { useAsyncAction } from '../../../hooks/useAsyncAction'
 import { useUnsavedChanges } from '../../../context/NavigationGuardContext'
 import { profileToDraft, EMPTY_PROFILE } from '../profileDraft'
 import { Icon } from '../../../shared/components'
+import { deleteMyAccount } from '../../../services/gateApi'
 
 export function EditProfilePage() {
-  const { profile, saveProfile, changePassword } = useProfileContext()
+  const { profile, saveProfile, changePassword, logout } = useProfileContext()
   const { goToScreen } = useUiContext()
   const [draft, setDraft] = useState(() => profileToDraft(profile || EMPTY_PROFILE))
   const [initial] = useState(() => JSON.stringify(draft))
@@ -15,9 +16,12 @@ export function EditProfilePage() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const profileAction = useAsyncAction()
   const passwordAction = useAsyncAction()
+  const deletionAction = useAsyncAction()
+  const [deletionPassword, setDeletionPassword] = useState('')
+  const [deletionConfirmation, setDeletionConfirmation] = useState('')
   const dirty = JSON.stringify(draft) !== initial
-  const busy = profileAction.pending || passwordAction.pending
-  useUnsavedChanges(dirty || Boolean(currentPassword || newPassword || confirmPassword), busy)
+  const busy = profileAction.pending || passwordAction.pending || deletionAction.pending
+  useUnsavedChanges(dirty || Boolean(currentPassword || newPassword || confirmPassword || deletionPassword || deletionConfirmation), busy)
   if (!profile) return null
   return <section className="panel remaining-flow profile-editor">
     <header className="flow-header"><button type="button" className="secondary-btn" disabled={busy} onClick={() => goToScreen('Profilo')}>Torna al profilo</button><h2>Modifica profilo</h2><p className="muted">Scegli come presentarti al gruppo. I contatti sono facoltativi.</p></header>
@@ -45,6 +49,25 @@ export function EditProfilePage() {
           <button type="submit" className="secondary-btn">{passwordAction.pending ? 'Aggiornamento…' : 'Aggiorna password'}</button>
         </fieldset>
         {passwordAction.error && <p role="alert">{passwordAction.error}</p>}{passwordAction.notice && <p role="status">{passwordAction.notice}</p>}
+      </form>
+    </details>
+    <details className="flow-details profile-danger-block"><summary>Elimina account</summary>
+      <p className="muted">L’operazione è definitiva. Email, profilo, contatti, dispositivi, ruoli e accessi vengono rimossi. I contenuti storici necessari restano attribuiti a “Utente eliminato”. Prima devi trasferire o chiudere le campagne attive che hai fondato.</p>
+      <form onSubmit={event => {
+        event.preventDefault()
+        if (deletionConfirmation !== 'ELIMINA') { deletionAction.setError('Scrivi ELIMINA esattamente come indicato.'); return }
+        if (!window.confirm('Eliminare definitivamente il tuo account? Questa operazione non può essere annullata.')) return
+        void deletionAction.execute(async () => {
+          await deleteMyAccount({ currentPassword: deletionPassword, confirmation: deletionConfirmation })
+          logout()
+        })
+      }} aria-busy={deletionAction.pending}>
+        <fieldset className="flow-fieldset" disabled={busy}>
+          <label>Password attuale<input type="password" required autoComplete="current-password" value={deletionPassword} onChange={event => setDeletionPassword(event.target.value)} /></label>
+          <label>Scrivi ELIMINA per confermare<input required autoComplete="off" value={deletionConfirmation} onChange={event => setDeletionConfirmation(event.target.value)} /></label>
+          <button type="submit" className="danger-btn" disabled={!deletionPassword || deletionConfirmation !== 'ELIMINA'}>{deletionAction.pending ? 'Eliminazione…' : 'Elimina definitivamente account'}</button>
+        </fieldset>
+        {deletionAction.error && <p role="alert">{deletionAction.error}</p>}
       </form>
     </details>
   </section>
