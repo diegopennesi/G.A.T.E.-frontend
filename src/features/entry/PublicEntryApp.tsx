@@ -29,15 +29,26 @@ export function PublicEntryApp() {
   const entry = useMemo(() => readEntry(), [])
   const [result, setResult] = useState<PublicEntryResponse | null>(null)
   const [error, setError] = useState('')
+  const [attempt, setAttempt] = useState(0)
   useEffect(() => {
     if (!entry) return
     let cancelled = false
     void resolvePublicEntry(entry.kind, entry.value).then((value) => { if (!cancelled) setResult(value) }).catch((cause) => {
       if (cancelled) return
-      setError(cause instanceof ApiError && cause.status === 404 ? 'Questo invito non è più disponibile.' : 'Non riesco a verificare il collegamento. Riprova tra poco.')
+      setError(cause instanceof ApiError && cause.status === 404 ? 'Questo invito è scaduto, è stato revocato oppure non è più disponibile.' :
+        cause instanceof ApiError && cause.status === 429 ? 'Sono stati fatti troppi tentativi. Attendi un momento e riprova.' :
+          !navigator.onLine ? 'Sei offline. Riconnettiti e riprova: il collegamento resta qui.' :
+            'Non riesco a verificare il collegamento. Riprova tra poco.')
     })
     return () => { cancelled = true }
-  }, [entry])
+  }, [attempt, entry])
+  useEffect(() => {
+    const retryWhenOnline = () => {
+      if (!result && error) { setError(''); setAttempt((value) => value + 1) }
+    }
+    window.addEventListener('online', retryWhenOnline)
+    return () => window.removeEventListener('online', retryWhenOnline)
+  }, [error, result])
   const visibleError = entry ? error : 'Collegamento incompleto.'
 
   const accent = result?.realm.accentColor?.match(/^#[0-9a-f]{6}$/i)?.[0] ?? '#245A45'
@@ -52,7 +63,7 @@ export function PublicEntryApp() {
       <p className="entry-kicker">{isInvite ? 'Invito G.A.T.E.' : 'Il tuo reame'}</p>
       <h1>{result?.realm.name ?? (visibleError ? 'Collegamento non disponibile' : 'Controllo la destinazione…')}</h1>
       {result ? <p className="entry-copy">{isInvite ? result.autoJoin ? 'Questo invito ti porta direttamente al tavolo.' : 'Accedi per inviare la richiesta al tavolo.' : result.realm.description || 'Entra nella community e ritrova le tue campagne.'}</p> : null}
-      {visibleError ? <p className="entry-error" role="alert">{visibleError}</p> : null}
+      {visibleError ? <div className="entry-error" role="alert"><p>{visibleError}</p>{entry ? <button type="button" onClick={() => { setError(''); setResult(null); setAttempt((value) => value + 1) }}>Riprova</button> : null}</div> : null}
       {result && entry ? <div className="entry-actions">
         <a className="entry-primary" href={`gate://${entry.appPath}`}>Apri nell’app</a>
         <a className="entry-secondary" href={webPath}>Continua dal browser</a>
