@@ -9,15 +9,19 @@ import App from './App.tsx'
 import { NavigationGuardProvider } from './context/NavigationGuardContext'
 import { GlobalApiLoader } from './shared/components'
 import { queryClient } from './services/queryClient'
+import { PublicLegalApp } from './features/legal/PublicLegalApp'
 
 const initialTheme = localStorage.getItem('gate_theme')
 document.documentElement.dataset.theme = initialTheme === 'dark' ? 'dark' : 'light'
 
+const publicPath = window.location.pathname.replace(/\/+$/, '')
+const isLegalPath = publicPath === '/privacy' || publicPath === '/account-deletion'
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
+    {isLegalPath ? <PublicLegalApp /> : <QueryClientProvider client={queryClient}>
       <NavigationGuardProvider><App /></NavigationGuardProvider>
       <GlobalApiLoader />
-    </QueryClientProvider>
+    </QueryClientProvider>}
   </StrictMode>,
 )

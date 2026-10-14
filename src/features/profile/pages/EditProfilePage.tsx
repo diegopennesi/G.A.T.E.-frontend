@@ -4,7 +4,7 @@ import { useAsyncAction } from '../../../hooks/useAsyncAction'
 import { useUnsavedChanges } from '../../../context/NavigationGuardContext'
 import { profileToDraft, EMPTY_PROFILE } from '../profileDraft'
 import { Icon } from '../../../shared/components'
-import { deleteMyAccount } from '../../../services/gateApi'
+import { deleteMyAccount, logoutAllDevices } from '../../../services/gateApi'
 
 export function EditProfilePage() {
   const { profile, saveProfile, changePassword, logout } = useProfileContext()
@@ -17,10 +17,11 @@ export function EditProfilePage() {
   const profileAction = useAsyncAction()
   const passwordAction = useAsyncAction()
   const deletionAction = useAsyncAction()
+  const sessionsAction = useAsyncAction()
   const [deletionPassword, setDeletionPassword] = useState('')
   const [deletionConfirmation, setDeletionConfirmation] = useState('')
   const dirty = JSON.stringify(draft) !== initial
-  const busy = profileAction.pending || passwordAction.pending || deletionAction.pending
+  const busy = profileAction.pending || passwordAction.pending || deletionAction.pending || sessionsAction.pending
   useUnsavedChanges(dirty || Boolean(currentPassword || newPassword || confirmPassword || deletionPassword || deletionConfirmation), busy)
   if (!profile) return null
   return <section className="panel remaining-flow profile-editor">
@@ -50,6 +51,17 @@ export function EditProfilePage() {
         </fieldset>
         {passwordAction.error && <p role="alert">{passwordAction.error}</p>}{passwordAction.notice && <p role="status">{passwordAction.notice}</p>}
       </form>
+    </details>
+    <details className="flow-details profile-password-block"><summary>Sessioni e privacy</summary>
+      <p className="muted">Puoi chiudere l’accesso su tutti i dispositivi. Informativa e cancellazione web restano disponibili anche senza app.</p>
+      <div className="form-actions">
+        <a className="secondary-btn" href="/privacy">Leggi l’informativa privacy</a>
+        <button type="button" className="secondary-btn" disabled={busy} onClick={() => {
+          if (!window.confirm('Disconnettere tutti i dispositivi, incluso questo?')) return
+          void sessionsAction.execute(async () => { await logoutAllDevices(); logout() })
+        }}>{sessionsAction.pending ? 'Disconnessione…' : 'Disconnetti tutti i dispositivi'}</button>
+      </div>
+      {sessionsAction.error && <p role="alert">{sessionsAction.error}</p>}
     </details>
     <details className="flow-details profile-danger-block"><summary>Elimina account</summary>
       <p className="muted">L’operazione è definitiva. Email, profilo, contatti, dispositivi, ruoli e accessi vengono rimossi. I contenuti storici necessari restano attribuiti a “Utente eliminato”. Prima devi trasferire o chiudere le campagne attive che hai fondato.</p>
