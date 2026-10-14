@@ -9,6 +9,7 @@
     "npm": ">=10"
   },
   "scripts": {
+    "start": "node server.mjs",
     "dev": "vite",
     "build": "npm run test:cache && npm run build:app",
     "build:app": "tsc -b && vite build",
