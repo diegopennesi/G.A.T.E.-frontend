@@ -484,7 +484,10 @@ export async function listInviteTokens(campaignId: string): Promise<InviteTokenR
 }
 
 export async function previewInviteToken(token: string): Promise<InviteTokenPreviewResponse> {
-  return apiRequest<InviteTokenPreviewResponse>(`/campaigns/tokens/${encodeURIComponent(token)}`)
+  return apiRequest<InviteTokenPreviewResponse>('/campaigns/invite-tokens/preview', {
+    method: 'POST',
+    body: { token },
+  })
 }
 
 export async function updateCampaign(
@@ -585,9 +588,9 @@ export async function applyToCampaignViaInviteToken(
   token: string,
   characterId?: string,
 ): Promise<CampaignMembershipResponse> {
-  return apiRequest<CampaignMembershipResponse>(`/campaigns/tokens/${encodeURIComponent(token)}/apply`, {
+  return apiRequest<CampaignMembershipResponse>('/campaigns/invite-tokens/apply', {
     method: 'POST',
-    body: { characterId: characterId || null },
+    body: { token, characterId: characterId || null },
   })
 }
 
