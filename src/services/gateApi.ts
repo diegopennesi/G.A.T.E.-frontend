@@ -39,6 +39,8 @@ import type {
   ChatMessageResponse,
   MissionResponse,
   PublicRealmBrandingResponse,
+  PublicEntryKind,
+  PublicEntryResponse,
   RoomResponse,
   SheetTypeCatalogEntry,
   AdminSheetTypeUpsertRequest,
@@ -301,6 +303,15 @@ export async function getCurrentRealmPermissions(): Promise<CurrentRealmPermissi
 export async function getPublicRealmBranding(code: string): Promise<PublicRealmBrandingResponse> {
   return apiRequest<PublicRealmBrandingResponse>(`/public/realms/by-code/${encodeURIComponent(code)}`, {
     auth: false,
+  })
+}
+
+export async function resolvePublicEntry(kind: PublicEntryKind, value: string): Promise<PublicEntryResponse> {
+  return apiRequest<PublicEntryResponse>('/public/entry/resolve', {
+    method: 'POST',
+    auth: false,
+    realm: false,
+    body: { kind, value },
   })
 }
 
