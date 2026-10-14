@@ -357,6 +357,30 @@ export interface PublicRealmBrandingResponse {
   allowUserCampaignCreation: boolean
 }
 
+export interface PublicRealmMobileConfigResponse extends PublicRealmBrandingResponse {
+  realmId: string
+  isAvailable: boolean
+  isDiscoverable: boolean
+  description: string | null
+  homeType: 'COMMUNITY' | 'LOCAL'
+  theme: RealmMobileTheme
+  accentColor: string | null
+  coverImageUrl: string | null
+  features: RealmMobileFeature[]
+  configVersion: number
+}
+
+export type PublicEntryKind = 'REALM' | 'CAMPAIGN_TOKEN' | 'CAMPAIGN_CODE'
+
+export interface PublicEntryResponse {
+  kind: PublicEntryKind
+  realm: PublicRealmMobileConfigResponse
+  campaignId: string | null
+  requiresAuthentication: boolean
+  autoJoin: boolean
+  expiresAt: string | null
+}
+
 export interface RealmPermissionFlags {
   createCampaign: boolean
   manageRealm: boolean

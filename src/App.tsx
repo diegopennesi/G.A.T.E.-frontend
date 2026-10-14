@@ -166,6 +166,14 @@ const REALM_TYPE_OPTIONS: RealmType[] = ['STORE', 'ASSOCIATION', 'PRIVATE_GROUP'
 const CAMPAIGN_REQUIRED_TOOLTIP = 'Caricare prima la campagna'
 const MODULE_REQUIRED_BY_SCREEN: Partial<Record<Screen, string>> = {}
 
+const pendingEntrySearch = () => {
+  const params = new URLSearchParams(window.location.search)
+  const kind = params.get('entryKind')
+  const value = params.get('entryValue')?.trim()
+  if (!value || !['REALM', 'CAMPAIGN_TOKEN', 'CAMPAIGN_CODE'].includes(kind ?? '')) return ''
+  return `?${new URLSearchParams({ entryKind: kind!, entryValue: value }).toString()}`
+}
+
 function App() {
   const { requestNavigation } = useNavigationGuard()
   const initialRealmContext = useMemo(() => resolveRealmContextFromPath(window.location.pathname), [])
@@ -445,7 +453,7 @@ function App() {
       isAuthenticated: false,
     })
     if (window.location.pathname !== nextPath) {
-      window.history.replaceState(window.history.state, '', nextPath)
+      window.history.replaceState(window.history.state, '', `${nextPath}${pendingEntrySearch()}`)
     }
   }, [])
 
@@ -460,7 +468,7 @@ function App() {
       isAuthenticated: Boolean(profile),
     })
     if (window.location.pathname !== nextPath) {
-      window.history.replaceState(window.history.state, '', nextPath)
+      window.history.replaceState(window.history.state, '', `${nextPath}${profile ? '' : pendingEntrySearch()}`)
     }
   }, [authMode, profile, realmCode, screen])
 
@@ -2162,6 +2170,12 @@ function App() {
   }, [activeUserId, bootstrapScope, screen, campaignGameSystems.length])
 
   const handleAuth = async (session: AuthSession) => {
+    const entryParams = new URLSearchParams(window.location.search)
+    const entryKind = entryParams.get('entryKind')
+    const entryValue = entryParams.get('entryValue')?.trim() || ''
+    const invitedCampaign = entryValue && (entryKind === 'CAMPAIGN_TOKEN' || entryKind === 'CAMPAIGN_CODE')
+      ? entryValue
+      : null
     setProfile(session.user)
     setCampaignMembershipsLoaded(false)
     setError('')
@@ -2171,6 +2185,18 @@ function App() {
       setScreen('Ingresso')
     }
     await refreshProfile({ force: true })
+    if (invitedCampaign) {
+      try {
+        await campaignMutations.applyInviteAccess(invitedCampaign)
+        setScreen('Lista Campagne')
+        addEvent('Invito ricevuto dal collegamento applicato', 'ok')
+      } catch (err) {
+        const message = toMessage(err)
+        setError(message)
+        addEvent(`Invito dal collegamento: ${message}`, 'error')
+      }
+    }
+    if (entryKind && entryValue) window.history.replaceState(window.history.state, '', window.location.pathname)
   }
 
   const realtimeActionsRef = useRef<RealtimeInvalidationActions>({

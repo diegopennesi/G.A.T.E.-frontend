@@ -10,16 +10,18 @@ import { NavigationGuardProvider } from './context/NavigationGuardContext'
 import { GlobalApiLoader } from './shared/components'
 import { queryClient } from './services/queryClient'
 import { PublicLegalApp } from './features/legal/PublicLegalApp'
+import { PublicEntryApp } from './features/entry/PublicEntryApp'
 
 const initialTheme = localStorage.getItem('gate_theme')
 document.documentElement.dataset.theme = initialTheme === 'dark' ? 'dark' : 'light'
 
 const publicPath = window.location.pathname.replace(/\/+$/, '')
 const isLegalPath = publicPath === '/privacy' || publicPath === '/account-deletion'
+const isEntryPath = /^\/(r|i|c)\/[^/]+\/?$/.test(window.location.pathname)
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    {isLegalPath ? <PublicLegalApp /> : <QueryClientProvider client={queryClient}>
+    {isLegalPath ? <PublicLegalApp /> : isEntryPath ? <PublicEntryApp /> : <QueryClientProvider client={queryClient}>
       <NavigationGuardProvider><App /></NavigationGuardProvider>
       <GlobalApiLoader />
     </QueryClientProvider>}

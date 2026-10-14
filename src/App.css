@@ -8374,3 +8374,24 @@ html[data-theme='light'] .character-compose input::placeholder { color: var(--te
 @media (max-width: 560px) {
   .realm-feature-grid { grid-template-columns: 1fr; }
 }
+
+.invite-share-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 1.25rem;
+  margin-top: 1rem;
+  padding: 1.25rem;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.14));
+  border-radius: 1rem;
+  background: var(--panel-muted, rgba(255, 255, 255, 0.025));
+}
+
+.invite-qr { display: grid; place-items: center; padding: .65rem; border-radius: .75rem; background: #fff; }
+.invite-share-copy { min-width: 0; display: grid; gap: .75rem; }
+.invite-share-copy input { width: 100%; }
+
+@media (max-width: 620px) {
+  .invite-share-card { grid-template-columns: 1fr; }
+  .invite-qr { width: fit-content; }
+}

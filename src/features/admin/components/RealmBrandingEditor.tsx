@@ -1,4 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react'
+import { useState } from 'react'
+import QRCode from 'react-qr-code'
 import type { AdminRealmCreateRequest, RealmMobileFeature, RealmMobileTheme } from '../../../types/domain'
 
 const featureOptions: { value: RealmMobileFeature; label: string; description: string }[] = [
@@ -23,6 +25,7 @@ export function RealmBrandingEditor({ draft, onChange }: {
   draft: AdminRealmCreateRequest
   onChange: Dispatch<SetStateAction<AdminRealmCreateRequest>>
 }) {
+  const [copyStatus, setCopyStatus] = useState('')
   const accentValid = /^#[0-9a-f]{6}$/i.test(draft.accentColor ?? '')
   const accent = accentValid ? draft.accentColor! : '#245A45'
   const foreground = contrast(accent, '#FFFFFF') >= 4.5 ? '#FFFFFF' : '#000000'
@@ -33,6 +36,7 @@ export function RealmBrandingEditor({ draft, onChange }: {
       ? current.features.filter((item) => item !== feature)
       : [...current.features, feature],
   }))
+  const realmLink = `${window.location.origin}/r/${encodeURIComponent(draft.code.trim().toLowerCase())}`
 
   return <section className="realm-branding-editor" aria-labelledby="realm-branding-title">
     <div className="realm-branding-copy">
@@ -99,6 +103,13 @@ export function RealmBrandingEditor({ draft, onChange }: {
             </label>)}
           </div>
         </fieldset>
+
+        {draft.code.trim() ? <div className="invite-share-card">
+          <div className="invite-qr"><QRCode value={realmLink} size={132} bgColor="#ffffff" fgColor="#101713" aria-label="QR accesso al reame" /></div>
+          <div className="invite-share-copy"><strong>Ingresso diretto al reame</strong><label>Link pubblico<input readOnly value={realmLink} /></label><button type="button" className="secondary-btn" onClick={() => {
+            void navigator.clipboard.writeText(realmLink).then(() => setCopyStatus('Link copiato.'), () => setCopyStatus('Seleziona il link e copialo manualmente.'))
+          }}>Copia link del reame</button>{copyStatus ? <small role="status">{copyStatus}</small> : null}</div>
+        </div> : null}
       </div>
 
       <div className="realm-phone-preview" style={{

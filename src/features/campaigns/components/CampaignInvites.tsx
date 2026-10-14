@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import QRCode from 'react-qr-code'
 import { useCampaignContext } from '../../../context'
 import { useAsyncAction } from '../../../hooks/useAsyncAction'
 import { Icon } from '../../../shared/components'
@@ -16,11 +17,15 @@ export function CampaignInvites() {
     try { await navigator.clipboard.writeText(value); setCopyFeedback('Codice copiato.') }
     catch { setCopyFeedback('Copia non disponibile. Seleziona e copia il codice dal campo.') }
   }
+  const publicLink = (kind: 'c' | 'i', value: string) => `${window.location.origin}/${kind}/${encodeURIComponent(value)}`
   if (!campaign) return null
   return <section className="settings-section" aria-labelledby="campaign-invites-title">
     <h3 id="campaign-invites-title">Inviti al tavolo</h3>
     <p className="muted">Il codice della campagna consente di trovarla anche quando non compare nella ricerca. Restano valide le regole di accesso.</p>
-    <div className="inline-actions"><label>Codice della campagna<input value={campaign.inviteCode} readOnly /></label><button type="button" className="secondary-btn" onClick={() => void copy(campaign.inviteCode)}><Icon name="fa-solid fa-copy" />Copia codice</button></div>
+    <div className="invite-share-card">
+      <div className="invite-qr"><QRCode value={publicLink('c', campaign.inviteCode)} size={132} bgColor="#ffffff" fgColor="#101713" aria-label="QR invito campagna" /></div>
+      <div className="invite-share-copy"><label>Link pubblico della campagna<input value={publicLink('c', campaign.inviteCode)} readOnly /></label><button type="button" className="secondary-btn" onClick={() => void copy(publicLink('c', campaign.inviteCode))}><Icon name="fa-solid fa-copy" />Copia link</button><p className="muted">Il QR apre l’app installata oppure la pagina web del reame.</p></div>
+    </div>
     {copyFeedback && <p role="status">{copyFeedback}</p>}
     <details className="flow-details"><summary>Crea un invito con limiti</summary>
       <form onSubmit={event => {
@@ -39,7 +44,7 @@ export function CampaignInvites() {
         </fieldset>
       </form>
       {action.error && <p role="alert">{action.error}</p>}{action.notice && <p role="status">{action.notice}</p>}
-      {result && <div className="invite-result"><label>Nuovo codice invito<input readOnly value={result.token} /></label><button type="button" className="secondary-btn" onClick={() => void copy(result.token)}>Copia nuovo codice</button><p className="muted">{result.capabilities.includes('AUTOJOIN') ? 'Ingresso automatico' : 'Approvazione del master'} · {result.expiresAt ? `Scade: ${new Date(result.expiresAt).toLocaleString('it-IT')}` : 'Senza scadenza'} · {result.maxUses ? `${result.maxUses} utilizzi` : 'Utilizzi illimitati'}</p></div>}
+      {result && <div className="invite-result invite-share-card"><div className="invite-qr"><QRCode value={publicLink('i', result.token)} size={132} bgColor="#ffffff" fgColor="#101713" aria-label="QR invito con limiti" /></div><div className="invite-share-copy"><label>Link del nuovo invito<input readOnly value={publicLink('i', result.token)} /></label><button type="button" className="secondary-btn" onClick={() => void copy(publicLink('i', result.token))}>Copia link invito</button><p className="muted">{result.capabilities.includes('AUTOJOIN') ? 'Ingresso automatico' : 'Approvazione del master'} · {result.expiresAt ? `Scade: ${new Date(result.expiresAt).toLocaleString('it-IT')}` : 'Senza scadenza'} · {result.maxUses ? `${result.maxUses} utilizzi` : 'Utilizzi illimitati'}</p></div></div>}
     </details>
   </section>
 }
